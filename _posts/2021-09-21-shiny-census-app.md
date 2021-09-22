@@ -83,11 +83,11 @@ My app's UI has four sections:
 
 Each section has a download button so that people can get the CSV files or plot image for their own analysis and reporting.
 
-My app's server has three sections:
+My app's server has four sections:
 
 - Get data from the SQLite database 
-- Prepare dynamic text (for filenames and the plot title)
 - Render table and plot outputs
+- Prepare dynamic text (for filenames and the plot title)
 - Handle `data.frame` and plot downloads
 
 #### `ui`
@@ -148,10 +148,9 @@ downloadButton(
 The server function has three parameters: `input`, `output` and `session`. The `input` object is a `ReactiveValues` object which stores all UI Input values, which are accessed with `input$inputId`.
 
 #### Get data
-There are three objects which hold the data necessary to produce table, text, download and plot outputs:
+There are three high-level functions which call query/format/calculation functions to return the data in the format necessary to produce table, text, download and plot outputs:
 
-1) The `earnings_data` function passes the person-selected dropdown options `input$sex`, `input$work_status` and `input$state` to the `get_b20005_ruca_aggregate_earnings` function to get a query result from the SQLite database. That function call is passed to `format_earnings`, which in turn is passed to the `reactive` function to make it a reactive expression. Only reactive expressions (and reactive endpoints in the `output` object) are allowed to access the `input` object which is a reactive source. You can read more about Shiny's reactivity programming model in this [excellent article](https://shiny.rstudio.com/articles/reactivity-overview.html). 
-
+1) The `earnings_data` function passes the person-selected dropdown options `input$sex`, `input$work_status` and `input$state` to the `get_b20005_ruca_aggregate_earnings` function to get a query result from the SQLite database. That function call is passed to `format_earnings`, which in turn is passed to the `reactive` function to make it a reactive expression. Only reactive expressions (and reactive endpoints in the `output` object) are allowed to access the `input` object which is a reactive source. You can read more about Shiny's "reactive programming model" in this [excellent article](https://shiny.rstudio.com/articles/reactivity-overview.html). 
 ```
 earnings_data <- reactive(
   format_earnings(
@@ -161,13 +160,94 @@ earnings_data <- reactive(
       input$state)))
 ```
 
-2) The `design_factor` function passes the `input$state` selection to the `get_design_factor` which in turn is passed to the `reactive` function.
+2) The `design_factor` function passes the `input$state` selection to the `get_design_factor` function which in turn is passed to the `reactive` function.
 ```
 design_factor <- reactive(get_design_factor(input$state))
 ```
 3) The `median_data` function passes the return values from `earnings_data()` and `design_factor()` to the `calculate_median` function which in turn is passed to the `reactive` function.
 ```
 median_data <- reactive(calculate_median(earnings_data(), design_factor()))
+```
+#### Render Outputs
+I have two reactive endpoints for table outputs, and one endpoint for a plot. The table outputs use `renderTable` (with row names displayed) with the `data.frame` coming from `median_data()` and `earnings_data()`. The plot output uses `renderPlot`, and a helper function `make_plot` to create a bar plot of `earnings_data()` for a person-selected `input$ruca_level` with a title created with the helper function `earnings_plot_title()`.
+```
+output$median_data <- renderTable(
+  expr = median_data(), 
+  rownames = TRUE)
+  
+output$earnings_data <- renderTable(
+  expr = earnings_data(), 
+  rownames = TRUE)
+    
+output$earnings_histogram <- renderPlot(
+  expr = make_plot(
+    data=earnings_data(), 
+    ruca_level=input$ruca_level, 
+    plot_title=earnings_plot_title()))
+```
+### Prepare Dynamic Text
+I created four functions that generate filenames for the `downloadHandler` call when the corresponding `downloadButton` gets clicked, one function that generates the title used to generate the bar plot, and one function which takes computer-readable `character` objects (e.g. `"Large_Town"`) and maps it to and returns a more human-readable `character` object (e.g. `"Large Town"`). I chose to keep filenames more computer-readable (to avoid spaces) and the plot title more human-readable.
+
+```
+get_pretty_text <- function(raw_text){
+  text_map <- c("M" = "Male", 
+  "F" = "Female",
+  "FT" = "Full Time",
+  "OTHER" = "Other",
+  "Urban" = "Urban",
+  "Large_Town" = "Large Town",
+  "Small_Town" = "Small Town",
+  "Rural" = "Rural")
+  return(text_map[raw_text])
+  }
+ 
+earnings_plot_title <- function(){
+  return(paste(
+    input$state,
+    get_pretty_text(input$sex),
+    get_pretty_text(input$work_status),
+    input$ruca_level,
+    "Workers",
+    sep=" "))
+  }
+
+b20005_filename <- function(){
+    return(paste(
+      input$state,
+      get_pretty_text(input$sex),
+      input$work_status,
+      "earnings.csv",
+      sep="_"
+    ))
+  }
+  
+median_summary_filename <- function() {
+  paste(
+    input$state,  
+    get_pretty_text(input$sex), 
+    input$work_status, 
+    'estimated_median_earnings_summary.csv',  
+    sep="_")
+  }
+  
+ruca_earnings_filename <- function() {
+  paste(
+    input$state,  
+    get_pretty_text(input$sex),  
+    input$work_status, 
+    'estimated_median_earnings_by_ruca_level.csv',  
+    sep="_")
+  }
+  
+earnings_plot_filename <- function(){
+  return(paste(
+    input$state,
+    get_pretty_text(input$sex),
+    input$work_status,
+    input$ruca_level,
+    "Workers.png",
+    sep="_"))
+  }
 ```
 
 ### <a name="prep-db-r"></a>`prep_db.R`
