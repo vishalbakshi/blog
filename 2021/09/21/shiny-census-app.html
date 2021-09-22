@@ -1,0 +1,116 @@
+<h1 id="r-shiny-census-app">R Shiny Census App</h1>
+
+<p>In this blog post, I’ll walk through my development process for a <a href="http://vbakshi.shinyapps.io/census-app">U.S. Census data visualization web app</a> I created using the Shiny package in R.</p>
+
+<h2 id="background">Background</h2>
+
+<p>I started this project by reading the handbook <a href="https://www.census.gov/content/dam/Census/library/publications/2020/acs/acs_state_local_handbook_2020.pdf">Understanding and Using American Community Survey Data: What State and Local Government Users Need to Know</a> published by the U.S. Census Bureau. I recreated the handbook’s first case study in R, in which they make comparisons across geographic areas, create custom geographic areas from census tracts and calculate margins of error for derived estimates for Minnesota Census Tract 5-year earnings estimates.</p>
+
+<p>During the process of recreating the derived median earnings estimate calculations, I was unable to recreate a key value from the handbook (the Standard Error for the 50% proportion, calculated to be 0.599) because I was unable to deduce the values used in the following formula referenced from page 17 of the <a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2015_2019AccuracyPUMS.pdf">PUMS Accuracy of the Data documentation</a>:</p>
+
+<p><img src="images/se_formula_original.png" alt="Standard Error equals Design Factor times square root of the product of 95 over 5B and 50 squared" /></p>
+
+<p>The documentation defines B as the <em>base</em>, which is the <em>calculated weighted total</em>. I chose the value of 1.3 for the design factor DF since it corresponds to STATE = Minnesota, CHARTYP = Population, CHARACTERISTIC = Person Earnings/Income in the <a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2019_PUMS_5yr_Design_Factors.csv">Design Factors CSV published by the Census Bureau</a>.</p>
+
+<p>I called the <a href="https://www.census.gov/programs-surveys/acs/contact.html">Census Bureau Customer Help Center</a> for assistance and was transferred to a member of the ACS Data User Support team with whom I discussed my woes. He was unable to confirm the values of the design factor DF or B, and was unable to pull up the contact information for the statistical methodology team, so I emailed him my questions. After a few email exchanges, the statistical methodoloy team provided the following:</p>
+
+<ul>
+  <li>DF = 1.3</li>
+  <li>B = the total population estimate for which the median is being calculated, which is 82488 for the case study calculation (Minnesota Rural Male Full Time Workers)</li>
+  <li>The term 95/5 is associated with the finite population correction factor (100 - f) divided by the sample fraction (f), where f = 5% (later on I note in the documentation that this 95/5 term is based on a 68% confidence interval). The data used in the handbook case study is from 5-year estimates. 1-year estimates sample 2.5% of the population, so the 5-year estimates represent a 5 * 2.5 = 12.5% sample. Instead of 95/5, the ratio becomes (100 - 12.5)/12.5 = 87.5/12.5</li>
+</ul>
+
+<p>The updated formula is then:</p>
+
+<p><img src="images/se_formula_modified.png" alt="Standard Error equals Design Factor times square root of the product of 87.5 over 12.5B and 50 squared" /></p>
+
+<p>I was able to calculate the median earnings estimate (and associated standard error and margin of error) within a few percent of the values given in the handbook. This provided me with confirmation that I was ready to expand my code to calculate median earnings estimates for other subgroups.</p>
+
+<h2 id="the-stack">The Stack</h2>
+
+<p>I built this app using the R package <a href="https://shiny.rstudio.com/reference/shiny/latest/"><code class="language-plaintext highlighter-rouge">Shiny</code></a> which handles both the UI and the server. I stored the data in a <code class="language-plaintext highlighter-rouge">sqlite</code> database and accessed it with queries written using the <a href="https://cran.r-project.org/web/packages/RSQLite/RSQLite.pdf"><code class="language-plaintext highlighter-rouge">RSQLite</code></a> package which uses the <a href="https://dbi.r-dbi.org/reference/">DBI</a> API. The following section breaks down the R scripts based on functionality. You click on the script name to navigate to that section.</p>
+
+<h2 id="the-codebase">The Codebase</h2>
+
+<ul>
+  <li><a href="#app-r"><code class="language-plaintext highlighter-rouge">app.R</code></a>
+    <ul>
+      <li>UI and server functions to handle people inputs and plot/table/text outputs</li>
+    </ul>
+  </li>
+  <li><a href="#prep-db-r"><code class="language-plaintext highlighter-rouge">prep_db.R</code></a>
+    <ul>
+      <li>Import, clean, combine and then load data into the <code class="language-plaintext highlighter-rouge">census_app_db.sqlite</code> database</li>
+    </ul>
+  </li>
+  <li><a href="#get-b20005-ruca-aggregate-earnings-r"><code class="language-plaintext highlighter-rouge">get_b20005_ruca_aggregate_earnings.R</code></a>
+    <ul>
+      <li>Receives input values from UI and calls helper functions to query the database for the necessary data</li>
+    </ul>
+  </li>
+  <li><a href="#get-b20005-sex-work_status-ruca-aggregate-earnings-r"><code class="language-plaintext highlighter-rouge">get_{sex}_{work_status}_ruca_aggregate_b20005_earnings.R</code></a>
+    <ul>
+      <li>Queries the SQLite database for population estimates of workers of the given sex and work status, aggregated by RUCA levels for a given state</li>
+    </ul>
+  </li>
+  <li><a href="#get-b20005-earnings"><code class="language-plaintext highlighter-rouge">get_b20005_earnings.R</code></a>
+    <ul>
+      <li>Receives input values from UI and calls helper functions to query the database for the necessary data</li>
+    </ul>
+  </li>
+  <li><a href="#get-b20005-sex-work_status-earnings-r"><code class="language-plaintext highlighter-rouge">get_{sex}_{work_status}_b20005_earnings.R</code></a>
+    <ul>
+      <li>Queries the SQLite database for population estimates of workers of the given sex and work status for each census tract in the given state</li>
+    </ul>
+  </li>
+  <li><a href="#get-all-b20005-earnings-r"><code class="language-plaintext highlighter-rouge">get_all_b20005_earnings.R</code></a>
+    <ul>
+      <li>Queries the SQLite database for population estimates for all sexes and work statuses for each census tract in the state</li>
+    </ul>
+  </li>
+  <li><a href="#get-b20005-states-r"><code class="language-plaintext highlighter-rouge">get_b20005_states.R</code></a>
+    <ul>
+      <li>Queries the SQLite database for a list of U.S. states</li>
+    </ul>
+  </li>
+  <li><a href="#get-design-factor-r"><code class="language-plaintext highlighter-rouge">get_design_factor.R</code></a>
+    <ul>
+      <li>Receives state selection from UI and queries database for the design factor used for the median earnings estimation calculation</li>
+    </ul>
+  </li>
+  <li><a href="#get-b20005-labels-r"><code class="language-plaintext highlighter-rouge">get_b20005_labels.R</code></a>
+    <ul>
+      <li>Queries the database for descriptive labels of B20005 table variables</li>
+    </ul>
+  </li>
+  <li><a href="#format-query-result-r"><code class="language-plaintext highlighter-rouge">format_query_result.R</code></a>
+    <ul>
+      <li>Receives the query result <code class="language-plaintext highlighter-rouge">data.frame</code> of earnings data and makes it prettier before it’s displayed on the UI</li>
+    </ul>
+  </li>
+  <li><a href="#calculate-median-r"><code class="language-plaintext highlighter-rouge">calculate_median.R</code></a>
+    <ul>
+      <li>Receives population estimates for earnings levels aggregated by RUCA level and the design factor and returns the median earnings estimate, standard of error and margin of error</li>
+    </ul>
+  </li>
+  <li><a href="#make-plot-r"><code class="language-plaintext highlighter-rouge">make_plot.R</code></a>
+    <ul>
+      <li>Receives earnings <code class="language-plaintext highlighter-rouge">data.frame</code> and RUCA level selected from UI and returns a bar plot</li>
+    </ul>
+  </li>
+</ul>
+
+<h3 id="appr"><a name="app-r"></a><code class="language-plaintext highlighter-rouge">app.R</code></h3>
+<h3 id="prep_dbr"><a name="prep-db-r"></a><code class="language-plaintext highlighter-rouge">prep_db.R</code></h3>
+<h3 id="get_b20005_ruca_aggregate_earningsr"><a name="get-b20005-ruca-aggregate-earnings-r"></a><code class="language-plaintext highlighter-rouge">get_b20005_ruca_aggregate_earnings.R</code></h3>
+<h3 id="get_b20005_sex_work_status_ruca_aggregate_earningsr"><a name="get-b20005-sex-work_status-ruca-aggregate-earnings-r"></a><code class="language-plaintext highlighter-rouge">get_b20005_{sex}_{work_status}_ruca_aggregate_earnings.R</code></h3>
+<h3 id="get_b20005_earningsr"><a name="get-b20005-earnings-r"></a><code class="language-plaintext highlighter-rouge">get_b20005_earnings.R</code></h3>
+<h3 id="get_b20005_sex_work_status_earningsr"><a name="get-b20005-sex-work_status-earnings-r"></a><code class="language-plaintext highlighter-rouge">get_b20005_{sex}_{work_status}_earnings.R</code></h3>
+<h3 id="get_all_b20005_earningsr"><a name="get-all-b20005-earnings-r"></a><code class="language-plaintext highlighter-rouge">get_all_b20005_earnings.R</code></h3>
+<h3 id="get_b20005_earningsr-1"><a name="get-b20005-states-r"></a><code class="language-plaintext highlighter-rouge">get_b20005_earnings.R</code></h3>
+<h3 id="get_design_factorr"><a name="get-design-factor-r"></a><code class="language-plaintext highlighter-rouge">get_design_factor.R</code></h3>
+<h3 id="get_b20005_labelsr"><a name="get-b20005-labels-r"></a><code class="language-plaintext highlighter-rouge">get_b20005_labels.R</code></h3>
+<h3 id="format_query_resultr"><a name="format-query-result-r"></a><code class="language-plaintext highlighter-rouge">format_query_result.R</code></h3>
+<h3 id="calculate_medianr"><a name="calculate-median-r"></a><code class="language-plaintext highlighter-rouge">calculate_median.R</code></h3>
+<h3 id="make_plotr"><a name="make-plot-r"></a><code class="language-plaintext highlighter-rouge">make_plot.R</code></h3>
+
