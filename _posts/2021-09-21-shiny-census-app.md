@@ -65,14 +65,14 @@ I built this app using the R package <a href="https://shiny.rstudio.com/referenc
 
 ### <a name="app-r"></a>`app.R`
 
-A `shiny` app has three fundamental components:
+A shiny app has three fundamental components:
 
 ```R
 ui <- (...)
 server <- (...)
 shinyApp(ui, server,...)
 ```
-The `ui` object holds all UI layout, input and output objects which define the front-end of your app. The `server` object holds all rendering functions which are assigned to outputs that appear on the UI. The `shinyApp` function takes a `ui` and `server` object (along with other arguments) and creates a shiny app object which can be run in a browser by passing it to the `runApp` function. Person inputs (such as selections in a dropdown) are assigned to the global `input` object.
+The `ui` object holds all UI layout, input and output objects which define the front-end of your app. The `server` object holds all rendering functions which are assigned to outputs that appear on the UI. The `shinyApp` function takes a `ui` and `server` object (along with other arguments) and creates a shiny app object which can be run in a browser by passing it to the `runApp` function. Person inputs (such as selections in a dropdown) are assigned to a global `input` object.
 
 My app's UI has four sections:
 
@@ -145,6 +145,30 @@ downloadButton(
 )
 ```
 #### `server`
+The server function has three parameters: `input`, `output` and `session`. The `input` object is a `ReactiveValues` object which stores all UI Input values, which are accessed with `input$inputId`.
+
+#### Get data
+There are three objects which hold the data necessary to produce table, text, download and plot outputs:
+
+1) The `earnings_data` function passes the person-selected dropdown options `input$sex`, `input$work_status` and `input$state` to the `get_b20005_ruca_aggregate_earnings` function to get a query result from the SQLite database. That function call is passed to `format_earnings`, which in turn is passed to the `reactive` function to make it a reactive expression. Only reactive expressions (and reactive endpoints in the `output` object) are allowed to access the `input` object which is a reactive source. You can read more about Shiny's reactivity programming model in this [excellent article](https://shiny.rstudio.com/articles/reactivity-overview.html). 
+
+```
+earnings_data <- reactive(
+  format_earnings(
+    get_b20005_ruca_aggregate_earnings(
+      input$sex, 
+      input$work_status, 
+      input$state)))
+```
+
+2) The `design_factor` function passes the `input$state` selection to the `get_design_factor` which in turn is passed to the `reactive` function.
+```
+design_factor <- reactive(get_design_factor(input$state))
+```
+3) The `median_data` function passes the return values from `earnings_data()` and `design_factor()` to the `calculate_median` function which in turn is passed to the `reactive` function.
+```
+median_data <- reactive(calculate_median(earnings_data(), design_factor()))
+```
 
 ### <a name="prep-db-r"></a>`prep_db.R`
 ### <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
