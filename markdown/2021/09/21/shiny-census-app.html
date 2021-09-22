@@ -77,7 +77,7 @@ window.onload = wrap_img;
        • <span class="read-time" title="Estimated read time">
     
     
-      7 min read
+      8 min read
     
 </span></p>
 
@@ -197,13 +197,13 @@ window.onload = wrap_img;
 
 <h3 id="appr"><a name="app-r"></a><code class="language-plaintext highlighter-rouge">app.R</code></h3>
 
-<p>A <code class="language-plaintext highlighter-rouge">shiny</code> app has three fundamental components:</p>
+<p>A shiny app has three fundamental components:</p>
 
 <div class="language-R highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">ui</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="p">(</span><span class="n">...</span><span class="p">)</span><span class="w">
 </span><span class="n">server</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="p">(</span><span class="n">...</span><span class="p">)</span><span class="w">
 </span><span class="n">shinyApp</span><span class="p">(</span><span class="n">ui</span><span class="p">,</span><span class="w"> </span><span class="n">server</span><span class="p">,</span><span class="n">...</span><span class="p">)</span><span class="w">
 </span></code></pre></div></div>
-<p>The <code class="language-plaintext highlighter-rouge">ui</code> object holds all UI layout, input and output objects which define the front-end of your app. The <code class="language-plaintext highlighter-rouge">server</code> object holds all rendering functions which are assigned to outputs that appear on the UI. The <code class="language-plaintext highlighter-rouge">shinyApp</code> function takes a <code class="language-plaintext highlighter-rouge">ui</code> and <code class="language-plaintext highlighter-rouge">server</code> object (along with other arguments) and creates a shiny app object which can be run in a browser by passing it to the <code class="language-plaintext highlighter-rouge">runApp</code> function. Person inputs (such as selections in a dropdown) are assigned to the global <code class="language-plaintext highlighter-rouge">input</code> object.</p>
+<p>The <code class="language-plaintext highlighter-rouge">ui</code> object holds all UI layout, input and output objects which define the front-end of your app. The <code class="language-plaintext highlighter-rouge">server</code> object holds all rendering functions which are assigned to outputs that appear on the UI. The <code class="language-plaintext highlighter-rouge">shinyApp</code> function takes a <code class="language-plaintext highlighter-rouge">ui</code> and <code class="language-plaintext highlighter-rouge">server</code> object (along with other arguments) and creates a shiny app object which can be run in a browser by passing it to the <code class="language-plaintext highlighter-rouge">runApp</code> function. Person inputs (such as selections in a dropdown) are assigned to a global <code class="language-plaintext highlighter-rouge">input</code> object.</p>
 
 <p>My app’s UI has four sections:</p>
 
@@ -275,6 +275,27 @@ window.onload = wrap_img;
 )
 </code></pre></div></div>
 <h4 id="server"><code class="language-plaintext highlighter-rouge">server</code></h4>
+<p>The server function has three parameters: <code class="language-plaintext highlighter-rouge">input</code>, <code class="language-plaintext highlighter-rouge">output</code> and <code class="language-plaintext highlighter-rouge">session</code>. The <code class="language-plaintext highlighter-rouge">input</code> object is a <code class="language-plaintext highlighter-rouge">ReactiveValues</code> object which stores all UI Input values, which are accessed with <code class="language-plaintext highlighter-rouge">input$inputId</code>.</p>
+
+<h4 id="get-data">Get data</h4>
+<p>There are three objects which hold the data necessary to produce table, text, download and plot outputs:</p>
+
+<p>1) The <code class="language-plaintext highlighter-rouge">earnings_data</code> function passes the person-selected dropdown options <code class="language-plaintext highlighter-rouge">input$sex</code>, <code class="language-plaintext highlighter-rouge">input$work_status</code> and <code class="language-plaintext highlighter-rouge">input$state</code> to the <code class="language-plaintext highlighter-rouge">get_b20005_ruca_aggregate_earnings</code> function to get a query result from the SQLite database. That function call is passed to <code class="language-plaintext highlighter-rouge">format_earnings</code>, which in turn is passed to the <code class="language-plaintext highlighter-rouge">reactive</code> function to make it a reactive expression. Only reactive expressions (and reactive endpoints in the <code class="language-plaintext highlighter-rouge">output</code> object) are allowed to access the <code class="language-plaintext highlighter-rouge">input</code> object which is a reactive source. You can read more about Shiny’s reactivity programming model in this <a href="https://shiny.rstudio.com/articles/reactivity-overview.html">excellent article</a>.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>earnings_data &lt;- reactive(
+  format_earnings(
+    get_b20005_ruca_aggregate_earnings(
+      input$sex, 
+      input$work_status, 
+      input$state)))
+</code></pre></div></div>
+
+<p>2) The <code class="language-plaintext highlighter-rouge">design_factor</code> function passes the <code class="language-plaintext highlighter-rouge">input$state</code> selection to the <code class="language-plaintext highlighter-rouge">get_design_factor</code> which in turn is passed to the <code class="language-plaintext highlighter-rouge">reactive</code> function.</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>design_factor &lt;- reactive(get_design_factor(input$state))
+</code></pre></div></div>
+<p>3) The <code class="language-plaintext highlighter-rouge">median_data</code> function passes the return values from <code class="language-plaintext highlighter-rouge">earnings_data()</code> and <code class="language-plaintext highlighter-rouge">design_factor()</code> to the <code class="language-plaintext highlighter-rouge">calculate_median</code> function which in turn is passed to the <code class="language-plaintext highlighter-rouge">reactive</code> function.</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>median_data &lt;- reactive(calculate_median(earnings_data(), design_factor()))
+</code></pre></div></div>
 
 <h3 id="prep_dbr"><a name="prep-db-r"></a><code class="language-plaintext highlighter-rouge">prep_db.R</code></h3>
 <h3 id="get_b20005_ruca_aggregate_earningsr"><a name="get-b20005-ruca-aggregate-earnings-r"></a><code class="language-plaintext highlighter-rouge">get_b20005_ruca_aggregate_earnings.R</code></h3>
