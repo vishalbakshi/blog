@@ -14,7 +14,7 @@ I started this project by reading the handbook <a href="https://www.census.gov/c
 
 During the process of recreating the derived median earnings estimate calculations, I was unable to recreate a key value from the handbook (the Standard Error for the 50% proportion, calculated to be 0.599) because I was unable to deduce the values used in the following formula referenced from page 17 of the <a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2015_2019AccuracyPUMS.pdf">PUMS Accuracy of the Data documentation</a>:
 
-![Standard Error equals Design Factor times square root of the product of 95 over 5B and 50 squared](images/se_formula_original.png)
+![Standard Error equals Design Factor times square root of the product of 95 over 5B and 50 squared]({{ site.baseurl }}/images/se_formula_original.png)
 
 The documentation defines B as the _base_, which is the _calculated weighted total_. I chose the value of 1.3 for the design factor DF since it corresponds to STATE = Minnesota, CHARTYP = Population, CHARACTERISTIC = Person Earnings/Income in the <a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2019_PUMS_5yr_Design_Factors.csv">Design Factors CSV published by the Census Bureau</a>.
 
@@ -26,7 +26,7 @@ I called the <a href="https://www.census.gov/programs-surveys/acs/contact.html">
 
 The updated formula is then:
 
-![Standard Error equals Design Factor times square root of the product of 87.5 over 12.5B and 50 squared](images/se_formula_modified.png)
+![Standard Error equals Design Factor times square root of the product of 87.5 over 12.5B and 50 squared]({{ site.baseurl }}/images/se_formula_modified.png)
 
 I was able to calculate the median earnings estimate (and associated standard error and margin of error) within a few percent of the values given in the handbook. This provided me with confirmation that I was ready to expand my code to calculate median earnings estimates for other subgroups.
 
@@ -64,6 +64,88 @@ I built this app using the R package <a href="https://shiny.rstudio.com/referenc
   - Receives earnings `data.frame` and RUCA level selected from UI and returns a bar plot
 
 ### <a name="app-r"></a>`app.R`
+
+A `shiny` app has three fundamental components:
+
+```R
+ui <- (...)
+server <- (...)
+shinyApp(ui, server,...)
+```
+The `ui` object holds all UI layout, input and output objects which define the front-end of your app. The `server` object holds all rendering functions which are assigned to outputs that appear on the UI. The `shinyApp` function takes a `ui` and `server` object (along with other arguments) and creates a shiny app object which can be run in a browser by passing it to the `runApp` function. Person inputs (such as selections in a dropdown) are assigned to the global `input` object.
+
+My app's UI has four sections:
+
+- Dropdowns to select state, sex and work status for which the person using the app wants ACS 5-year earnings estimates
+- A table with the estimate, standard error and margin of error for median earnings
+- A bar plot of population estimates for earnings levels for the selected state, sex, work status and RUCA (Rural-Urban Commuting Areas) level
+- A table with population estimates for earnings levels for each RUCA level for the selected state, sex and work status
+
+Each section has a download button so that people can get the CSV files or plot image for their own analysis and reporting.
+
+My app's server has three sections:
+
+- Get data from the SQLite database 
+- Prepare dynamic text (for filenames and the plot title)
+- Render table and plot outputs
+- Handle `data.frame` and plot downloads
+
+#### `ui`
+All of my UI objects are wrapped within a `fluidPage` call which creates a page layout which "consists of rows which in turn include columns" (from the [docs](https://shiny.rstudio.com/reference/shiny/latest/fluidPage.html)). Each section is separated with `markdown('---')` which renders an HTML horizontal rule (`<hr>`).
+
+#### Dropdowns
+
+Dropdowns (the HTML `<select>` element) are a type of UI Input. I define each with an `inputId` which is a `character` object for reference on the server-side, a label `character` object which is rendered above the dropdown, and a `list` object which defines the dropdown options.
+
+```
+selectInput(
+  inputId = "...",
+  label = "...",
+  choices = list(...)
+)
+```
+In some cases, I want the person to see a `character` object in the dropdown that is more human-readable (e.g. `"Large Town"`) but use a corresponding input value in the server which is more computer-readable (e.g. `"Large_Town`). To achieve this, I use a named `character` vector where the names are displayed in the dropdown, and the assigned values are assigned to the global `input`:
+
+```
+selectInput(
+     inputId = "ruca_level",
+     label = "Select RUCA Level",
+     choices = list(
+       "RUCA LEVEL" = c(
+       "Urban" = "Urban", 
+       "Large Town" = "Large_Town", 
+       "Small Town" = "Small_Town", 
+       "Rural" = "Rural"))
+     )
+```
+In this case, if the person selects `"Large Town"` the value assigned to `input$ruca_level` is `"Large_Town"`.
+
+#### Tables
+
+Tables (the HTML `<table>` element) are a type of UI Output. I define each with an `outputId` for reference in the server.
+
+```
+tableOutput(outputId = "...")
+```
+#### Plots
+
+Similarly, a plot (which is rendered as an HTML `<img>` element) is a type of UI Output. I define each with an `outputId`.
+
+```
+plotOutput(outputId = "...")
+```
+
+#### Download Buttons
+The download button (an HTML `<a>` element) is also a type of UI Output. I define each with an `outputId` and `label` (which is displayed as the HTML `textContent` attribute of the `<a>` element).
+
+```
+downloadButton(
+  outputId = "...",
+  label = "..."
+)
+```
+#### `server`
+
 ### <a name="prep-db-r"></a>`prep_db.R`
 ### <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
 ### <a name="get-b20005-sex-work_status-ruca-aggregate-earnings-r"></a>`get_b20005_{sex}_{work_status}_ruca_aggregate_earnings.R`
