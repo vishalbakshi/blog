@@ -1,3 +1,9 @@
+---
+layout: post
+description: An explanation of my development process for a census data shiny app
+categories: [markdown]
+title: R Shiny Census App
+---
 # R Shiny Census App
 
 In this blog post, I'll walk through my development process for a [U.S. Census data visualization web app](http://vbakshi.shinyapps.io/census-app) I created using the Shiny package in R.
