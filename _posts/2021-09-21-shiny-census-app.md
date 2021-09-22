@@ -74,26 +74,21 @@ shinyApp(ui, server,...)
 ```
 The `ui` object holds all UI layout, input and output objects which define the front-end of your app. The `server` object holds all rendering functions which are assigned to outputs that appear on the UI. The `shinyApp` function takes a `ui` and `server` object (along with other arguments) and creates a shiny app object which can be run in a browser by passing it to the `runApp` function. Person inputs (such as selections in a dropdown) are assigned to a global `input` object.
 
+### What's in my `ui`?
+
+All of my UI objects are wrapped within a `fluidPage` call which returns a page layout which "consists of rows which in turn include columns" (from the [docs](https://shiny.rstudio.com/reference/shiny/latest/fluidPage.html)).
+
 My app's UI has four sections:
 
-- Dropdowns to select state, sex and work status for which the person using the app wants ACS 5-year earnings estimates
-- A table with the estimate, standard error and margin of error for median earnings
-- A bar plot of population estimates for earnings levels for the selected state, sex, work status and RUCA (Rural-Urban Commuting Areas) level
-- A table with population estimates for earnings levels for each RUCA level for the selected state, sex and work status
+1) Dropdowns to select state, sex and work status for which the person using the app wants ACS 5-year earnings estimates
+2) A table with the estimate, standard error and margin of error for median earnings
+3) A bar plot of population estimates for earnings levels for the selected state, sex, work status and RUCA (Rural-Urban Commuting Areas) level
+4) A table with population estimates for earnings levels for each RUCA level for the selected state, sex and work status
 
 Each section has a download button so that people can get the CSV files or plot image for their own analysis and reporting.
+Each section is separated with `markdown('---')` which renders an HTML horizontal rule (`<hr>`).
 
-My app's server has four sections:
-
-- Get data from the SQLite database 
-- Render table and plot outputs
-- Prepare dynamic text (for filenames and the plot title)
-- Handle `data.frame` and plot downloads
-
-#### `ui`
-All of my UI objects are wrapped within a `fluidPage` call which creates a page layout which "consists of rows which in turn include columns" (from the [docs](https://shiny.rstudio.com/reference/shiny/latest/fluidPage.html)). Each section is separated with `markdown('---')` which renders an HTML horizontal rule (`<hr>`).
-
-#### Dropdowns
+### 1) Dropdowns
 
 Dropdowns (the HTML `<select>` element) are a type of UI Input. I define each with an `inputId` which is a `character` object for reference on the server-side, a label `character` object which is rendered above the dropdown, and a `list` object which defines the dropdown options.
 
@@ -120,14 +115,14 @@ selectInput(
 ```
 In this case, if the person selects `"Large Town"` the value assigned to `input$ruca_level` is `"Large_Town"`.
 
-#### Tables
+### 2) Tables
 
 Tables (the HTML `<table>` element) are a type of UI Output. I define each with an `outputId` for reference in the server.
 
 ```
 tableOutput(outputId = "...")
 ```
-#### Plots
+### 3) Plots
 
 Similarly, a plot (which is rendered as an HTML `<img>` element) is a type of UI Output. I define each with an `outputId`.
 
@@ -135,7 +130,7 @@ Similarly, a plot (which is rendered as an HTML `<img>` element) is a type of UI
 plotOutput(outputId = "...")
 ```
 
-#### Download Buttons
+### 4) Download Buttons
 The download button (an HTML `<a>` element) is also a type of UI Output. I define each with an `outputId` and `label` (which is displayed as the HTML `textContent` attribute of the `<a>` element).
 
 ```
@@ -144,10 +139,17 @@ downloadButton(
   label = "..."
 )
 ```
-#### `server`
-The server function has three parameters: `input`, `output` and `session`. The `input` object is a `ReactiveValues` object which stores all UI Input values, which are accessed with `input$inputId`.
+### What's in my `server`?
+The server function has three parameters: `input`, `output` and `session`. The `input` object is a `ReactiveValues` object which stores all UI Input values, which are accessed with `input$inputId`. The `output` object similarly holds UI Output values at `output$outputId`. I do not use the `session` object in my app (yet).
 
-#### Get data
+My app’s server has four sections:
+
+1) Get data from the SQLite database
+2) Render table and plot outputs
+3) Prepare dynamic text (for filenames and the plot title)
+4) Handle data.frame and plot downloads
+
+### 1) Get data
 There are three high-level functions which call query/format/calculation functions to return the data in the format necessary to produce table, text, download and plot outputs:
 
 1) The `earnings_data` function passes the person-selected dropdown options `input$sex`, `input$work_status` and `input$state` to the `get_b20005_ruca_aggregate_earnings` function to get a query result from the SQLite database. That function call is passed to `format_earnings`, which in turn is passed to the `reactive` function to make it a reactive expression. Only reactive expressions (and reactive endpoints in the `output` object) are allowed to access the `input` object which is a reactive source. You can read more about Shiny's "reactive programming model" in this [excellent article](https://shiny.rstudio.com/articles/reactivity-overview.html). 
@@ -168,7 +170,7 @@ design_factor <- reactive(get_design_factor(input$state))
 ```
 median_data <- reactive(calculate_median(earnings_data(), design_factor()))
 ```
-#### Render Outputs
+### 2) Render Outputs
 I have two reactive endpoints for table outputs, and one endpoint for a plot. The table outputs use `renderTable` (with row names displayed) with the `data.frame` coming from `median_data()` and `earnings_data()`. The plot output uses `renderPlot`, and a helper function `make_plot` to create a bar plot of `earnings_data()` for a person-selected `input$ruca_level` with a title created with the helper function `earnings_plot_title()`.
 ```
 output$median_data <- renderTable(
@@ -185,7 +187,7 @@ output$earnings_histogram <- renderPlot(
     ruca_level=input$ruca_level, 
     plot_title=earnings_plot_title()))
 ```
-### Prepare Dynamic Text
+### 3) Prepare Dynamic Text
 I created four functions that generate filenames for the `downloadHandler` call when the corresponding `downloadButton` gets clicked, one function that generates the title used to generate the bar plot, and one function which takes computer-readable `character` objects (e.g. `"Large_Town"`) and maps it to and returns a more human-readable `character` object (e.g. `"Large Town"`). I chose to keep filenames more computer-readable (to avoid spaces) and the plot title more human-readable.
 
 ```
@@ -249,6 +251,7 @@ earnings_plot_filename <- function(){
     sep="_"))
   }
 ```
+### 4) Handle downloads
 
 ### <a name="prep-db-r"></a>`prep_db.R`
 ### <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
