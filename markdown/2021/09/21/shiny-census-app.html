@@ -77,7 +77,7 @@ window.onload = wrap_img;
        • <span class="read-time" title="Estimated read time">
     
     
-      4 min read
+      7 min read
     
 </span></p>
 
@@ -103,7 +103,7 @@ window.onload = wrap_img;
 
 <p>During the process of recreating the derived median earnings estimate calculations, I was unable to recreate a key value from the handbook (the Standard Error for the 50% proportion, calculated to be 0.599) because I was unable to deduce the values used in the following formula referenced from page 17 of the <a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2015_2019AccuracyPUMS.pdf">PUMS Accuracy of the Data documentation</a>:</p>
 
-<p><img src="images/se_formula_original.png" alt="Standard Error equals Design Factor times square root of the product of 95 over 5B and 50 squared" /></p>
+<p><img src="/blog/images/se_formula_original.png" alt="Standard Error equals Design Factor times square root of the product of 95 over 5B and 50 squared" /></p>
 
 <p>The documentation defines B as the <em>base</em>, which is the <em>calculated weighted total</em>. I chose the value of 1.3 for the design factor DF since it corresponds to STATE = Minnesota, CHARTYP = Population, CHARACTERISTIC = Person Earnings/Income in the <a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2019_PUMS_5yr_Design_Factors.csv">Design Factors CSV published by the Census Bureau</a>.</p>
 
@@ -117,7 +117,7 @@ window.onload = wrap_img;
 
 <p>The updated formula is then:</p>
 
-<p><img src="images/se_formula_modified.png" alt="Standard Error equals Design Factor times square root of the product of 87.5 over 12.5B and 50 squared" /></p>
+<p><img src="/blog/images/se_formula_modified.png" alt="Standard Error equals Design Factor times square root of the product of 87.5 over 12.5B and 50 squared" /></p>
 
 <p>I was able to calculate the median earnings estimate (and associated standard error and margin of error) within a few percent of the values given in the handbook. This provided me with confirmation that I was ready to expand my code to calculate median earnings estimates for other subgroups.</p>
 
@@ -196,6 +196,86 @@ window.onload = wrap_img;
 </ul>
 
 <h3 id="appr"><a name="app-r"></a><code class="language-plaintext highlighter-rouge">app.R</code></h3>
+
+<p>A <code class="language-plaintext highlighter-rouge">shiny</code> app has three fundamental components:</p>
+
+<div class="language-R highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">ui</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="p">(</span><span class="n">...</span><span class="p">)</span><span class="w">
+</span><span class="n">server</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="p">(</span><span class="n">...</span><span class="p">)</span><span class="w">
+</span><span class="n">shinyApp</span><span class="p">(</span><span class="n">ui</span><span class="p">,</span><span class="w"> </span><span class="n">server</span><span class="p">,</span><span class="n">...</span><span class="p">)</span><span class="w">
+</span></code></pre></div></div>
+<p>The <code class="language-plaintext highlighter-rouge">ui</code> object holds all UI layout, input and output objects which define the front-end of your app. The <code class="language-plaintext highlighter-rouge">server</code> object holds all rendering functions which are assigned to outputs that appear on the UI. The <code class="language-plaintext highlighter-rouge">shinyApp</code> function takes a <code class="language-plaintext highlighter-rouge">ui</code> and <code class="language-plaintext highlighter-rouge">server</code> object (along with other arguments) and creates a shiny app object which can be run in a browser by passing it to the <code class="language-plaintext highlighter-rouge">runApp</code> function. Person inputs (such as selections in a dropdown) are assigned to the global <code class="language-plaintext highlighter-rouge">input</code> object.</p>
+
+<p>My app’s UI has four sections:</p>
+
+<ul>
+  <li>Dropdowns to select state, sex and work status for which the person using the app wants ACS 5-year earnings estimates</li>
+  <li>A table with the estimate, standard error and margin of error for median earnings</li>
+  <li>A bar plot of population estimates for earnings levels for the selected state, sex, work status and RUCA (Rural-Urban Commuting Areas) level</li>
+  <li>A table with population estimates for earnings levels for each RUCA level for the selected state, sex and work status</li>
+</ul>
+
+<p>Each section has a download button so that people can get the CSV files or plot image for their own analysis and reporting.</p>
+
+<p>My app’s server has three sections:</p>
+
+<ul>
+  <li>Get data from the SQLite database</li>
+  <li>Prepare dynamic text (for filenames and the plot title)</li>
+  <li>Render table and plot outputs</li>
+  <li>Handle <code class="language-plaintext highlighter-rouge">data.frame</code> and plot downloads</li>
+</ul>
+
+<h4 id="ui"><code class="language-plaintext highlighter-rouge">ui</code></h4>
+<p>All of my UI objects are wrapped within a <code class="language-plaintext highlighter-rouge">fluidPage</code> call which creates a page layout which “consists of rows which in turn include columns” (from the <a href="https://shiny.rstudio.com/reference/shiny/latest/fluidPage.html">docs</a>). Each section is separated with <code class="language-plaintext highlighter-rouge">markdown('---')</code> which renders an HTML horizontal rule (<code class="language-plaintext highlighter-rouge">&lt;hr&gt;</code>).</p>
+
+<h4 id="dropdowns">Dropdowns</h4>
+
+<p>Dropdowns (the HTML <code class="language-plaintext highlighter-rouge">&lt;select&gt;</code> element) are a type of UI Input. I define each with an <code class="language-plaintext highlighter-rouge">inputId</code> which is a <code class="language-plaintext highlighter-rouge">character</code> object for reference on the server-side, a label <code class="language-plaintext highlighter-rouge">character</code> object which is rendered above the dropdown, and a <code class="language-plaintext highlighter-rouge">list</code> object which defines the dropdown options.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>selectInput(
+  inputId = "...",
+  label = "...",
+  choices = list(...)
+)
+</code></pre></div></div>
+<p>In some cases, I want the person to see a <code class="language-plaintext highlighter-rouge">character</code> object in the dropdown that is more human-readable (e.g. <code class="language-plaintext highlighter-rouge">"Large Town"</code>) but use a corresponding input value in the server which is more computer-readable (e.g. <code class="language-plaintext highlighter-rouge">"Large_Town</code>). To achieve this, I use a named <code class="language-plaintext highlighter-rouge">character</code> vector where the names are displayed in the dropdown, and the assigned values are assigned to the global <code class="language-plaintext highlighter-rouge">input</code>:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>selectInput(
+     inputId = "ruca_level",
+     label = "Select RUCA Level",
+     choices = list(
+       "RUCA LEVEL" = c(
+       "Urban" = "Urban", 
+       "Large Town" = "Large_Town", 
+       "Small Town" = "Small_Town", 
+       "Rural" = "Rural"))
+     )
+</code></pre></div></div>
+<p>In this case, if the person selects <code class="language-plaintext highlighter-rouge">"Large Town"</code> the value assigned to <code class="language-plaintext highlighter-rouge">input$ruca_level</code> is <code class="language-plaintext highlighter-rouge">"Large_Town"</code>.</p>
+
+<h4 id="tables">Tables</h4>
+
+<p>Tables (the HTML <code class="language-plaintext highlighter-rouge">&lt;table&gt;</code> element) are a type of UI Output. I define each with an <code class="language-plaintext highlighter-rouge">outputId</code> for reference in the server.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>tableOutput(outputId = "...")
+</code></pre></div></div>
+<h4 id="plots">Plots</h4>
+
+<p>Similarly, a plot (which is rendered as an HTML <code class="language-plaintext highlighter-rouge">&lt;img&gt;</code> element) is a type of UI Output. I define each with an <code class="language-plaintext highlighter-rouge">outputId</code>.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>plotOutput(outputId = "...")
+</code></pre></div></div>
+
+<h4 id="download-buttons">Download Buttons</h4>
+<p>The download button (an HTML <code class="language-plaintext highlighter-rouge">&lt;a&gt;</code> element) is also a type of UI Output. I define each with an <code class="language-plaintext highlighter-rouge">outputId</code> and <code class="language-plaintext highlighter-rouge">label</code> (which is displayed as the HTML <code class="language-plaintext highlighter-rouge">textContent</code> attribute of the <code class="language-plaintext highlighter-rouge">&lt;a&gt;</code> element).</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>downloadButton(
+  outputId = "...",
+  label = "..."
+)
+</code></pre></div></div>
+<h4 id="server"><code class="language-plaintext highlighter-rouge">server</code></h4>
+
 <h3 id="prep_dbr"><a name="prep-db-r"></a><code class="language-plaintext highlighter-rouge">prep_db.R</code></h3>
 <h3 id="get_b20005_ruca_aggregate_earningsr"><a name="get-b20005-ruca-aggregate-earnings-r"></a><code class="language-plaintext highlighter-rouge">get_b20005_ruca_aggregate_earnings.R</code></h3>
 <h3 id="get_b20005_sex_work_status_ruca_aggregate_earningsr"><a name="get-b20005-sex-work_status-ruca-aggregate-earnings-r"></a><code class="language-plaintext highlighter-rouge">get_b20005_{sex}_{work_status}_ruca_aggregate_earnings.R</code></h3>
