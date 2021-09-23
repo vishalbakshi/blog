@@ -18,7 +18,7 @@ During the process of recreating the derived median earnings estimate calculatio
 
 The documentation defines B as the _base_, which is the _calculated weighted total_. I chose the value of 1.3 for the design factor DF since it corresponds to STATE = Minnesota, CHARTYP = Population, CHARACTERISTIC = Person Earnings/Income in the <a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2019_PUMS_5yr_Design_Factors.csv">Design Factors CSV published by the Census Bureau</a>.
 
-I called the <a href="https://www.census.gov/programs-surveys/acs/contact.html">Census Bureau Customer Help Center</a> for assistance and was transferred to a member of the ACS Data User Support team with whom I discussed my woes. He was unable to confirm the values of the design factor DF or B, and was unable to pull up the contact information for the statistical methodology team, so I emailed him my questions. After a few email exchanges, the statistical methodoloy team provided the following:
+I called the <a href="https://www.census.gov/programs-surveys/acs/contact.html">Census Bureau Customer Help Center</a> for assistance and was transferred to a member of the ACS Data User Support team with whom I discussed my woes. He was unable to confirm the values of the design factor DF or B, and was unable to pull up the contact information for the statistical methodology team, so I emailed him my questions. After a few email exchanges, the statistical methodology team provided the following:
 
 - DF = 1.3
 - B = the total population estimate for which the median is being calculated, which is 82488 for the case study calculation (Minnesota Rural Male Full Time Workers)
@@ -32,7 +32,7 @@ I was able to calculate the median earnings estimate (and associated standard er
 
 ## The Stack
 
-I built this app using the R package <a href="https://shiny.rstudio.com/reference/shiny/latest/">`Shiny`</a> which handles both the UI and the server. I stored the data in a `sqlite` database and accessed it with queries written using the <a href="https://cran.r-project.org/web/packages/RSQLite/RSQLite.pdf">`RSQLite`</a> package which uses the <a href="https://dbi.r-dbi.org/reference/">DBI</a> API. The following section breaks down the R scripts based on functionality. You click on the script name to navigate to that section.
+I built this app using the R package <a href="https://shiny.rstudio.com/reference/shiny/latest/">`Shiny`</a> which handles both the UI and the server. I store the data in a `sqlite` database and access it with queries written using the <a href="https://cran.r-project.org/web/packages/RSQLite/RSQLite.pdf">`RSQLite`</a> package which uses the <a href="https://dbi.r-dbi.org/reference/">DBI</a> API. The following section breaks down the R scripts based on functionality. Click on the script name to navigate to that section.
 
 ## The Codebase
 
@@ -155,7 +155,7 @@ My app’s server has four sections:
 #### Get data
 There are three high-level functions which call query/format/calculation functions to return the data in the format necessary to produce table, text, download and plot outputs:
 
-1) The `earnings_data` function passes the person-selected dropdown options `input$sex`, `input$work_status` and `input$state` to the `get_b20005_ruca_aggregate_earnings` function to get a query result from the SQLite database. That function call is passed to `format_earnings`, which in turn is passed to the `reactive` function to make it a reactive expression. Only reactive expressions (and reactive endpoints in the `output` object) are allowed to access the `input` object which is a reactive source. You can read more about Shiny's "reactive programming model" in this [excellent article](https://shiny.rstudio.com/articles/reactivity-overview.html). 
+- The `earnings_data` function passes the person-selected dropdown options `input$sex`, `input$work_status` and `input$state` to the `get_b20005_ruca_aggregate_earnings` function to get a query result from the SQLite database. That function call is passed to `format_earnings`, which in turn is passed to the `reactive` function to make it a reactive expression. Only reactive expressions (and reactive endpoints in the `output` object) are allowed to access the `input` object which is a reactive source. You can read more about Shiny's "reactive programming model" in this [excellent article](https://shiny.rstudio.com/articles/reactivity-overview.html). 
 ```
 earnings_data <- reactive(
   format_earnings(
@@ -165,11 +165,11 @@ earnings_data <- reactive(
       input$state)))
 ```
 
-2) The `design_factor` function passes the `input$state` selection to the `get_design_factor` function which in turn is passed to the `reactive` function.
+- The `design_factor` function passes the `input$state` selection to the `get_design_factor` function which in turn is passed to the `reactive` function.
 ```
 design_factor <- reactive(get_design_factor(input$state))
 ```
-3) The `median_data` function passes the return values from `earnings_data()` and `design_factor()` to the `calculate_median` function which in turn is passed to the `reactive` function.
+- The `median_data` function passes the return values from `earnings_data()` and `design_factor()` to the `calculate_median` function which in turn is passed to the `reactive` function.
 ```
 median_data <- reactive(calculate_median(earnings_data(), design_factor()))
 ```
@@ -348,6 +348,9 @@ output$download_ruca_earnings <- downloadHandler(
 ```
 
 ### <a name="prep-db-r"></a>`prep_db.R`
+The database schema is as follows:
+
+
 ### <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
 ### <a name="get-b20005-sex-work_status-ruca-aggregate-earnings-r"></a>`get_b20005_{sex}_{work_status}_ruca_aggregate_earnings.R`
 ### <a name="get-b20005-earnings-r"></a>`get_b20005_earnings.R`
