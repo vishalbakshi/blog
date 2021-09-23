@@ -63,7 +63,7 @@ I built this app using the R package <a href="https://shiny.rstudio.com/referenc
 - [`make_plot.R`](#make-plot-r)
   - Receives earnings `data.frame` and RUCA level selected from UI and returns a bar plot
 
-### <a name="app-r"></a>`app.R`
+## <a name="app-r"></a>`app.R`
 
 A shiny app has three fundamental components:
 
@@ -88,7 +88,7 @@ My app's UI has four sections:
 Each section has a download button so that people can get the CSV files or plot image for their own analysis and reporting.
 Each section is separated with `markdown('---')` which renders an HTML horizontal rule (`<hr>`).
 
-### 1) Dropdowns
+#### 1) Dropdowns
 
 Dropdowns (the HTML `<select>` element) are a type of UI Input. I define each with an `inputId` which is a `character` object for reference on the server-side, a label `character` object which is rendered above the dropdown, and a `list` object which defines the dropdown options.
 
@@ -115,14 +115,14 @@ selectInput(
 ```
 In this case, if the person selects `"Large Town"` the value assigned to `input$ruca_level` is `"Large_Town"`.
 
-### 2) Tables
+#### 2) Tables
 
 Tables (the HTML `<table>` element) are a type of UI Output. I define each with an `outputId` for reference in the server.
 
 ```
 tableOutput(outputId = "...")
 ```
-### 3) Plots
+#### 3) Plots
 
 Similarly, a plot (which is rendered as an HTML `<img>` element) is a type of UI Output. I define each with an `outputId`.
 
@@ -130,7 +130,7 @@ Similarly, a plot (which is rendered as an HTML `<img>` element) is a type of UI
 plotOutput(outputId = "...")
 ```
 
-### 4) Download Buttons
+#### 4) Download Buttons
 The download button (an HTML `<a>` element) is also a type of UI Output. I define each with an `outputId` and `label` (which is displayed as the HTML `textContent` attribute of the `<a>` element).
 
 ```
@@ -149,7 +149,7 @@ My app’s server has four sections:
 3) Prepare dynamic text (for filenames and the plot title)
 4) Handle data.frame and plot downloads
 
-### 1) Get data
+#### 1) Get data
 There are three high-level functions which call query/format/calculation functions to return the data in the format necessary to produce table, text, download and plot outputs:
 
 1) The `earnings_data` function passes the person-selected dropdown options `input$sex`, `input$work_status` and `input$state` to the `get_b20005_ruca_aggregate_earnings` function to get a query result from the SQLite database. That function call is passed to `format_earnings`, which in turn is passed to the `reactive` function to make it a reactive expression. Only reactive expressions (and reactive endpoints in the `output` object) are allowed to access the `input` object which is a reactive source. You can read more about Shiny's "reactive programming model" in this [excellent article](https://shiny.rstudio.com/articles/reactivity-overview.html). 
@@ -170,7 +170,7 @@ design_factor <- reactive(get_design_factor(input$state))
 ```
 median_data <- reactive(calculate_median(earnings_data(), design_factor()))
 ```
-### 2) Render Outputs
+#### 2) Render Outputs
 I have two reactive endpoints for table outputs, and one endpoint for a plot. The table outputs use `renderTable` (with row names displayed) with the `data.frame` coming from `median_data()` and `earnings_data()`. The plot output uses `renderPlot`, and a helper function `make_plot` to create a bar plot of `earnings_data()` for a person-selected `input$ruca_level` with a title created with the helper function `earnings_plot_title()`.
 ```
 output$median_data <- renderTable(
@@ -187,7 +187,7 @@ output$earnings_histogram <- renderPlot(
     ruca_level=input$ruca_level, 
     plot_title=earnings_plot_title()))
 ```
-### 3) Prepare Dynamic Text
+#### 3) Prepare Dynamic Text
 I created four functions that generate filenames for the `downloadHandler` call when the corresponding `downloadButton` gets clicked, one function that generates the title used to generate the bar plot, and one function which takes computer-readable `character` objects (e.g. `"Large_Town"`) and maps it to and returns a more human-readable `character` object (e.g. `"Large Town"`). I chose to keep filenames more computer-readable (to avoid spaces) and the plot title more human-readable.
 
 ```
@@ -251,7 +251,94 @@ earnings_plot_filename <- function(){
     sep="_"))
   }
 ```
-### 4) Handle downloads
+#### 4) Handle downloads
+I have five download buttons in my app: two which trigger a download of a zip file with two CSVs, two that downloads a single CSV, and one that downloads a single PNG. The `downloadHandler` function takes a `filename` and a `content` function to write data to a file.
+
+In order to create a zip file, I use the `zip` base package function and pass it a vector with two filepaths (to which data is written using the base package's `write.csv` function) and a filename. I also specify the `contentType` as `"application/zip"`. In the zip file, one of the CSVs contains a query result from the `b20005` SQLite database table with earnings data, and the other file, `"b20005_variables.csv"` contains B20005 table variable names and descriptions. In order to avoid the files being written locally before download, I create a temporary directory with `tempdir` and prepend it to the filename to create the filepath.
+
+For the bar plot image download, I use the `ggplot2` package's `ggsave` function, which takes a filename, a plot object (returned from the `make_plot` helper function) and the `character` object `"png"` (for the `device` parameter).
+
+```
+output$download_selected_b20005_data <- downloadHandler(
+    filename = "b20005_data.zip",
+    content = function(fname) {
+      # Create a temporary directory to prevent local storage of new files
+      temp_dir <- tempdir()
+      
+      # Create two filepath character objects and store them in a list
+      # which will later on be passed to the `zip` function
+      path1 <- paste(temp_dir, '/', b20005_filename(), sep="")
+      path2 <- paste(temp_dir, "/b20005_variables.csv", sep="")
+      fs <- c(path1, path2)
+      
+      # Create a CSV with person-selection input values and do not add a column
+      # with row names
+      write.csv(
+        get_b20005_earnings(input$state, input$sex, input$work_status), 
+        path1,
+        row.names = FALSE)
+      
+      # Create a CSV for table B20005 variable names and labels for reference
+      write.csv(
+        get_b20005_ALL_labels(),
+        path2,
+        row.names = FALSE)
+      
+      # Zip together the files and add flags to maximize compression
+      zip(zipfile = fname, files=fs, flags = "-r9Xj")
+    },
+    contentType = "application/zip"
+  )
+  
+output$download_all_b20005_data <- downloadHandler(
+  filename = "ALL_B20005_data.zip",
+  content = function(fname){
+    path1 <- "ALL_B20005_data.csv"
+    path2 <- "b20005_variables.csv"
+    fs <- c(path1, path2)
+    
+    write.csv(
+      get_b20005_earnings('ALL', 'ALL', 'ALL'),
+      path1,
+      row.names = FALSE)
+    
+    write.csv(
+      get_b20005_ALL_labels(),
+      path2,
+      row.names = FALSE)
+    
+    zip(zipfile = fname, files=fs, flags = "-r9Xj")
+    },
+    contentType = "application/zip"
+  )
+  
+output$download_median_summary <- downloadHandler(
+  filename = median_summary_filename(),
+  content = function(file) {
+    write.csv(median_data(), file)
+    }
+  )
+  
+output$download_earnings_plot <- downloadHandler(
+  filename = earnings_plot_filename(),
+  content = function(file) {
+    ggsave(
+      file, 
+      plot = make_plot(
+        data=earnings_data(), 
+        ruca_level=input$ruca_level, 
+        plot_title=earnings_plot_title()), 
+        device = "png")
+      }
+  )
+  
+output$download_ruca_earnings <- downloadHandler(
+  filename = ruca_earnings_filename(),
+  content = function(file) {
+    write.csv(earnings_data(), file)
+  }
+  )
+```
 
 ### <a name="prep-db-r"></a>`prep_db.R`
 ### <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
