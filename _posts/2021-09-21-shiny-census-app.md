@@ -41,27 +41,21 @@ I built this app using the R package <a href="https://shiny.rstudio.com/referenc
 - [`prep_db.R`](#prep-db-r)
   - Import, clean, combine and then load data into the `census_app_db.sqlite` database
 - [`get_b20005_ruca_aggregate_earnings.R`](#get-b20005-ruca-aggregate-earnings-r)
-  - Receives input values from UI and calls helper functions to query the database for the necessary data
-- [`get_{sex}_{work_status}_ruca_aggregate_b20005_earnings.R`](#get-b20005-sex-work_status-ruca-aggregate-earnings-r)
-  - Queries the SQLite database for population estimates of workers of the given sex and work status, aggregated by RUCA levels for a given state
-- [`get_b20005_earnings.R`](#get-b20005-earnings)
-  - Receives input values from UI and calls helper functions to query the database for the necessary data
-- [`get_{sex}_{work_status}_b20005_earnings.R`](#get-b20005-sex-work_status-earnings-r)
-  - Queries the SQLite database for population estimates of workers of the given sex and work status for each census tract in the given state
-- [`get_all_b20005_earnings.R`](#get-all-b20005-earnings-r)
-  - Queries the SQLite database for population estimates for all sexes and work statuses for each census tract in the state
+  - Queries the database for earnings and associated margins of error for RUCA levels derived from Census Tracts
+- [`calculate_median.R`](#calculate-median-r)
+  - Derives estimate, standard of error and margin of error of median earnings for RUCA levels
+- [`format_query_result.R`](#format-query-result-r)
+  - Formats `calculate_median` query results
+- [`get_b20005_tract_earnings.R`](#get-b20005-tract-earnings)
+  - Queries the database for Census Tract-level earnings and associated margins of error 
 - [`get_b20005_states.R`](#get-b20005-states-r)
   - Queries the SQLite database for a list of U.S. states 
 - [`get_design_factor.R`](#get-design-factor-r)
-  - Receives state selection from UI and queries database for the design factor used for the median earnings estimation calculation
+  - Queries database for the design factor used for the median earnings estimation calculation
 - [`get_b20005_labels.R`](#get-b20005-labels-r)
   - Queries the database for descriptive labels of B20005 table variables
-- [`format_query_result.R`](#format-query-result-r)
-  - Receives the query result `data.frame` of earnings data and makes it prettier before it's displayed on the UI
-- [`calculate_median.R`](#calculate-median-r)
-  - Receives population estimates for earnings levels aggregated by RUCA level and the design factor and returns the median earnings estimate, standard of error and margin of error
 - [`make_plot.R`](#make-plot-r)
-  - Receives earnings `data.frame` and RUCA level selected from UI and returns a bar plot
+  - Creates a bar plot object
 
 ## <a name="app-r"></a>`app.R`
 
@@ -352,14 +346,18 @@ The database schema is as follows:
 
 
 ### <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
-### <a name="get-b20005-sex-work_status-ruca-aggregate-earnings-r"></a>`get_b20005_{sex}_{work_status}_ruca_aggregate_earnings.R`
-### <a name="get-b20005-earnings-r"></a>`get_b20005_earnings.R`
-### <a name="get-b20005-sex-work_status-earnings-r"></a>`get_b20005_{sex}_{work_status}_earnings.R`
-### <a name="get-all-b20005-earnings-r"></a>`get_all_b20005_earnings.R`
-### <a name="get-b20005-states-r"></a>`get_b20005_earnings.R`
-### <a name="get-design-factor-r"></a>`get_design_factor.R`
-### <a name="get-b20005-labels-r"></a>`get_b20005_labels.R`
-### <a name="format-query-result-r"></a>`format_query_result.R`
+
 ### <a name="calculate-median-r"></a>`calculate_median.R`
+
+### <a name="format-query-result-r"></a>`format_query_result.R`
+
+### <a name="get-b20005-tract-earnings-r"></a>`get_b20005_tract_earnings.R`
+
+### <a name="get-b20005-states-r"></a>`get_b20005_earnings.R`
+
+### <a name="get-design-factor-r"></a>`get_design_factor.R`
+
+### <a name="get-b20005-labels-r"></a>`get_b20005_labels.R`
+
 ### <a name="make-plot-r"></a>`make_plot.R`
 
