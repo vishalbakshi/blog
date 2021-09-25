@@ -516,7 +516,7 @@ dbWriteTable(census_app_db, "<table name>", <data.frame>, append = TRUE
 ---
 
 ## <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
-The function inside this script (with the same name), receives inputs from the server, sends queries to the database and returns the results. The querying process takes three steps:
+The function inside this script (with the same name), receives inputs from the server, sends queries to the database and returns the results. This process involves two steps:
 
 ### Get Variable Names<a name="#get-variable-names"></a>
 The person using the app selects Sex (M or F), Work Status (Full Time or Other) and State (50 states + D.C. + Puerto Rico) for which they want to view and analyze earnings data. As shown above, different variables in table `b20005` correspond to different sexes and work statuses, and each tract for which there is all that earnings data resides in a given state. 
