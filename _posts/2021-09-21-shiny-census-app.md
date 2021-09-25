@@ -4,9 +4,15 @@ description: An explanation of my development process for a census data shiny ap
 categories: [markdown]
 title: R Shiny Census App
 ---
-In this blog post, I'll walk through my development process for a [U.S. Census data visualization web app](http://vbakshi.shinyapps.io/census-app) I created using the Shiny package in R.
+In this blog post, I'll walk through my development process for a U.S. Census data visualization web app I created using the Shiny package in R. You can access the app at [vbakshi.shinyapps.io/census-app](http://vbakshi.shinyapps.io/census-app). In the following video, I demonstrate how to use the app and provide a high-level walk through of the codebase, with details provided below.
 
-## Background
+## Table of Contents
+
+- [Backstory](#backstory)
+- [Codebase Overview](#the-codebase)
+- [Documentation](#docs)
+
+## <a name="#backstory"></a>Backstory
 
 I started this project by reading the handbook <a href="https://www.census.gov/content/dam/Census/library/publications/2020/acs/acs_state_local_handbook_2020.pdf">Understanding and Using American Community Survey Data: What State and Local Government Users Need to Know</a> published by the U.S. Census Bureau. I recreated the handbook's first case study in R, in which they make comparisons across geographic areas, create custom geographic areas from census tracts and calculate margins of error for derived estimates for Minnesota Census Tract 5-year earnings estimates. 
 
@@ -28,12 +34,11 @@ The updated formula is then:
 
 I was able to calculate the median earnings estimate (and associated standard error and margin of error) within a few percent of the values given in the handbook. This provided me with confirmation that I was ready to expand my code to calculate median earnings estimates for other subgroups.
 
-## The Stack
+## <a name="#codebase-overview"></a>Codebase Overview
 
 I built this app using the R package <a href="https://shiny.rstudio.com/reference/shiny/latest/">`Shiny`</a> which handles both the UI and the server. I store the data in a `sqlite` database and access it with queries written using the <a href="https://cran.r-project.org/web/packages/RSQLite/RSQLite.pdf">`RSQLite`</a> package which uses the <a href="https://dbi.r-dbi.org/reference/">DBI</a> API. The following section breaks down the R scripts based on functionality. Click on the script name to navigate to that section.
 
-## The Codebase
-
+## <a name="#docs"></a> Documentation
 - [`app.R`](#app-r)
   - UI and server functions to handle people inputs and plot/table/text outputs
 - [`prep_db.R`](#prep-db-r)
@@ -44,14 +49,14 @@ I built this app using the R package <a href="https://shiny.rstudio.com/referenc
   - Derives estimate, standard of error and margin of error of median earnings for RUCA levels
 - [`format_query_result.R`](#format-query-result-r)
   - Formats `calculate_median` query results
+- [`get_b20005_labels.R`](#get-b20005-labels-r)
+  - Queries the database for descriptive labels of B20005 table variables
 - [`get_b20005_tract_earnings.R`](#get-b20005-tract-earnings)
   - Queries the database for Census Tract-level earnings and associated margins of error 
 - [`get_b20005_states.R`](#get-b20005-states-r)
   - Queries the SQLite database for a list of U.S. states 
 - [`get_design_factor.R`](#get-design-factor-r)
   - Queries database for the design factor used for the median earnings estimation calculation
-- [`get_b20005_labels.R`](#get-b20005-labels-r)
-  - Queries the database for descriptive labels of B20005 table variables
 - [`make_plot.R`](#make-plot-r)
   - Creates a bar plot object
 
