@@ -32,7 +32,7 @@ In this blog post, I'll walk through my development process for a U.S. Census da
   - [`get_b20005_ruca_aggregate_earnings.R`](#get-b20005-ruca-aggregate-earnings-r)
     - [Get Variable Names](#get-variable-names)
     - [Derive RUCA Level Estimates and MOE](#derive-ruca-level-estimates-and-moe)
-- [`calculate_median.R`](#calculate-median-r)
+  - [`calculate_median.R`](#calculate-median-r)
     - [Create Frequency Distribution](#create-frequency-distribution)
     - [Calculate Weighted Total](#calculated-weighted-total)
     - [Approximate Standard Error](#approximate-standard-error)
