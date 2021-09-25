@@ -34,7 +34,7 @@ In this blog post, I'll walk through my development process for a U.S. Census da
     - [Derive RUCA Level Estimates and MOE](#derive-ruca-level-estimates-and-moe)
   - [`calculate_median.R`](#calculate-median-r)
     - [Create Frequency Distribution](#create-frequency-distribution)
-    - [Calculate Weighted Total](#calculated-weighted-total)
+    - [Calculate Weighted Total](#calculate-weighted-total)
     - [Approximate Standard Error](#approximate-standard-error)
     - [Calculate Median Estimate Bounds](#calculate-median-estimate-bounds)
     - [Reshape the Data](#reshape-the-data)
@@ -45,7 +45,7 @@ In this blog post, I'll walk through my development process for a U.S. Census da
   - [`get_b20005_labels.R`](#get-b20005-labels-r)
     - [Get Earnings Population Estimate Labels](#get-earnings-population-estimate-labels)
     - [Get All Labels](#get-all-labels)
-  - [`get_b20005_tract_earnings.R`](#get-b20005-tract-earnings)
+  - [`get_b20005_tract_earnings.R`](#get-b20005-tract-earnings-r)
     - [Get Variable Names](#get-variable-names-tract)
     - [Join Tables](#join-tables)
   - [`get_b20005_states.R`](#get-b20005-states-r)
@@ -401,7 +401,7 @@ output$download_ruca_earnings <- downloadHandler(
 ## <a name="prep-db-r"></a>`prep_db.R`
 This script is meant to be run locally, and is not deployed, as doing so would create a long delay to load the app.
 
-### Database Tables <a href="#database-tables"></a>
+### Database Tables <a name="#database-tables"></a>
 
 The database diagram is shown below (created using <a href="https://dbdiagram.io">dbdiagram.io</a>):
 
@@ -785,7 +785,7 @@ median_data <- data.frame(
 
 ## <a name="format-query-result-r"></a>`format_query_result.R`
 
-The purpose of this function is to receive two `data.frame` objects, one for earnings `estimate` value, and one for the corresponding `moe` values, and return a single `data.frame` which is ready to be displayed in a `tableOutput`.
+The purpose of this function is to receive two `data.frame` objects, one for earnings `estimate` values, and one for the corresponding `moe` values, and return a single `data.frame` which is ready to be displayed in a `tableOutput`.
 
 ### Extract `data.frame` Objects from List<a name="#extract-data-frame-objects-from-list"></a>
 
