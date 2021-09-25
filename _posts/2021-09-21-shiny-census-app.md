@@ -350,18 +350,18 @@ I have five tables in my database:
 
 - `b20005` holds the data from the ACS 2015-2019 5-year detailed table B20005 (Sex By Work Experience In The Past 12 Months By Earnings In The Past 12 Months). This includes earnings estimates and margins of errors for Male and Female, Full Time and Other workers, for earning ranges (No earnings, $1 - $2499, $2500 - $4999, ..., $100000 or more). The following table summarizes the groupings of the (non-zero earnings) variables relevant to this app:
 
-
+<br>
 |Variable|Demographic|
 |:-:|:-:|
 |B20005_003 to B20005_025|Male Full Time Workers|
 |B20005_029 to B20005_048|Male Other Workers|
 |B20005_050 to B20005_072|Female Full Time Workers|
 |B_ 076to B_095|Female Other Workers|
-
+<br>
 
 - `b20005_vars` has the name (e.g. B20005_003E) and label (e.g. "Estimate!!Total!!Male!!Worked full-time, year-round in the past 12 months") for all B20005 variables. Variable names ending with an `E` are estimates, and those ending with `M` are margins of error.
 - `ruca` contains RUCA (Rural-Urban Commuting Area) codes published by the <a href="https://www.ers.usda.gov/data-products/rural-urban-commuting-area-codes.aspx">U.S. Department of Agriculture Economic Research Service</a> which classify U.S. census tracts using measures of population density. The following table shows the code ranges relevant to this app:
-
+<br>
 |RUCA Code|RUCA Level|
 |:-:|:-:|
 |1-3|Urban|
@@ -369,7 +369,7 @@ I have five tables in my database:
 |7-9|Small Town|
 |10|Rural|
 |99|Zero Population|
-
+<br>
 - `codes` holds state FIPS (Federal Information Processing Standards) codes and RUCA levels
 - `design_factors` contains Design Factors for different characteristics (e.g. Person Earnings/Income) which are used to determine "the standard error of total and percentage sample estimates", and "reflect the effects of the actual sample design and estimation procedures used for the ACS." (<a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2015_2019AccuracyPUMS.pdf">2015-2019 PUMS 5-Year Accuracy of the Data</a>).
 
@@ -399,7 +399,7 @@ b20005_vars <- listCensusMetadata(
 - For tables `codes`, `ruca`, and `design_factors` I load the data from CSVs that I either obtained (in the case of the <a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2019_PUMS_5yr_Design_Factors.csv">Design Factors</a>) or created (in the case of the codes and RUCA levels)
 
 ```
- # TABLE b20005 ----------------------------------
+ # TABLE codes ----------------------------------
 state_codes <- read.csv(
   "data/state_codes.csv",
   colClasses = c(
@@ -433,10 +433,45 @@ Once the data is ready, I use `DBI::dbExecute` to run a SQLite command to create
 Once the table has been created in the database, I write the `data.frame` to the corresponding table with the following call:
 
 ```
-dbWriteTable(census_app_db, '<table name>`, <`data.frame`>, append = TRUE
+dbWriteTable(census_app_db, "<table name>", <data.frame>, append = TRUE
 ```
 
 ### <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
+The function inside this script (with the same name), receives inputs from the server, sends queries to the database and returns the results. The querying process takes three steps:
+
+#### Get variable names
+The person using the app selects Sex (M or F), Work Status (Full Time or Other) and State (50 states + D.C. + Puerto Rico) for which they want to view and analyze earnings data. As shown above, different variables in table `b20005` correspond to different sexes and work statuses, and each tract for which there is all that earnings data, resides in a given state. I first query `b20005_vars` to get the relevent variables names which will be used in the query to `b20005`, as shown below. `name`s that end with "M" (queried with the wilcard `'%M'`) are for margins of error and those that end with "E" (wildcard `'%E'`) are for estimates.
+
+```
+vars <- dbGetQuery(
+    census_app_db, 
+    "SELECT name FROM b20005_vars 
+    WHERE label LIKE $label_wildcard 
+    AND name LIKE '%M'",
+    params=list(label_wildcard=label_wildcard))
+```
+The `b20005_vars.label` column holds long string labels (which follow a consistent pattern) that describe the variable's contents. Here are a couple of examples:
+<br>
+|`b20005_vars.name`|`b20005_vars.label`|
+|:-:|:-:|
+|`B20005_053E`|`"Estimate!!Total!!Female!!Worked full-time, year-round in the past 12 months!!With earnings"`)|
+|`B20005_076M`|`"Margin of Error!!Total!!Female!!Other!!With earnings!!$1 to $2,499 or loss"`|
+<br>
+
+Since the `label` string contains the sex and work status, I assign a `label_wildcard` based on the person inputs from the sex and work status UI dropdowns.
+
+```
+# Prepare wildcard for query parameter `label_wildcard`
+  if (sex == 'M') {
+    if (work_status == 'FT') { label_wildcard <- "%!!Male!!Worked%" }
+    if (work_status == 'OTHER') { label_wildcard <- "%!!Male!!Other%" }
+  }
+  
+  if (sex == 'F') {
+    if (work_status == 'FT') { label_wildcard <- "%!!Female!!Worked%" }
+    if (work_status == 'OTHER') { label_wildcard <- "%!!Female!!Other%" }
+  }
+```
 
 ### <a name="calculate-median-r"></a>`calculate_median.R`
 
