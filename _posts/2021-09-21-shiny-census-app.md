@@ -86,7 +86,7 @@ Each section is separated with `markdown('---')` which renders an HTML horizonta
 
 Dropdowns (the HTML `<select>` element) are a type of UI Input. I define each with an `inputId` which is a `character` object for reference on the server-side, a label `character` object which is rendered above the dropdown, and a `list` object which defines the dropdown options.
 
-```
+```R
 selectInput(
   inputId = "...",
   label = "...",
@@ -95,7 +95,7 @@ selectInput(
 ```
 In some cases, I want the person to see a `character` object in the dropdown that is more human-readable (e.g. `"Large Town"`) but use a corresponding input value in the server which is more computer-readable (e.g. `"Large_Town`). To achieve this, I use a named `character` vector where the names are displayed in the dropdown, and the assigned values are assigned to the global `input`:
 
-```
+```R
 selectInput(
      inputId = "ruca_level",
      label = "Select RUCA Level",
@@ -114,7 +114,7 @@ In this case, if the person selects `"Large Town"` the value assigned to `input$
 
 Tables (the HTML `<table>` element) are a type of UI Output. I define each with an `outputId` for reference in the server.
 
-```
+```R
 tableOutput(outputId = "...")
 ```
 
@@ -122,14 +122,14 @@ tableOutput(outputId = "...")
 
 Similarly, a plot (which is rendered as an HTML `<img>` element) is a type of UI Output. I define each with an `outputId`.
 
-```
+```R
 plotOutput(outputId = "...")
 ```
 
 #### Download Buttons
 The download button (an HTML `<a>` element) is also a type of UI Output. I define each with an `outputId` and `label` (which is displayed as the HTML `textContent` attribute of the `<a>` element).
 
-```
+```R
 downloadButton(
   outputId = "...",
   label = "..."
@@ -150,7 +150,8 @@ My app’s server has four sections:
 There are three high-level functions which call query/format/calculation functions to return the data in the format necessary to produce table, text, download and plot outputs:
 
 - The `earnings_data` function passes the person-selected dropdown options `input$sex`, `input$work_status` and `input$state` to the `get_b20005_ruca_aggregate_earnings` function to get a query result from the SQLite database. That function call is passed to `format_earnings`, which in turn is passed to the `reactive` function to make it a reactive expression. Only reactive expressions (and reactive endpoints in the `output` object) are allowed to access the `input` object which is a reactive source. You can read more about Shiny's "reactive programming model" in this [excellent article](https://shiny.rstudio.com/articles/reactivity-overview.html). 
-```
+
+```R
 earnings_data <- reactive(
   format_earnings(
     get_b20005_ruca_aggregate_earnings(
@@ -160,18 +161,21 @@ earnings_data <- reactive(
 ```
 
 - The `design_factor` function passes the `input$state` selection to the `get_design_factor` function which in turn is passed to the `reactive` function.
-```
+
+```R
 design_factor <- reactive(get_design_factor(input$state))
 ```
 - The `median_data` function passes the return values from `earnings_data()` and `design_factor()` to the `calculate_median` function which in turn is passed to the `reactive` function.
-```
+
+```R
 median_data <- reactive(calculate_median(earnings_data(), design_factor()))
 ```
 
 
 #### Render Outputs
 I have two reactive endpoints for table outputs, and one endpoint for a plot. The table outputs use `renderTable` (with row names displayed) with the `data.frame` coming from `median_data()` and `earnings_data()`. The plot output uses `renderPlot`, and a helper function `make_plot` to create a bar plot of `earnings_data()` for a person-selected `input$ruca_level` with a title created with the helper function `earnings_plot_title()`.
-```
+
+```R
 output$median_data <- renderTable(
   expr = median_data(), 
   rownames = TRUE)
@@ -190,7 +194,7 @@ output$earnings_histogram <- renderPlot(
 #### Prepare Dynamic Text
 I created four functions that generate filenames for the `downloadHandler` call when the corresponding `downloadButton` gets clicked, one function that generates the title used to generate the bar plot, and one function which takes computer-readable `character` objects (e.g. `"Large_Town"`) and maps it to and returns a more human-readable `character` object (e.g. `"Large Town"`). I chose to keep filenames more computer-readable (to avoid spaces) and the plot title more human-readable.
 
-```
+```R
 get_pretty_text <- function(raw_text){
   text_map <- c("M" = "Male", 
   "F" = "Female",
@@ -259,7 +263,7 @@ In order to create a zip file, I use the `zip` base package function and pass it
 
 For the bar plot image download, I use the `ggplot2` package's `ggsave` function, which takes a filename, a plot object (returned from the `make_plot` helper function) and the `character` object `"png"` (for the `device` parameter).
 
-```
+```R
 output$download_selected_b20005_data <- downloadHandler(
     filename = "b20005_data.zip",
     content = function(fname) {
@@ -378,7 +382,7 @@ In `prep_db.R`, I use the `DBI` package, `censusapi` and `base` R functions to p
 #### Load the data into a `data.frame`
 - For tables `b20005` and `b20005_vars`, I use the `censusapi::getCensus` and `censusapi::listCensusMetadata` repsectively to get the data
 
-```
+```R
 # TABLE b20005_vars ------------------------------
 b20005_vars <- listCensusMetadata(
   name = 'acs/acs5',
@@ -396,9 +400,10 @@ b20005_vars <- listCensusMetadata(
   key="..."
   )
 ```
+
 - For tables `codes`, `ruca`, and `design_factors` I load the data from CSVs that I either obtained (in the case of the <a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2019_PUMS_5yr_Design_Factors.csv">Design Factors</a>) or created (in the case of the codes and RUCA levels)
 
-```
+```R
  # TABLE codes ----------------------------------
 state_codes <- read.csv(
   "data/state_codes.csv",
@@ -432,7 +437,7 @@ Once the data is ready, I use `DBI::dbExecute` to run a SQLite command to create
 
 Once the table has been created in the database, I write the `data.frame` to the corresponding table with the following call:
 
-```
+```R
 dbWriteTable(census_app_db, "<table name>", <data.frame>, append = TRUE
 ```
 
@@ -444,7 +449,7 @@ The person using the app selects Sex (M or F), Work Status (Full Time or Other) 
 
 I first query `b20005_vars` to get the relevent variables names which will be used in the query to `b20005`, as shown below. `name`s that end with "M" (queried with the wilcard `'%M'`) are for margins of error and those that end with "E" (wildcard `'%E'`) are for estimates.
 
-```
+```R
 vars <- dbGetQuery(
     census_app_db, 
     "SELECT name FROM b20005_vars 
@@ -464,7 +469,7 @@ The `b20005_vars.label` column holds long string labels (which follow a consiste
 
 Since the `label` string contains the sex and work status, I assign a `label_wildcard` based on the person inputs from the sex and work status UI dropdowns.
 
-```
+```R
 # Prepare wildcard for query parameter `label_wildcard`
   if (sex == 'M') {
     if (work_status == 'FT') { label_wildcard <- "%!!Male!!Worked%" }
@@ -482,20 +487,20 @@ Once the variables are returned, the actual values are queried from `b20005`, gr
 
 Translating this to a SQLite query:
 
-```
+```R
 # Construct query string to square root of the sum of margins of error squared grouped by ruca level
 query_string <- paste0(
     "SQRT(SUM(POWER(b20005.", vars$name, ", 2))) AS ", vars$name, collapse=",")
 ```
 Where `vars$name` is a list of variable names, and the `collapse` parameter converts a list or vector to a string. The beginning of that `query_string` looks like:
 
-```
+```R
 "SQRT(SUM(POWER(b20005.B20005_001M, 2))) AS B20005_001M, SQRT(..."
 ```
 
 The query is further built by adding other statements:
 
-```
+```R
 query_string <- paste(
     "SELECT ruca.DESCRIPTION,",
     query_string,
@@ -512,17 +517,103 @@ The `ruca.DESCRIPTION` column, which contains RUCA levels (e.g. `"Urban"`) is jo
 
 The query for estimates is simpler than MOEs, because estimates only need to be summed over RUCA levels:
 
-```
+```R
 # Construct a query to sum estimates grouped by ruca level
   query_string <- paste0("SUM(b20005.",vars$name, ") AS ", vars$name, collapse=",")
 ```
+
 `get_b20005_ruca_aggregate_earnings` returns the query result `data.frame`s in a named `list`:
 
-```
+```R
 return(list("estimate" = estimate_rs, "moe" = moe_rs))
 ```
 
 ### <a name="calculate-median-r"></a>`calculate_median.R`
+The procedure for calculating a median earnings data estimate is shown starting on page 17 of the Accuracy of PUMS documentation. This script follows it closely:
+
+1. _Obtain the weighted frequency distribution for the selected variable._ `data` is a `data.frame` with earning estimate values. The rows are the earning ranges and the column are RUCA levels:
+
+```R
+cum_percent <- 100.0 * cumsum(data[ruca_level]) / sum(data[ruca_level])
+```
+
+2. _Calculate the weighted total to yield the base, B._
+
+```R
+B <- colSums(data[ruca_level])
+```
+
+3. _Approximate the standard error of a 50 percent proportion using the formula in Standard Errors for Totals and Percentages_. The `design_factor` is passed to this function by the server who uses the `get_design_factor` function explained below to query the `design_factors` table.
+
+```R
+se_50_percent <- design_factor * sqrt(87.5/(12.5*B) * 50^2)
+```
+
+4. _Create the variable p_lower by subtracting the SE from 50 percent. Create p_upper by adding the SE to 50 percent._
+
+```R
+p_lower <- 50 - se_50_percent
+p_upper <- 50 + se_50_percent
+```
+
+5. _Determine the categories in the distribution that contain p_lower and p_upper_...
+
+```R
+# Determine the indexes of the cumulative percent data.frame corresponding  
+# to the upper and lower bounds of the 50% proportion estimate
+cum_percent_idx_lower <- min(which(cum_percent > p_lower))
+cum_percent_idx_upper <- min(which(cum_percent > p_upper))
+```
+
+.._If p_lower and p_upper fall in the same category, follow step 6. If p_lower and p_upper fall in different categories, go to step 7..._
+
+```R
+# The median estimation calculation is handled differently based on 
+# whether the upper and lower bound indexes are equal
+    if (cum_percent_idx_lower == cum_percent_idx_upper) {
+```
+6. _If p_lower and p_upper fall in the same category, do the following:_
+
+  - _Define A1 as the smallest value in that category._
+
+```R
+# A1 is the minimum earnings value (e.g. 30000) of the earning range 
+# (e.g. 30000 to 34999) corresponding to the lower bound cumulative percent
+A1 <- earnings[cum_percent_idx_lower, "min_earnings"]
+```
+  - _Define A2 as the smallest value in the next (higher) category._
+
+```R
+# A2 is the minimum earnings value of the earning range above the 
+# earning range corresponding to the upper bound cumulative percent
+A2 <- earnings[cum_percent_idx_lower + 1, "min_earnings"]
+```
+
+  - _Define C1 as the cumulative percent of units strictly less than A1._
+
+```R
+# C1 is the cumulative percentage of earnings one row below the 
+# lower bound cumulative percent
+C1 <- cum_percent[cum_percent_idx_lower - 1, ]
+```
+  - _Define C2 as the cumulative percent of units strictly less than A2._
+ 
+```R
+# C2 is the cumulative percentage of the earnings below the 
+# lower bound cumulative percent
+C2 <- cum_percent[cum_percent_idx_lower, ]
+```
+
+  - _Use the following formulas to approximate the lower and upper bounds for a confidence interval about the median_:
+
+```R
+# the lower bound of the median 
+lower_bound <- (p_lower - C1) / (C2 - C1) * (A2 - A1) + A1
+      
+# the upper bound of the median
+upper_bound <- (p_upper - C1) / (C2 - C1) * (A2 - A1) + A1
+```
+
 
 ### <a name="format-query-result-r"></a>`format_query_result.R`
 
