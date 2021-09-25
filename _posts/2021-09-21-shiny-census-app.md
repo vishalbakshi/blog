@@ -547,7 +547,9 @@ return(list("estimate" = estimate_rs, "moe" = moe_rs))
 ## <a name="calculate-median-r"></a>`calculate_median.R`
 The procedure for calculating a median earnings data estimate is shown starting on page 17 of the Accuracy of PUMS documentation. This script follows it closely:
 
-1. _Obtain the weighted frequency distribution for the selected variable._ `data` is a `data.frame` with earning estimate values. The rows are the earning ranges and the column are RUCA levels:
+1. _Obtain the weighted frequency distribution for the selected variable._ `data` is a `data.frame` with earning estimate values. The rows are the earning ranges and the columns are `ruca_level`s:
+
+<br>
 
 ```R
 cum_percent <- 100.0 * cumsum(data[ruca_level]) / sum(data[ruca_level])
@@ -555,11 +557,15 @@ cum_percent <- 100.0 * cumsum(data[ruca_level]) / sum(data[ruca_level])
 
 2. _Calculate the weighted total to yield the base, B._
 
+<br>
+
 ```R
 B <- colSums(data[ruca_level])
 ```
 
 3. _Approximate the standard error of a 50 percent proportion using the formula in Standard Errors for Totals and Percentages_. The `design_factor` is passed to this function by the server who uses the `get_design_factor` function explained below to query the `design_factors` table.
+
+<br>
 
 ```R
 se_50_percent <- design_factor * sqrt(87.5/(12.5*B) * 50^2)
@@ -567,12 +573,16 @@ se_50_percent <- design_factor * sqrt(87.5/(12.5*B) * 50^2)
 
 4. _Create the variable p_lower by subtracting the SE from 50 percent. Create p_upper by adding the SE to 50 percent._
 
+<br>
+
 ```R
 p_lower <- 50 - se_50_percent
 p_upper <- 50 + se_50_percent
 ```
 
 5. _Determine the categories in the distribution that contain p_lower and p_upper_...
+
+<br>
 
 ```R
 # Determine the indexes of the cumulative percent data.frame corresponding  
@@ -583,6 +593,8 @@ cum_percent_idx_upper <- min(which(cum_percent > p_upper))
 
 .._If p_lower and p_upper fall in the same category, follow step 6. If p_lower and p_upper fall in different categories, go to step 7..._
 
+<br>
+
 ```R
 # The median estimation calculation is handled differently based on 
 # whether the upper and lower bound indexes are equal
@@ -592,12 +604,16 @@ cum_percent_idx_upper <- min(which(cum_percent > p_upper))
 
   - _Define A1 as the smallest value in that category._
 
+<br>
+
 ```R
 # A1 is the minimum earnings value (e.g. 30000) of the earning range 
 # (e.g. 30000 to 34999) corresponding to the lower bound cumulative percent
 A1 <- earnings[cum_percent_idx_lower, "min_earnings"]
 ```
   - _Define A2 as the smallest value in the next (higher) category._
+
+<br>
 
 ```R
 # A2 is the minimum earnings value of the earning range above the 
@@ -607,6 +623,8 @@ A2 <- earnings[cum_percent_idx_lower + 1, "min_earnings"]
 
   - _Define C1 as the cumulative percent of units strictly less than A1._
 
+<br>
+
 ```R
 # C1 is the cumulative percentage of earnings one row below the 
 # lower bound cumulative percent
@@ -614,6 +632,8 @@ C1 <- cum_percent[cum_percent_idx_lower - 1, ]
 ```
   - _Define C2 as the cumulative percent of units strictly less than A2._
  
+<br>
+
 ```R
 # C2 is the cumulative percentage of the earnings below the 
 # lower bound cumulative percent
@@ -621,6 +641,8 @@ C2 <- cum_percent[cum_percent_idx_lower, ]
 ```
 
   - _Use the following formulas to approximate the lower and upper bounds for a confidence interval about the median_:
+
+<br>
 
 ```R
 # the lower bound of the median 
@@ -632,6 +654,8 @@ upper_bound <- (p_upper - C1) / (C2 - C1) * (A2 - A1) + A1
 7. _If p_lower and p_upper fall in different categories, do the following_:
 
   - _For the category containing p_lower: Define A1, A2, C1, and C2 as described in step 6. Use these values and the formula in step 6 to obtain the lower bound._
+
+<br>
 
 ```R
 # A1, A2, C1 and C2 are calculated using the lower bound cumulative percent
@@ -645,6 +669,8 @@ lower_bound <- (p_lower - C1) / (C2 - C1) * (A2 - A1) + A1
 
   - _For the category containing p_upper: Define new values for A1, A2, C1, and C2 as described in step 6. Use these values and the formula in step 6 to obtain the upper bound._
 
+<br>
+
 ```R
 # A1, A2, C1 and C2 are calculated using the upper bound cumulative percent
 # to calculate the upper bound of the median estimate
@@ -656,6 +682,8 @@ upper_bound <- (p_upper - C1) / (C2 - C1) * (A2 - A1) + A1
 ```
 
 8. _Use the lower and upper bounds approximated in steps 6 or 7 to approximate the standard error of the median. SE(median) = 1/2 X (Upper Bound – Lower Bound)_
+
+<br>
 
 ```R
 # The median earning estimate is the average of the upper and lower bounds
@@ -672,6 +700,8 @@ median_90_moe <- 1.645 * median_se
 ```
 Finally, a `data.frame` is returned, which will be displayed in a `tableOutput` element.
 
+<br>
+
 ```R
 # A data.frame will be displayed in the UI
 median_data <- data.frame(
@@ -687,6 +717,8 @@ median_data <- data.frame(
 The purpose of this function is to receive two `data.frame` objects, one for earnings `estimate` value, and one for the corresponding `moe` values, and return a single `data.frame` which is ready to be displayed in a `tableOutput`.
 
 Since `get_b20005_ruca_aggregate_earnings` returns a named list, I first pull out the `estimate` and `moe` `data.frame` objects:
+
+<br>
 
 ```R
 # Pull out query result data.frames from the list
@@ -710,6 +742,126 @@ However, in the UI, I want the table to look like this:
 
 ![Population estimates for earnings levels from $1 to $2499 up to $100000 and more for Alabama Full Time Female Workers]({{ site.baseurl }}/images/alabama_ft_female_earnings_table.png)
 
+To achieve this, I first `t`ranspose the `estimate` and `moe` `data.frame`s...
+
+<br>
+
+```R
+# Transpose the query results
+col_names <- estimate[,"DESCRIPTION"]
+estimate <- t(estimate[-1])
+colnames(estimate) <- col_names
+  
+col_names <- moe[,"DESCRIPTION"]
+moe <- t(moe[-1])
+colnames(moe) <- col_names
+```
+
+...then zip them together, keeping in mind that not all states have tracts designated with all RUCA levels...
+
+<br>
+
+```R
+# Create a mapping to make column names more computer-readable
+format_ruca_level <- c(
+  "Urban" = "Urban", 
+  "Large Town" = "Large_Town", 
+  "Small Town" = "Small_Town", 
+  "Rural" = "Rural",
+  "Zero Population" = "Zero_Population")
+
+# bind together estimate and corresponding moe columns
+# some states do not have all RUCA levels
+# for example, Connecticut does not have "Small Town" tracts
+
+# Create empty objects
+output_table <- data.frame(temp = matrix(NA, nrow = nrow(estimate), ncol = 0))
+col_names <- c()
+
+for (ruca_level in c("Urban", "Large Town", "Small Town", "Rural")) {
+  if (ruca_level %in% colnames(estimate)) {
+    output_table <- cbind(output_table, estimate[,ruca_level], moe[,ruca_level])
+    
+    # paste "_MOE" suffix for MOE columns
+    col_names <- c(
+      col_names,
+      format_ruca_level[[ruca_level]],
+      paste0(format_ruca_level[[ruca_level]], "_MOE"))
+  }
+}
+
+# Replace old names with more computer-readable names
+colnames(output_table) <- col_names
+```
+<br>
+
+...finally, `merge` the `output_table` `data.frame` with `labels` (long form description of the B20005 variables) which are retrieved from the database using the `get_b20005_labels` function explained later on in this post. Remember that the `label` is delimited with `"!!"` and the last substring contains earnings ranges (e.g. "$30,000 to $34,999")
+
+<br>
+
+```R
+# name rows as long-form labels, by splitting them by '!!' and 
+# grabbing the last chunk which has dollar ranges e.g. 
+# $30000 to $34999
+output_table <- merge(output_table, labels, by.x = 0, by.y = "name")
+split_label <- data.frame(
+  do.call(
+    'rbind', 
+    strsplit(as.character(output_table$label),'!!',fixed=TRUE)))
+
+rownames(output_table) <- split_label$X6
+```
+<br>
+
+---
+
+## <a name="get-b20005-labels-r"></a>`get_b20005_labels.R`
+This script contains two helper functions to retrieve the `label` column from the `b20005_vars` table. 
+
+The first one, `get_b20005_labels` retrieves the variable `name` and `label` for earning range strings (e.g. "$30,000 to $34,999"):
+
+<br>
+
+```R
+get_b20005_labels <- function() {
+  census_app_db <- dbConnect(RSQLite::SQLite(), "census_app_db.sqlite")
+  rs <- dbGetQuery(
+    census_app_db, 
+    "SELECT 
+      name, label
+    FROM 'b20005_vars' 
+    WHERE 
+      label LIKE '%$%'
+    ORDER BY name"
+    )
+  dbDisconnect(census_app_db)
+  return(rs)
+}
+```
+<br>
+
+The second function, `get_b20005_ALL_labels` returns the whole table:
+
+<br>
+
+```R
+get_b20005_ALL_labels <- function() {
+  census_app_db <- dbConnect(RSQLite::SQLite(), "census_app_db.sqlite")
+  rs <- dbGetQuery(
+    census_app_db, 
+    "SELECT 
+      name, label
+    FROM 'b20005_vars' 
+    ORDER BY name"
+  )
+  dbDisconnect(census_app_db)
+  return(rs)
+}
+```
+
+<br>
+
+---
 
 ## <a name="get-b20005-tract-earnings-r"></a>`get_b20005_tract_earnings.R`
 
@@ -717,7 +869,7 @@ However, in the UI, I want the table to look like this:
 
 ## <a name="get-design-factor-r"></a>`get_design_factor.R`
 
-## <a name="get-b20005-labels-r"></a>`get_b20005_labels.R`
+
 
 ## <a name="make-plot-r"></a>`make_plot.R`
 
