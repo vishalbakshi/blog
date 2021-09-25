@@ -9,8 +9,8 @@ In this blog post, I'll walk through my development process for a U.S. Census da
 ## Table of Contents
 
 - [Backstory](#backstory)
-- [Codebase Overview](#the-codebase)
-- [Documentation](#docs)
+- [Codebase Overview](#codebase-overview)
+- [Documentation](#documentation)
 
 ## <a name="#backstory"></a>Backstory
 
@@ -34,11 +34,10 @@ The updated formula is then:
 
 I was able to calculate the median earnings estimate (and associated standard error and margin of error) within a few percent of the values given in the handbook. This provided me with confirmation that I was ready to expand my code to calculate median earnings estimates for other subgroups.
 
-## <a name="#codebase-overview"></a>Codebase Overview
+## <a name="#codebase-overview"></a>Codebase
 
-I built this app using the R package <a href="https://shiny.rstudio.com/reference/shiny/latest/">`Shiny`</a> which handles both the UI and the server. I store the data in a `sqlite` database and access it with queries written using the <a href="https://cran.r-project.org/web/packages/RSQLite/RSQLite.pdf">`RSQLite`</a> package which uses the <a href="https://dbi.r-dbi.org/reference/">DBI</a> API. The following section breaks down the R scripts based on functionality. Click on the script name to navigate to that section.
+I built this app using the R package <a href="https://shiny.rstudio.com/reference/shiny/latest/">`Shiny`</a> which handles both the UI and the server. I store the data in a `sqlite` database and access it with queries written using the <a href="https://cran.r-project.org/web/packages/RSQLite/RSQLite.pdf">`RSQLite`</a> package which uses the <a href="https://dbi.r-dbi.org/reference/">DBI</a> API. The following sections break down the R scripts based on functionality. Click on the script name to navigate to that section.
 
-## <a name="#docs"></a> Documentation
 - [`app.R`](#app-r)
   - UI and server functions to handle people inputs and plot/table/text outputs
 - [`prep_db.R`](#prep-db-r)
@@ -61,6 +60,7 @@ I built this app using the R package <a href="https://shiny.rstudio.com/referenc
   - Creates a bar plot object
 
 ## <a name="app-r"></a>`app.R`
+[Go back up to script menu](#codebase-overview)
 
 A shiny app has three fundamental components:
 
@@ -78,8 +78,17 @@ All of my UI objects are wrapped within a `fluidPage` call which returns a page 
 My app's UI has four sections:
 
 1. Dropdowns to select state, sex and work status for which the person using the app wants ACS 5-year earnings estimates
+
+![Dropdowns to select state, sex and work status for which the person using the app wants ACS 5-year earnings estimates]({{ site.baseurl }}/images/ui_dropdowns.png)
+
 2. A table with the estimate, standard error and margin of error for median earnings
+
+![A table with the estimate, standard error and margin of error for median earnings]({{ site.baseurl }}/images/median_table.png)
+
 3. A bar plot of population estimates for earnings levels for the selected state, sex, work status and RUCA (Rural-Urban Commuting Areas) level
+
+![A bar plot of population estimates for earnings levels for the selected state, sex, work status and RUCA (Rural-Urban Commuting Areas) level]({{ site.baseurl }}/images/bar_plot.png)
+
 4. A table with population estimates for earnings levels for each RUCA level for the selected state, sex and work status
 
 Each section has a download button so that people can get the CSV files or plot image for their own analysis and reporting.
@@ -351,13 +360,18 @@ output$download_ruca_earnings <- downloadHandler(
 ---
 
 ## <a name="prep-db-r"></a>`prep_db.R`
+[Go back up to script menu](#codebase-overview)
+
+### Database Tables <a href="#database-tables"></a>
+
 The database diagram is shown below (created using <a href="https://dbdiagram.io">dbdiagram.io</a>):
 
 ![Database diagram showing the database table schemas and their relationships]({{ site.baseurl }}/images/census-app-db.jpg)
 
 I have five tables in my database:
 
-- `b20005` holds the data from the ACS 2015-2019 5-year detailed table B20005 (Sex By Work Experience In The Past 12 Months By Earnings In The Past 12 Months). This includes earnings estimates and margins of errors for Male and Female, Full Time and Other workers, for earning ranges (No earnings, $1 - $2499, $2500 - $4999, ..., $100000 or more). The following table summarizes the groupings of the (non-zero earnings) variables relevant to this app:
+### b20005 <a href="#b20005"></a>
+Holds the data from the ACS 2015-2019 5-year detailed table B20005 (Sex By Work Experience In The Past 12 Months By Earnings In The Past 12 Months). This includes earnings estimates and margins of errors for Male and Female, Full Time and Other workers, for earning ranges (No earnings, $1 - $2499, $2500 - $4999, ..., $100000 or more). The following table summarizes the groupings of the (non-zero earnings) variables relevant to this app:
 
 <br>
 
@@ -370,7 +384,9 @@ I have five tables in my database:
 
 <br>
 
-- `b20005_vars` has the name (e.g. B20005_003E) and label (e.g. "Estimate!!Total!!Male!!Worked full-time, year-round in the past 12 months") for all B20005 variables. Variable names ending with an `E` are estimates, and those ending with `M` are margins of error.
+### b20005_vars<a href="#"></a>
+
+Has the name (e.g. B20005_003E) and label (e.g. "Estimate!!Total!!Male!!Worked full-time, year-round in the past 12 months") for all B20005 variables. Variable names ending with an `E` are estimates, and those ending with `M` are margins of error.
 - `ruca` contains RUCA (Rural-Urban Commuting Area) codes published by the <a href="https://www.ers.usda.gov/data-products/rural-urban-commuting-area-codes.aspx">U.S. Department of Agriculture Economic Research Service</a> which classify U.S. census tracts using measures of population density. The following table shows the code ranges relevant to this app:
 
 <br>
@@ -385,12 +401,13 @@ I have five tables in my database:
 
 <br>
 
-- `codes` holds state FIPS (Federal Information Processing Standards) codes and RUCA levels
+### codes<a href="#"></a>
+olds state FIPS (Federal Information Processing Standards) codes and RUCA levels
 - `design_factors` contains Design Factors for different characteristics (e.g. Person Earnings/Income) which are used to determine "the standard error of total and percentage sample estimates", and "reflect the effects of the actual sample design and estimation procedures used for the ACS." (<a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2015_2019AccuracyPUMS.pdf">2015-2019 PUMS 5-Year Accuracy of the Data</a>).
 
 In `prep_db.R`, I use the `DBI` package, `censusapi` and `base` R functions to perform the following protocol for each table:
 
-### Load the data into a `data.frame`
+### Load the data<a href="#"></a>
 
 - For tables `b20005` and `b20005_vars`, I use the `censusapi::getCensus` and `censusapi::listCensusMetadata` repsectively to get the data
 
@@ -437,7 +454,7 @@ ruca_levels <- read.csv(
 )
 ```
 
-### Create database tables
+### Create database tables<a href="#"></a>
 
 Once the data is ready, I use `DBI::dbExecute` to run a SQLite command to create each table. The relationships shown in the image above dictate which fields create the primary key (in some cases, a compound primary key) as listed below:
 
@@ -449,7 +466,7 @@ Once the data is ready, I use `DBI::dbExecute` to run a SQLite command to create
 |`codes`|`(CODE, DESCRIPTION)`|e.g. `(1, "Urban")`| 
 |`design_factors`|`(ST, CHARACTERISTIC)`|e.g. `("27", "Person Earnings/Income")`|
 
-### Write to the database
+### Write to the database<a href="#"></a>
 
 Once the table has been created in the database, I write the `data.frame` to the corresponding table with the following call:
 
@@ -462,7 +479,7 @@ dbWriteTable(census_app_db, "<table name>", <data.frame>, append = TRUE
 ## <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
 The function inside this script (with the same name), receives inputs from the server, sends queries to the database and returns the results. The querying process takes three steps:
 
-### Get variable names
+### Get variable names<a href="#"></a>
 The person using the app selects Sex (M or F), Work Status (Full Time or Other) and State (50 states + D.C. + Puerto Rico) for which they want to view and analyze earnings data. As shown above, different variables in table `b20005` correspond to different sexes and work statuses, and each tract for which there is all that earnings data resides in a given state. 
 
 I first query `b20005_vars` to get the relevent variables names which will be used in the query to `b20005`, as shown below. `name`s that end with "M" (queried with the wilcard `'%M'`) are for margins of error and those that end with "E" (wildcard `'%E'`) are for estimates.
@@ -499,6 +516,9 @@ Since the `label` string contains the sex and work status, I assign a `label_wil
     if (work_status == 'OTHER') { label_wildcard <- "%!!Female!!Other%" }
   }
 ```
+
+### Derive RUCA level estimates and MOE <a href="#weighted-frequency-distribution"></a>
+
 Once the variables are returned, the actual values are queried from `b20005`, grouped by RUCA level. The ACS handbook <a href="https://www.census.gov/content/dam/Census/library/publications/2020/acs/acs_general_handbook_2020.pdf">Understanding and Using American Community Survey Data: What All Data Users Need to Know</a> shows how to calculate that margin of error for derived estimates. In our case, the margin of error for a RUCA level such as "Urban" for a given state is derived from the margin of error of individual Census Tracts using the formula below:
 
 ![The MOE for a sum of estimates is the square root of the sum of MOEs squared]({{ site.baseurl }}/images/moe_formula.png)
@@ -550,6 +570,8 @@ return(list("estimate" = estimate_rs, "moe" = moe_rs))
 ## <a name="calculate-median-r"></a>`calculate_median.R`
 The procedure for calculating a median earnings data estimate is shown starting on page 17 of the Accuracy of PUMS documentation. This script follows it closely:
 
+### Create frequency distribution <a href="#weighted-frequency-distribution"></a>
+
 1. _Obtain the weighted frequency distribution for the selected variable._ `data` is a `data.frame` with earning estimate values. The rows are the earning ranges and the columns are `ruca_level`s:
 
 <br>
@@ -557,6 +579,8 @@ The procedure for calculating a median earnings data estimate is shown starting 
 ```R
 cum_percent <- 100.0 * cumsum(data[ruca_level]) / sum(data[ruca_level])
 ```
+
+### Calculate weighted total <a href="#weighted-total"></a>
 
 2. _Calculate the weighted total to yield the base, B._
 
@@ -566,6 +590,8 @@ cum_percent <- 100.0 * cumsum(data[ruca_level]) / sum(data[ruca_level])
 B <- colSums(data[ruca_level])
 ```
 
+### Approximate Standard Error <a href="#approximate-standard-error"></a>
+
 3. _Approximate the standard error of a 50 percent proportion using the formula in Standard Errors for Totals and Percentages_. The `design_factor` is passed to this function by the server who uses the `get_design_factor` function explained below to query the `design_factors` table.
 
 <br>
@@ -573,6 +599,7 @@ B <- colSums(data[ruca_level])
 ```R
 se_50_percent <- design_factor * sqrt(87.5/(12.5*B) * 50^2)
 ```
+### Calculate median estimate bounds <a href="#calculate-median-percentage-bounds"></a>
 
 4. _Create the variable p_lower by subtracting the SE from 50 percent. Create p_upper by adding the SE to 50 percent._
 
@@ -701,6 +728,8 @@ median_se <- 0.5 * (upper_bound - lower_bound)
 # the margin of error
 median_90_moe <- 1.645 * median_se
 ```
+
+### Reshape data<a href="#reshape-median-data"></a>
 Finally, a `data.frame` is returned, which will be displayed in a `tableOutput` element.
 
 <br>
@@ -719,6 +748,8 @@ median_data <- data.frame(
 
 The purpose of this function is to receive two `data.frame` objects, one for earnings `estimate` value, and one for the corresponding `moe` values, and return a single `data.frame` which is ready to be displayed in a `tableOutput`.
 
+### Extract data.frame objects from list<a href="#extract"></a>
+
 Since `get_b20005_ruca_aggregate_earnings` returns a named list, I first pull out the `estimate` and `moe` `data.frame` objects:
 
 <br>
@@ -728,6 +759,8 @@ Since `get_b20005_ruca_aggregate_earnings` returns a named list, I first pull ou
 estimate <- rs[["estimate"]]
 moe <- rs[["moe"]]
 ```
+
+### Reshape data.frame objects<a href="#reshape"></a>
 
 These  `data.frame` objects have RUCA levels in the column `DESCRIPTION` and one column for each population estimate. For example, the `estimate` for Alabama Full Time Female workers looks like this:
 
@@ -760,7 +793,7 @@ moe <- t(moe[-1])
 colnames(moe) <- col_names
 ```
 
-...then zip them together, keeping in mind that not all states have tracts designated with all RUCA levels...
+...then zip them together, keeping in mind that not all states have tracts designated with all RUCA levels:
 
 <br>
 
@@ -798,7 +831,9 @@ colnames(output_table) <- col_names
 ```
 <br>
 
-...finally, `merge` the `output_table` `data.frame` with `labels` (long form description of the B20005 variables) which are retrieved from the database using the `get_b20005_labels` function explained later on in this post. Remember that the `label` is delimited with `"!!"` and the last substring contains earnings ranges (e.g. "$30,000 to $34,999"):
+### Add descriptive labels<a href="#add-labels"></a>
+
+Finally, `merge` the `output_table` `data.frame` with `labels` (long form description of the B20005 variables) which are retrieved from the database using the `get_b20005_labels` function explained later on in this post. Remember that the `label` is delimited with `"!!"` and the last substring contains earnings ranges (e.g. "$30,000 to $34,999"):
 
 <br>
 
@@ -821,6 +856,8 @@ rownames(output_table) <- split_label$X6
 ## <a name="get-b20005-labels-r"></a>`get_b20005_labels.R`
 This script contains two helper functions to retrieve the `label` column from the `b20005_vars` table. 
 
+### Get earnings labels<a href="#get-earning-labels"></a>
+
 The first one, `get_b20005_labels` retrieves the variable `name` and `label` for earning range strings (e.g. "$30,000 to $34,999"):
 
 <br>
@@ -842,6 +879,8 @@ get_b20005_labels <- function() {
 }
 ```
 <br>
+
+### Get all labels<a href="#get-all-labels"></a>
 
 The second function, `get_b20005_ALL_labels` returns the whole table:
 
@@ -869,6 +908,7 @@ get_b20005_ALL_labels <- function() {
 ## <a name="get-b20005-tract-earnings-r"></a>`get_b20005_tract_earnings.R`
 This function is similar to `get_b20005_ruca_aggregate_earnings` but does not aggregate by RUCA level, and also includes Census Tracts that are not designated a RUCA level. The `label_wildcard` is constructed the same way as before.
 
+### Get variable names<a href="#get-variable-names"></a>
 The variable `name`s are obtained for both margin of error and estimates in the same query:
 
 <br>
@@ -884,6 +924,8 @@ vars <- dbGetQuery(
 ```
 
 <br>
+
+### Join tables<a href="#join-tables"></a>
 
 The tract-level earnings are queried with the following, using a `LEFT JOIN` between `b20005` and `ruca` tables to include tracts that do not have a RUCA level.
 
