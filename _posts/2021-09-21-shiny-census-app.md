@@ -350,6 +350,7 @@ I have five tables in my database:
 
 - `b20005` holds the data from the ACS 2015-2019 5-year detailed table B20005 (Sex By Work Experience In The Past 12 Months By Earnings In The Past 12 Months). This includes earnings estimates and margins of errors for Male and Female, Full Time and Other workers, for earning ranges (No earnings, $1 - $2499, $2500 - $4999, ..., $100000 or more). The following table summarizes the groupings of the (non-zero earnings) variables relevant to this app:
 
+
 |Variable|Demographic|
 |:-:|:-:|
 |B20005_003 to B20005_025|Male Full Time Workers|
@@ -357,11 +358,83 @@ I have five tables in my database:
 |B20005_050 to B20005_072|Female Full Time Workers|
 |B_ 076to B_095|Female Other Workers|
 
-- `b20005_vars` has the name (e.g. B20005_001E) and label (e.g. "Estimate!!Total") for all B20005 variables. Variable names ending with an `E` are estimates, and those ending with `M` are margins of error.
+
+- `b20005_vars` has the name (e.g. B20005_003E) and label (e.g. "Estimate!!Total!!Male!!Worked full-time, year-round in the past 12 months") for all B20005 variables. Variable names ending with an `E` are estimates, and those ending with `M` are margins of error.
 - `ruca` contains RUCA (Rural-Urban Commuting Area) codes published by the <a href="https://www.ers.usda.gov/data-products/rural-urban-commuting-area-codes.aspx">U.S. Department of Agriculture Economic Research Service</a> which classify U.S. census tracts using measures of population density. The following table shows the code ranges relevant to this app:
 
+|RUCA Code|RUCA Level|
+|:-:|:-:|
+|1-3|Urban|
+|4-6|Large Town|
+|7-9|Small Town|
+|10|Rural|
+|99|Zero Population|
 
+- `codes` holds state FIPS (Federal Information Processing Standards) codes and RUCA levels
+- `design_factors` contains Design Factors for different characteristics (e.g. Person Earnings/Income) which are used to determine "the standard error of total and percentage sample estimates", and "reflect the effects of the actual sample design and estimation procedures used for the ACS." (<a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2015_2019AccuracyPUMS.pdf">2015-2019 PUMS 5-Year Accuracy of the Data</a>).
 
+In `prep_db.R`, I use the `DBI` package, `censusapi` and `base` R functions to perform the following protocol for each table:
+
+#### Load the data into a `data.frame`
+- For tables `b20005` and `b20005_vars`, I use the `censusapi::getCensus` and `censusapi::listCensusMetadata` repsectively to get the data
+
+```
+# TABLE b20005_vars ------------------------------
+b20005_vars <- listCensusMetadata(
+  name = 'acs/acs5',
+  vintage = 2015,
+  type = 'variables',
+  group = 'B20005')
+  
+ # TABLE b20005 ----------------------------------
+ b20005 <- getCensus(
+  name = 'acs/acs5',
+  region = "tract:*",
+  regionin = regionin_value,
+  vintage = 2015,
+  vars = b20005_vars$name,
+  key="..."
+  )
+```
+- For tables `codes`, `ruca`, and `design_factors` I load the data from CSVs that I either obtained (in the case of the <a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2019_PUMS_5yr_Design_Factors.csv">Design Factors</a>) or created (in the case of the codes and RUCA levels)
+
+```
+ # TABLE b20005 ----------------------------------
+state_codes <- read.csv(
+  "data/state_codes.csv",
+  colClasses = c(
+    "character", 
+    "character", 
+    "character")
+)
+
+ruca_levels <- read.csv(
+  "data/ruca_levels.csv",
+  colClasses = c(
+    "character",
+    "character",
+    "character")
+)
+```
+#### `CREATE TABLE`
+
+Once the data is ready, I use `DBI::dbExecute` to run a SQLite command to create each table. The relationships shown in the image above dictate which fields create the primary key (in some cases, a compound primary key) as listed below:
+
+|Table|Primary Key|Notes|
+|:-:|:-:|:-:|
+|`b20005 `|`(state, county, tract)`)|Foreign key for table `ruca`|
+|`b20005_vars`|`name`|e.g. `B20005_001E`|
+|`ruca`|`TRACTFIPS`|Foreign key for table `b20005`|
+|`codes`|`(CODE, DESCRIPTION)`|e.g. `(1, "Urban")`| 
+|`design_factors`|`(ST, CHARACTERISTIC)`|e.g. `("27", "Person Earnings/Income")`|
+
+#### `dbWriteTable`
+
+Once the table has been created in the database, I write the `data.frame` to the corresponding table with the following call:
+
+```
+dbWriteTable(census_app_db, '<table name>`, <`data.frame`>, append = TRUE
+```
 
 ### <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
 
