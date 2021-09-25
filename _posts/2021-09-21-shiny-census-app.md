@@ -342,7 +342,9 @@ output$download_ruca_earnings <- downloadHandler(
 ```
 
 ### <a name="prep-db-r"></a>`prep_db.R`
-The database schema is as follows:
+The database diagram is shown below (created using <a href="https://dbdiagram.io">dbdiagram.io</a>):
+
+![Database diag]({{ site.baseurl }}/images/census-app-db.jpg)
 
 
 ### <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
