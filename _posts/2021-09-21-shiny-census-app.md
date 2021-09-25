@@ -345,7 +345,9 @@ output$download_ruca_earnings <- downloadHandler(
   )
 ```
 
-### <a name="prep-db-r"></a>`prep_db.R`
+---
+
+## <a name="prep-db-r"></a>`prep_db.R`
 The database diagram is shown below (created using <a href="https://dbdiagram.io">dbdiagram.io</a>):
 
 ![Database diagram showing the database table schemas and their relationships]({{ site.baseurl }}/images/census-app-db.jpg)
@@ -355,17 +357,20 @@ I have five tables in my database:
 - `b20005` holds the data from the ACS 2015-2019 5-year detailed table B20005 (Sex By Work Experience In The Past 12 Months By Earnings In The Past 12 Months). This includes earnings estimates and margins of errors for Male and Female, Full Time and Other workers, for earning ranges (No earnings, $1 - $2499, $2500 - $4999, ..., $100000 or more). The following table summarizes the groupings of the (non-zero earnings) variables relevant to this app:
 
 <br>
+
 |Variable|Demographic|
 |:-:|:-:|
 |B20005_003 to B20005_025|Male Full Time Workers|
 |B20005_029 to B20005_048|Male Other Workers|
 |B20005_050 to B20005_072|Female Full Time Workers|
-|B_ 076to B_095|Female Other Workers|
+|B20005_076 to B20005_095|Female Other Workers|
+
 <br>
 
 - `b20005_vars` has the name (e.g. B20005_003E) and label (e.g. "Estimate!!Total!!Male!!Worked full-time, year-round in the past 12 months") for all B20005 variables. Variable names ending with an `E` are estimates, and those ending with `M` are margins of error.
 - `ruca` contains RUCA (Rural-Urban Commuting Area) codes published by the <a href="https://www.ers.usda.gov/data-products/rural-urban-commuting-area-codes.aspx">U.S. Department of Agriculture Economic Research Service</a> which classify U.S. census tracts using measures of population density. The following table shows the code ranges relevant to this app:
 <br>
+
 |RUCA Code|RUCA Level|
 |:-:|:-:|
 |1-3|Urban|
@@ -373,13 +378,14 @@ I have five tables in my database:
 |7-9|Small Town|
 |10|Rural|
 |99|Zero Population|
+
 <br>
 - `codes` holds state FIPS (Federal Information Processing Standards) codes and RUCA levels
 - `design_factors` contains Design Factors for different characteristics (e.g. Person Earnings/Income) which are used to determine "the standard error of total and percentage sample estimates", and "reflect the effects of the actual sample design and estimation procedures used for the ACS." (<a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2015_2019AccuracyPUMS.pdf">2015-2019 PUMS 5-Year Accuracy of the Data</a>).
 
 In `prep_db.R`, I use the `DBI` package, `censusapi` and `base` R functions to perform the following protocol for each table:
 
-#### Load the data into a `data.frame`
+### Load the data into a `data.frame`
 - For tables `b20005` and `b20005_vars`, I use the `censusapi::getCensus` and `censusapi::listCensusMetadata` repsectively to get the data
 
 ```R
@@ -421,7 +427,7 @@ ruca_levels <- read.csv(
     "character")
 )
 ```
-#### `CREATE TABLE`
+### `CREATE TABLE`
 
 Once the data is ready, I use `DBI::dbExecute` to run a SQLite command to create each table. The relationships shown in the image above dictate which fields create the primary key (in some cases, a compound primary key) as listed below:
 
@@ -433,7 +439,7 @@ Once the data is ready, I use `DBI::dbExecute` to run a SQLite command to create
 |`codes`|`(CODE, DESCRIPTION)`|e.g. `(1, "Urban")`| 
 |`design_factors`|`(ST, CHARACTERISTIC)`|e.g. `("27", "Person Earnings/Income")`|
 
-#### `dbWriteTable`
+### `dbWriteTable`
 
 Once the table has been created in the database, I write the `data.frame` to the corresponding table with the following call:
 
@@ -441,10 +447,10 @@ Once the table has been created in the database, I write the `data.frame` to the
 dbWriteTable(census_app_db, "<table name>", <data.frame>, append = TRUE
 ```
 
-### <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
+## <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
 The function inside this script (with the same name), receives inputs from the server, sends queries to the database and returns the results. The querying process takes three steps:
 
-#### Get variable names
+### Get variable names
 The person using the app selects Sex (M or F), Work Status (Full Time or Other) and State (50 states + D.C. + Puerto Rico) for which they want to view and analyze earnings data. As shown above, different variables in table `b20005` correspond to different sexes and work statuses, and each tract for which there is all that earnings data resides in a given state. 
 
 I first query `b20005_vars` to get the relevent variables names which will be used in the query to `b20005`, as shown below. `name`s that end with "M" (queried with the wilcard `'%M'`) are for margins of error and those that end with "E" (wildcard `'%E'`) are for estimates.
@@ -528,7 +534,7 @@ The query for estimates is simpler than MOEs, because estimates only need to be 
 return(list("estimate" = estimate_rs, "moe" = moe_rs))
 ```
 
-### <a name="calculate-median-r"></a>`calculate_median.R`
+## <a name="calculate-median-r"></a>`calculate_median.R`
 The procedure for calculating a median earnings data estimate is shown starting on page 17 of the Accuracy of PUMS documentation. This script follows it closely:
 
 1. _Obtain the weighted frequency distribution for the selected variable._ `data` is a `data.frame` with earning estimate values. The rows are the earning ranges and the column are RUCA levels:
@@ -613,17 +619,69 @@ lower_bound <- (p_lower - C1) / (C2 - C1) * (A2 - A1) + A1
 # the upper bound of the median
 upper_bound <- (p_upper - C1) / (C2 - C1) * (A2 - A1) + A1
 ```
+7. _If p_lower and p_upper fall in different categories, do the following_:
+
+  - _For the category containing p_lower: Define A1, A2, C1, and C2 as described in step 6. Use these values and the formula in step 6 to obtain the lower bound._
+
+```R
+# A1, A2, C1 and C2 are calculated using the lower bound cumulative percent
+# to calculate the lower bound of the median estimate
+A1 <- earnings[cum_percent_idx_lower, "min_earnings"]
+A2 <- earnings[cum_percent_idx_lower + 1, "min_earnings"]
+C1 <- cum_percent[cum_percent_idx_lower - 1, ]
+C2 <- cum_percent[cum_percent_idx_lower, ]
+lower_bound <- (p_lower - C1) / (C2 - C1) * (A2 - A1) + A1
+```
+
+  - _For the category containing p_upper: Define new values for A1, A2, C1, and C2 as described in step 6. Use these values and the formula in step 6 to obtain the upper bound._
+
+```R
+# A1, A2, C1 and C2 are calculated using the upper bound cumulative percent
+# to calculate the upper bound of the median estimate
+A1 <- earnings[cum_percent_idx_upper, "min_earnings"]
+A2 <- earnings[cum_percent_idx_upper + 1, "min_earnings"]
+C1 <- cum_percent[cum_percent_idx_upper - 1,]
+C2 <- cum_percent[cum_percent_idx_upper,]
+upper_bound <- (p_upper - C1) / (C2 - C1) * (A2 - A1) + A1
+```
+
+8. _Use the lower and upper bounds approximated in steps 6 or 7 to approximate the standard error of the median. SE(median) = 1/2 X (Upper Bound – Lower Bound)_
+
+```R
+# The median earning estimate is the average of the upper and lower bounds
+# of the median estimates calculated above in the if-else block
+median_earnings <- 0.5 * (lower_bound + upper_bound)
+    
+# The median SE is half the distance between the upper and lower bounds
+# of the median estimate
+median_se <- 0.5 * (upper_bound - lower_bound)
+
+# The 90% confidence interval critical z-score is used to calculate 
+# the margin of error
+median_90_moe <- 1.645 * median_se
+```
+Finally, a `data.frame` is returned, which will be displayed in a `tableOutput` element.
+
+```R
+# A data.frame will be displayed in the UI
+median_data <- data.frame(
+  "Estimate" = median_earnings,
+  "SE" = median_se,
+  "MOE" = median_90_moe
+)
+```
+---
+
+## <a name="format-query-result-r"></a>`format_query_result.R`
 
 
-### <a name="format-query-result-r"></a>`format_query_result.R`
+## <a name="get-b20005-tract-earnings-r"></a>`get_b20005_tract_earnings.R`
 
-### <a name="get-b20005-tract-earnings-r"></a>`get_b20005_tract_earnings.R`
+## <a name="get-b20005-states-r"></a>`get_b20005_states.R`
 
-### <a name="get-b20005-states-r"></a>`get_b20005_earnings.R`
+## <a name="get-design-factor-r"></a>`get_design_factor.R`
 
-### <a name="get-design-factor-r"></a>`get_design_factor.R`
+## <a name="get-b20005-labels-r"></a>`get_b20005_labels.R`
 
-### <a name="get-b20005-labels-r"></a>`get_b20005_labels.R`
-
-### <a name="make-plot-r"></a>`make_plot.R`
+## <a name="make-plot-r"></a>`make_plot.R`
 
