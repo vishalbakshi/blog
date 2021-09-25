@@ -440,7 +440,9 @@ dbWriteTable(census_app_db, "<table name>", <data.frame>, append = TRUE
 The function inside this script (with the same name), receives inputs from the server, sends queries to the database and returns the results. The querying process takes three steps:
 
 #### Get variable names
-The person using the app selects Sex (M or F), Work Status (Full Time or Other) and State (50 states + D.C. + Puerto Rico) for which they want to view and analyze earnings data. As shown above, different variables in table `b20005` correspond to different sexes and work statuses, and each tract for which there is all that earnings data, resides in a given state. I first query `b20005_vars` to get the relevent variables names which will be used in the query to `b20005`, as shown below. `name`s that end with "M" (queried with the wilcard `'%M'`) are for margins of error and those that end with "E" (wildcard `'%E'`) are for estimates.
+The person using the app selects Sex (M or F), Work Status (Full Time or Other) and State (50 states + D.C. + Puerto Rico) for which they want to view and analyze earnings data. As shown above, different variables in table `b20005` correspond to different sexes and work statuses, and each tract for which there is all that earnings data resides in a given state. 
+
+I first query `b20005_vars` to get the relevent variables names which will be used in the query to `b20005`, as shown below. `name`s that end with "M" (queried with the wilcard `'%M'`) are for margins of error and those that end with "E" (wildcard `'%E'`) are for estimates.
 
 ```
 vars <- dbGetQuery(
@@ -450,12 +452,14 @@ vars <- dbGetQuery(
     AND name LIKE '%M'",
     params=list(label_wildcard=label_wildcard))
 ```
-The `b20005_vars.label` column holds long string labels (which follow a consistent pattern) that describe the variable's contents. Here are a couple of examples:
+The `b20005_vars.label` column holds long string labels (which follow a consistent pattern, which is captured by the `$label_wildcard`) that describe the variable's contents. Here are a couple of examples:
 <br>
+
 |`b20005_vars.name`|`b20005_vars.label`|
 |:-:|:-:|
 |`B20005_053E`|`"Estimate!!Total!!Female!!Worked full-time, year-round in the past 12 months!!With earnings"`)|
 |`B20005_076M`|`"Margin of Error!!Total!!Female!!Other!!With earnings!!$1 to $2,499 or loss"`|
+
 <br>
 
 Since the `label` string contains the sex and work status, I assign a `label_wildcard` based on the person inputs from the sex and work status UI dropdowns.
@@ -471,6 +475,51 @@ Since the `label` string contains the sex and work status, I assign a `label_wil
     if (work_status == 'FT') { label_wildcard <- "%!!Female!!Worked%" }
     if (work_status == 'OTHER') { label_wildcard <- "%!!Female!!Other%" }
   }
+```
+Once the variables are returned, the actual values are queried from `b20005`, grouped by RUCA level. The ACS handbook <a href="https://www.census.gov/content/dam/Census/library/publications/2020/acs/acs_general_handbook_2020.pdf">Understanding and Using American Community Survey Data: What All Data Users Need to Know</a> shows how to calculate that margin of error for derived estimates. In our case, the margin of error for a RUCA level such as "Urban" for a given state is derived from the margin of error of individual Census Tracts using the formula below:
+
+![The MOE for a sum of estimates is the square root of the sum of MOEs squared]({{ site.base_url }}/images/moe_formula.png)
+
+Translating this to a SQLite query:
+
+```
+# Construct query string to square root of the sum of margins of error squared grouped by ruca level
+query_string <- paste0(
+    "SQRT(SUM(POWER(b20005.", vars$name, ", 2))) AS ", vars$name, collapse=",")
+```
+Where `vars$name` is a list of variable names, and the `collapse` parameter converts a list or vector to a string. The beginning of that `query_string` looks like:
+
+```
+"SQRT(SUM(POWER(b20005.B20005_001M, 2))) AS B20005_001M, SQRT(..."
+```
+
+The query is further built by adding other statements:
+
+```
+query_string <- paste(
+    "SELECT ruca.DESCRIPTION,",
+    query_string,
+    "FROM 'b20005' 
+    INNER JOIN ruca 
+    ON b20005.state || b20005.county || b20005.tract = ruca.TRACTFIPS
+    WHERE 
+    b20005.state = $state
+    GROUP BY ruca.DESCRIPTION"
+  )
+```
+
+The `ruca.DESCRIPTION` column, which contains RUCA levels (e.g. `"Urban"`) is joined onto `b20005` from the `ruca` table using the foreign keys representing the Census Tract FIPS code (`TRACTFIPS` for the `ruca` table and the concatenated field `state || county || tract` for `b20005`). The `$state` parameter is assigned the person-selected `state` input, and the columns are aggreaggated by RUCA levels (i.e. `GROUP BY ruca.DESCRIPTION`). Finally, the RUCA level and square root of the sum of MOEs squared are `SELECT`ed from the joined tables.
+
+The query for estimates is simpler than MOEs, because estimates only need to be summed over RUCA levels:
+
+```
+# Construct a query to sum estimates grouped by ruca level
+  query_string <- paste0("SUM(b20005.",vars$name, ") AS ", vars$name, collapse=",")
+```
+`get_b20005_ruca_aggregate_earnings` returns the query result `data.frame`s in a named `list`:
+
+```
+return(list("estimate" = estimate_rs, "moe" = moe_rs))
 ```
 
 ### <a name="calculate-median-r"></a>`calculate_median.R`
