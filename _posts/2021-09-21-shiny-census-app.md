@@ -947,7 +947,7 @@ get_b20005_ALL_labels <- function() {
 ## <a name="get-b20005-tract-earnings-r"></a>`get_b20005_tract_earnings.R`
 This function is similar to `get_b20005_ruca_aggregate_earnings` but does not aggregate by RUCA level, and also includes Census Tracts that are not designated a RUCA level. The `label_wildcard` is constructed the same way as before.
 
-### <a name="#get-variable-names-tract"></a>Get Variable Names
+### <a name="get-variable-names-tract"></a>Get Variable Names
 The variable `name`s are obtained for both margin of error and estimates in the same query:
 
 <br>
