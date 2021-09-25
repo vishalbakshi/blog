@@ -77,7 +77,7 @@ window.onload = wrap_img;
        • <span class="read-time" title="Estimated read time">
     
     
-      22 min read
+      23 min read
     
 </span></p>
 
@@ -510,9 +510,10 @@ Each section is separated with <code class="language-plaintext highlighter-rouge
 
 <ul>
   <li><code class="language-plaintext highlighter-rouge">b20005_vars</code> has the name (e.g. B20005_003E) and label (e.g. “Estimate!!Total!!Male!!Worked full-time, year-round in the past 12 months”) for all B20005 variables. Variable names ending with an <code class="language-plaintext highlighter-rouge">E</code> are estimates, and those ending with <code class="language-plaintext highlighter-rouge">M</code> are margins of error.</li>
-  <li><code class="language-plaintext highlighter-rouge">ruca</code> contains RUCA (Rural-Urban Commuting Area) codes published by the <a href="https://www.ers.usda.gov/data-products/rural-urban-commuting-area-codes.aspx">U.S. Department of Agriculture Economic Research Service</a> which classify U.S. census tracts using measures of population density. The following table shows the code ranges relevant to this app:
-<br /></li>
+  <li><code class="language-plaintext highlighter-rouge">ruca</code> contains RUCA (Rural-Urban Commuting Area) codes published by the <a href="https://www.ers.usda.gov/data-products/rural-urban-commuting-area-codes.aspx">U.S. Department of Agriculture Economic Research Service</a> which classify U.S. census tracts using measures of population density. The following table shows the code ranges relevant to this app:</li>
 </ul>
+
+<p><br /></p>
 
 <table>
   <thead>
@@ -546,6 +547,7 @@ Each section is separated with <code class="language-plaintext highlighter-rouge
 </table>
 
 <p><br /></p>
+
 <ul>
   <li><code class="language-plaintext highlighter-rouge">codes</code> holds state FIPS (Federal Information Processing Standards) codes and RUCA levels</li>
   <li><code class="language-plaintext highlighter-rouge">design_factors</code> contains Design Factors for different characteristics (e.g. Person Earnings/Income) which are used to determine “the standard error of total and percentage sample estimates”, and “reflect the effects of the actual sample design and estimation procedures used for the ACS.” (<a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2015_2019AccuracyPUMS.pdf">2015-2019 PUMS 5-Year Accuracy of the Data</a>).</li>
@@ -554,6 +556,7 @@ Each section is separated with <code class="language-plaintext highlighter-rouge
 <p>In <code class="language-plaintext highlighter-rouge">prep_db.R</code>, I use the <code class="language-plaintext highlighter-rouge">DBI</code> package, <code class="language-plaintext highlighter-rouge">censusapi</code> and <code class="language-plaintext highlighter-rouge">base</code> R functions to perform the following protocol for each table:</p>
 
 <h3 id="load-the-data-into-a-dataframe">Load the data into a <code class="language-plaintext highlighter-rouge">data.frame</code></h3>
+
 <ul>
   <li>For tables <code class="language-plaintext highlighter-rouge">b20005</code> and <code class="language-plaintext highlighter-rouge">b20005_vars</code>, I use the <code class="language-plaintext highlighter-rouge">censusapi::getCensus</code> and <code class="language-plaintext highlighter-rouge">censusapi::listCensusMetadata</code> repsectively to get the data</li>
 </ul>
@@ -597,7 +600,8 @@ Each section is separated with <code class="language-plaintext highlighter-rouge
     </span><span class="s2">"character"</span><span class="p">)</span><span class="w">
 </span><span class="p">)</span><span class="w">
 </span></code></pre></div></div>
-<h3 id="create-table"><code class="language-plaintext highlighter-rouge">CREATE TABLE</code></h3>
+
+<h3 id="create-database-tables">Create database tables</h3>
 
 <p>Once the data is ready, I use <code class="language-plaintext highlighter-rouge">DBI::dbExecute</code> to run a SQLite command to create each table. The relationships shown in the image above dictate which fields create the primary key (in some cases, a compound primary key) as listed below:</p>
 
@@ -638,12 +642,14 @@ Each section is separated with <code class="language-plaintext highlighter-rouge
   </tbody>
 </table>
 
-<h3 id="dbwritetable"><code class="language-plaintext highlighter-rouge">dbWriteTable</code></h3>
+<h3 id="write-to-the-database">Write to the database</h3>
 
 <p>Once the table has been created in the database, I write the <code class="language-plaintext highlighter-rouge">data.frame</code> to the corresponding table with the following call:</p>
 
 <div class="language-R highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">dbWriteTable</span><span class="p">(</span><span class="n">census_app_db</span><span class="p">,</span><span class="w"> </span><span class="s2">"&lt;table name&gt;"</span><span class="p">,</span><span class="w"> </span><span class="o">&lt;</span><span class="n">data.frame</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">append</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">TRUE</span><span class="w">
 </span></code></pre></div></div>
+
+<hr />
 
 <h2 id="get_b20005_ruca_aggregate_earningsr"><a name="get-b20005-ruca-aggregate-earnings-r"></a><code class="language-plaintext highlighter-rouge">get_b20005_ruca_aggregate_earnings.R</code></h2>
 <p>The function inside this script (with the same name), receives inputs from the server, sends queries to the database and returns the results. The querying process takes three steps:</p>
@@ -699,7 +705,7 @@ Each section is separated with <code class="language-plaintext highlighter-rouge
 </span></code></pre></div></div>
 <p>Once the variables are returned, the actual values are queried from <code class="language-plaintext highlighter-rouge">b20005</code>, grouped by RUCA level. The ACS handbook <a href="https://www.census.gov/content/dam/Census/library/publications/2020/acs/acs_general_handbook_2020.pdf">Understanding and Using American Community Survey Data: What All Data Users Need to Know</a> shows how to calculate that margin of error for derived estimates. In our case, the margin of error for a RUCA level such as “Urban” for a given state is derived from the margin of error of individual Census Tracts using the formula below:</p>
 
-<p><img src="/images/moe_formula.png" alt="The MOE for a sum of estimates is the square root of the sum of MOEs squared" /></p>
+<p><img src="/blog/images/moe_formula.png" alt="The MOE for a sum of estimates is the square root of the sum of MOEs squared" /></p>
 
 <p>Translating this to a SQLite query:</p>
 
@@ -712,7 +718,7 @@ Each section is separated with <code class="language-plaintext highlighter-rouge
 <div class="language-R highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="s2">"SQRT(SUM(POWER(b20005.B20005_001M, 2))) AS B20005_001M, SQRT(..."</span><span class="w">
 </span></code></pre></div></div>
 
-<p>The query is further built by adding other statements:</p>
+<p>The query is further built by adding the rest of the SQL statements:</p>
 
 <div class="language-R highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">query_string</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">paste</span><span class="p">(</span><span class="w">
     </span><span class="s2">"SELECT ruca.DESCRIPTION,"</span><span class="p">,</span><span class="w">
@@ -738,6 +744,7 @@ Each section is separated with <code class="language-plaintext highlighter-rouge
 
 <div class="language-R highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nf">return</span><span class="p">(</span><span class="nf">list</span><span class="p">(</span><span class="s2">"estimate"</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">estimate_rs</span><span class="p">,</span><span class="w"> </span><span class="s2">"moe"</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">moe_rs</span><span class="p">))</span><span class="w">
 </span></code></pre></div></div>
+<hr />
 
 <h2 id="calculate_medianr"><a name="calculate-median-r"></a><code class="language-plaintext highlighter-rouge">calculate_median.R</code></h2>
 <p>The procedure for calculating a median earnings data estimate is shown starting on page 17 of the Accuracy of PUMS documentation. This script follows it closely:</p>
@@ -893,6 +900,84 @@ Each section is separated with <code class="language-plaintext highlighter-rouge
 <hr />
 
 <h2 id="format_query_resultr"><a name="format-query-result-r"></a><code class="language-plaintext highlighter-rouge">format_query_result.R</code></h2>
+
+<p>The purpose of this function is to receive two <code class="language-plaintext highlighter-rouge">data.frame</code> objects, one for earnings <code class="language-plaintext highlighter-rouge">estimate</code> value, and one for the corresponding <code class="language-plaintext highlighter-rouge">moe</code> values, and return a single <code class="language-plaintext highlighter-rouge">data.frame</code> which is ready to be displayed in a <code class="language-plaintext highlighter-rouge">tableOutput</code>.</p>
+
+<p>Since <code class="language-plaintext highlighter-rouge">get_b20005_ruca_aggregate_earnings</code> returns a named list, I first pull out the <code class="language-plaintext highlighter-rouge">estimate</code> and <code class="language-plaintext highlighter-rouge">moe</code> <code class="language-plaintext highlighter-rouge">data.frame</code> objects:</p>
+
+<div class="language-R highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># Pull out query result data.frames from the list</span><span class="w">
+</span><span class="n">estimate</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">rs</span><span class="p">[[</span><span class="s2">"estimate"</span><span class="p">]]</span><span class="w">
+</span><span class="n">moe</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">rs</span><span class="p">[[</span><span class="s2">"moe"</span><span class="p">]]</span><span class="w">
+</span></code></pre></div></div>
+
+<p>These  <code class="language-plaintext highlighter-rouge">data.frame</code> objects have RUCA levels in the column <code class="language-plaintext highlighter-rouge">DESCRIPTION</code> and one column for each population estimate. For example, the <code class="language-plaintext highlighter-rouge">estimate</code> for Alabama Full Time Female workers looks like this:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: center"> </th>
+      <th style="text-align: center"><code class="language-plaintext highlighter-rouge">DESCRIPTION</code></th>
+      <th style="text-align: center">…</th>
+      <th style="text-align: center"><code class="language-plaintext highlighter-rouge">B20005_053E</code></th>
+      <th style="text-align: center"><code class="language-plaintext highlighter-rouge">B20005_054E</code></th>
+      <th style="text-align: center"><code class="language-plaintext highlighter-rouge">B20005_055E</code></th>
+      <th style="text-align: center">…</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: center">1</td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">Large Town</code></td>
+      <td style="text-align: center">…</td>
+      <td style="text-align: center">149</td>
+      <td style="text-align: center">257</td>
+      <td style="text-align: center">546</td>
+      <td style="text-align: center">…</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">2</td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">Rural</code></td>
+      <td style="text-align: center">…</td>
+      <td style="text-align: center">75</td>
+      <td style="text-align: center">66</td>
+      <td style="text-align: center">351</td>
+      <td style="text-align: center">…</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">3</td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">Small Town</code></td>
+      <td style="text-align: center">…</td>
+      <td style="text-align: center">28</td>
+      <td style="text-align: center">162</td>
+      <td style="text-align: center">634</td>
+      <td style="text-align: center">…</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">4</td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">Urban</code></td>
+      <td style="text-align: center">…</td>
+      <td style="text-align: center">468</td>
+      <td style="text-align: center">1061</td>
+      <td style="text-align: center">4732</td>
+      <td style="text-align: center">…</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">5</td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">Zero Population</code></td>
+      <td style="text-align: center">…</td>
+      <td style="text-align: center">0</td>
+      <td style="text-align: center">0</td>
+      <td style="text-align: center">0</td>
+      <td style="text-align: center">…</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>The <code class="language-plaintext highlighter-rouge">moe</code> <code class="language-plaintext highlighter-rouge">data.frame</code> has a similar layout.</p>
+
+<p>However, in the UI, I want the table to look like this:</p>
+
+<p><img src="/blog/images/alabama_ft_female_earnings_table.png" alt="Population estimates for earnings levels from $1 to $2499 up to $100000 and more for Alabama Full Time Female Workers" /></p>
 
 <h2 id="get_b20005_tract_earningsr"><a name="get-b20005-tract-earnings-r"></a><code class="language-plaintext highlighter-rouge">get_b20005_tract_earnings.R</code></h2>
 
