@@ -344,7 +344,23 @@ output$download_ruca_earnings <- downloadHandler(
 ### <a name="prep-db-r"></a>`prep_db.R`
 The database diagram is shown below (created using <a href="https://dbdiagram.io">dbdiagram.io</a>):
 
-![Database diag]({{ site.baseurl }}/images/census-app-db.jpg)
+![Database diagram showing the database table schemas and their relationships]({{ site.baseurl }}/images/census-app-db.jpg)
+
+I have five tables in my database:
+
+- `b20005` holds the data from the ACS 2015-2019 5-year detailed table B20005 (Sex By Work Experience In The Past 12 Months By Earnings In The Past 12 Months). This includes earnings estimates and margins of errors for Male and Female, Full Time and Other workers, for earning ranges (No earnings, $1 - $2499, $2500 - $4999, ..., $100000 or more). The following table summarizes the groupings of the (non-zero earnings) variables relevant to this app:
+
+|Variable|Demographic|
+|:-:|:-:|
+|B20005_003 to B20005_025|Male Full Time Workers|
+|B20005_029 to B20005_048|Male Other Workers|
+|B20005_050 to B20005_072|Female Full Time Workers|
+|B_ 076to B_095|Female Other Workers|
+
+- `b20005_vars` has the name (e.g. B20005_001E) and label (e.g. "Estimate!!Total") for all B20005 variables. Variable names ending with an `E` are estimates, and those ending with `M` are margins of error.
+- `ruca` contains RUCA (Rural-Urban Commuting Area) codes published by the <a href="https://www.ers.usda.gov/data-products/rural-urban-commuting-area-codes.aspx">U.S. Department of Agriculture Economic Research Service</a> which classify U.S. census tracts using measures of population density. The following table shows the code ranges relevant to this app:
+
+
 
 
 ### <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
