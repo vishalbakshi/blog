@@ -369,6 +369,7 @@ I have five tables in my database:
 
 - `b20005_vars` has the name (e.g. B20005_003E) and label (e.g. "Estimate!!Total!!Male!!Worked full-time, year-round in the past 12 months") for all B20005 variables. Variable names ending with an `E` are estimates, and those ending with `M` are margins of error.
 - `ruca` contains RUCA (Rural-Urban Commuting Area) codes published by the <a href="https://www.ers.usda.gov/data-products/rural-urban-commuting-area-codes.aspx">U.S. Department of Agriculture Economic Research Service</a> which classify U.S. census tracts using measures of population density. The following table shows the code ranges relevant to this app:
+
 <br>
 
 |RUCA Code|RUCA Level|
@@ -380,13 +381,16 @@ I have five tables in my database:
 |99|Zero Population|
 
 <br>
+
 - `codes` holds state FIPS (Federal Information Processing Standards) codes and RUCA levels
 - `design_factors` contains Design Factors for different characteristics (e.g. Person Earnings/Income) which are used to determine "the standard error of total and percentage sample estimates", and "reflect the effects of the actual sample design and estimation procedures used for the ACS." (<a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2015_2019AccuracyPUMS.pdf">2015-2019 PUMS 5-Year Accuracy of the Data</a>).
 
 In `prep_db.R`, I use the `DBI` package, `censusapi` and `base` R functions to perform the following protocol for each table:
 
 ### Load the data into a `data.frame`
+
 - For tables `b20005` and `b20005_vars`, I use the `censusapi::getCensus` and `censusapi::listCensusMetadata` repsectively to get the data
+
 
 ```R
 # TABLE b20005_vars ------------------------------
@@ -407,7 +411,9 @@ b20005_vars <- listCensusMetadata(
   )
 ```
 
+
 - For tables `codes`, `ruca`, and `design_factors` I load the data from CSVs that I either obtained (in the case of the <a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2019_PUMS_5yr_Design_Factors.csv">Design Factors</a>) or created (in the case of the codes and RUCA levels)
+
 
 ```R
  # TABLE codes ----------------------------------
@@ -427,7 +433,8 @@ ruca_levels <- read.csv(
     "character")
 )
 ```
-### `CREATE TABLE`
+
+### Create database tables
 
 Once the data is ready, I use `DBI::dbExecute` to run a SQLite command to create each table. The relationships shown in the image above dictate which fields create the primary key (in some cases, a compound primary key) as listed below:
 
@@ -439,13 +446,15 @@ Once the data is ready, I use `DBI::dbExecute` to run a SQLite command to create
 |`codes`|`(CODE, DESCRIPTION)`|e.g. `(1, "Urban")`| 
 |`design_factors`|`(ST, CHARACTERISTIC)`|e.g. `("27", "Person Earnings/Income")`|
 
-### `dbWriteTable`
+### Write to the database
 
 Once the table has been created in the database, I write the `data.frame` to the corresponding table with the following call:
 
 ```R
 dbWriteTable(census_app_db, "<table name>", <data.frame>, append = TRUE
 ```
+
+---
 
 ## <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
 The function inside this script (with the same name), receives inputs from the server, sends queries to the database and returns the results. The querying process takes three steps:
@@ -489,7 +498,7 @@ Since the `label` string contains the sex and work status, I assign a `label_wil
 ```
 Once the variables are returned, the actual values are queried from `b20005`, grouped by RUCA level. The ACS handbook <a href="https://www.census.gov/content/dam/Census/library/publications/2020/acs/acs_general_handbook_2020.pdf">Understanding and Using American Community Survey Data: What All Data Users Need to Know</a> shows how to calculate that margin of error for derived estimates. In our case, the margin of error for a RUCA level such as "Urban" for a given state is derived from the margin of error of individual Census Tracts using the formula below:
 
-![The MOE for a sum of estimates is the square root of the sum of MOEs squared]({{ site.base_url }}/images/moe_formula.png)
+![The MOE for a sum of estimates is the square root of the sum of MOEs squared]({{ site.baseurl }}/images/moe_formula.png)
 
 Translating this to a SQLite query:
 
@@ -504,7 +513,7 @@ Where `vars$name` is a list of variable names, and the `collapse` parameter conv
 "SQRT(SUM(POWER(b20005.B20005_001M, 2))) AS B20005_001M, SQRT(..."
 ```
 
-The query is further built by adding other statements:
+The query is further built by adding the rest of the SQL statements:
 
 ```R
 query_string <- paste(
@@ -533,6 +542,7 @@ The query for estimates is simpler than MOEs, because estimates only need to be 
 ```R
 return(list("estimate" = estimate_rs, "moe" = moe_rs))
 ```
+---
 
 ## <a name="calculate-median-r"></a>`calculate_median.R`
 The procedure for calculating a median earnings data estimate is shown starting on page 17 of the Accuracy of PUMS documentation. This script follows it closely:
@@ -673,6 +683,32 @@ median_data <- data.frame(
 ---
 
 ## <a name="format-query-result-r"></a>`format_query_result.R`
+
+The purpose of this function is to receive two `data.frame` objects, one for earnings `estimate` value, and one for the corresponding `moe` values, and return a single `data.frame` which is ready to be displayed in a `tableOutput`.
+
+Since `get_b20005_ruca_aggregate_earnings` returns a named list, I first pull out the `estimate` and `moe` `data.frame` objects:
+
+```R
+# Pull out query result data.frames from the list
+estimate <- rs[["estimate"]]
+moe <- rs[["moe"]]
+```
+
+These  `data.frame` objects have RUCA levels in the column `DESCRIPTION` and one column for each population estimate. For example, the `estimate` for Alabama Full Time Female workers looks like this:
+
+||`DESCRIPTION`|...|`B20005_053E`|`B20005_054E`|`B20005_055E`|...|
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+|1|`Large Town`|...|149|257|546|...|
+|2|`Rural`|...|75|66|351|...|
+|3|`Small Town`|...|28|162|634|...|
+|4|`Urban`|...|468|1061|4732|...|
+|5|`Zero Population`|...|0|0|0|...|
+
+The `moe` `data.frame` has a similar layout.
+
+However, in the UI, I want the table to look like this:
+
+![Population estimates for earnings levels from $1 to $2499 up to $100000 and more for Alabama Full Time Female Workers]({{ site.baseurl }}/images/alabama_ft_female_earnings_table.png)
 
 
 ## <a name="get-b20005-tract-earnings-r"></a>`get_b20005_tract_earnings.R`
