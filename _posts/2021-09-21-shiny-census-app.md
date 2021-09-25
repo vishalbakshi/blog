@@ -12,11 +12,11 @@ In this blog post, I'll walk through my development process for a U.S. Census da
 - [Codebase](#codebase)
   - [`app.R`](#app-r)
     - [What's in my `ui`?](#whats-in-my-ui)
-      - [Dropdowns]("#dropdowns")
+      - [Dropdowns](#dropdowns)
       - [Tables](#tables)
       - [Plot](#plot)
       - [Download buttons](#download-buttons)
-    - [What does my `server` do?](#whats-does-my-server-do)
+    - [What does my `server` do?](#what-does-my-server-do)
       - [Get Data](#get-data)
       - [Render Outputs](#render-outputs)
       - [Prepare Dynamic Text](#prepare-dynamic-text)
@@ -110,7 +110,7 @@ shinyApp(ui, server,...)
 ```
 The `ui` object holds all UI layout, input and output objects which define the front-end of your app. The `server` object holds all rendering functions which are assigned to outputs that appear on the UI. The `shinyApp` function takes a `ui` and `server` object (along with other arguments) and creates a shiny app object which can be run in a browser by passing it to the `runApp` function. Person inputs (such as selections in a dropdown) are assigned to a global `input` object.
 
-### What's in my `ui`?<a href="#whats-in-my-ui"></a>
+### What's in my `ui`?<a name="#whats-in-my-ui"></a>
 
 All of my UI objects are wrapped within a `fluidPage` call which returns a page layout which "consists of rows which in turn include columns" (from the [docs](https://shiny.rstudio.com/reference/shiny/latest/fluidPage.html)).
 
@@ -161,7 +161,7 @@ selectInput(
 In this case, if the person selects `"Large Town"` the value assigned to `input$ruca_level` is `"Large_Town"`.
 
 
-#### Tables<a href="#tables"></a>
+#### Tables<a name="#tables"></a>
 
 Tables (the HTML `<table>` element) are a type of UI Output. I define each with an `outputId` for reference in the server.
 
@@ -169,7 +169,7 @@ Tables (the HTML `<table>` element) are a type of UI Output. I define each with 
 tableOutput(outputId = "...")
 ```
 
-#### Plot<a href="#plot"></a>
+#### Plot<a name="#plot"></a>
 
 Similarly, a plot (which is rendered as an HTML `<img>` element) is a type of UI Output. I define each with an `outputId`.
 
@@ -177,7 +177,7 @@ Similarly, a plot (which is rendered as an HTML `<img>` element) is a type of UI
 plotOutput(outputId = "...")
 ```
 
-#### Download Buttons<a href="#download-buttons"></a>
+#### Download Buttons<a name="#download-buttons"></a>
 The download button (an HTML `<a>` element) is also a type of UI Output. I define each with an `outputId` and `label` (which is displayed as the HTML `textContent` attribute of the `<a>` element).
 
 ```R
@@ -187,7 +187,7 @@ downloadButton(
 )
 ```
 
-### What does my `server` do?<a href="#whats-does-my-server-do"></a>
+### What does my `server` do?<a name="#what-does-my-server-do"></a>
 The server function has three parameters: `input`, `output` and `session`. The `input` object is a `ReactiveValues` object which stores all UI Input values, which are accessed with `input$inputId`. The `output` object similarly holds UI Output values at `output$outputId`. I do not use the `session` object in my app (yet).
 
 My app’s server has four sections:
@@ -197,7 +197,7 @@ My app’s server has four sections:
 3. Prepare dynamic text (for filenames and the plot title)
 4. Handle data.frame and plot downloads
 
-#### Get Data<a href="#get-data"></a>
+#### Get Data<a name="#get-data"></a>
 There are three high-level functions which call query/format/calculation functions to return the data in the format necessary to produce table, text, download and plot outputs:
 
 - The `earnings_data` function passes the person-selected dropdown options `input$sex`, `input$work_status` and `input$state` to the `get_b20005_ruca_aggregate_earnings` function to get a query result from the SQLite database. That function call is passed to `format_earnings`, which in turn is passed to the `reactive` function to make it a reactive expression. Only reactive expressions (and reactive endpoints in the `output` object) are allowed to access the `input` object which is a reactive source. You can read more about Shiny's "reactive programming model" in this [excellent article](https://shiny.rstudio.com/articles/reactivity-overview.html). 
@@ -223,7 +223,7 @@ median_data <- reactive(calculate_median(earnings_data(), design_factor()))
 ```
 
 
-#### Render Outputs<a href="#render-outputs"></a>
+#### Render Outputs<a name="#render-outputs"></a>
 I have two reactive endpoints for table outputs, and one endpoint for a plot. The table outputs use `renderTable` (with row names displayed) with the `data.frame` coming from `median_data()` and `earnings_data()`. The plot output uses `renderPlot`, and a helper function `make_plot` to create a bar plot of `earnings_data()` for a person-selected `input$ruca_level` with a title created with the helper function `earnings_plot_title()`.
 
 ```R
@@ -242,7 +242,7 @@ output$earnings_histogram <- renderPlot(
     plot_title=earnings_plot_title()))
 ```
 
-#### Prepare Dynamic Text<a href="#prepare-dynamic-text"></a>
+#### Prepare Dynamic Text<a name="#prepare-dynamic-text"></a>
 I created four functions that generate filenames for the `downloadHandler` call when the corresponding `downloadButton` gets clicked, one function that generates the title used to generate the bar plot, and one function which takes computer-readable `character` objects (e.g. `"Large_Town"`) and maps it to and returns a more human-readable `character` object (e.g. `"Large Town"`). I chose to keep filenames more computer-readable (to avoid spaces) and the plot title more human-readable.
 
 ```R
@@ -307,7 +307,7 @@ earnings_plot_filename <- function(){
   }
 ```
 
-#### Handle downloads<a href="#handle-downloads"></a>
+#### Handle downloads<a name="#handle-downloads"></a>
 I have five download buttons in my app: two which trigger a download of a zip file with two CSVs, two that downloads a single CSV, and one that downloads a single PNG. The `downloadHandler` function takes a `filename` and a `content` function to write data to a file.
 
 In order to create a zip file, I use the `zip` base package function and pass it a vector with two filepaths (to which data is written using the base package's `write.csv` function) and a filename. I also specify the `contentType` as `"application/zip"`. In the zip file, one of the CSVs contains a query result from the `b20005` SQLite database table with earnings data, and the other file, `"b20005_variables.csv"` contains B20005 table variable names and descriptions. In order to avoid the files being written locally before download, I create a temporary directory with `tempdir` and prepend it to the filename to create the filepath.
@@ -399,7 +399,7 @@ output$download_ruca_earnings <- downloadHandler(
 ---
 
 ## <a name="prep-db-r"></a>`prep_db.R`
-This script is meant to be run locally, and is not deployed, as doing so would create a long delay to load the data.
+This script is meant to be run locally, and is not deployed, as doing so would create a long delay to load the app.
 
 ### Database Tables <a href="#database-tables"></a>
 
@@ -409,7 +409,7 @@ The database diagram is shown below (created using <a href="https://dbdiagram.io
 
 I have five tables in my database:
 
-### b20005 <a href="#b20005"></a>
+### b20005 <a name="#b20005"></a>
 Holds the data from the ACS 2015-2019 5-year detailed table B20005 (Sex By Work Experience In The Past 12 Months By Earnings In The Past 12 Months). This includes earnings estimates and margins of errors for Male and Female, Full Time and Other workers, for earning ranges (No earnings, $1 - $2499, $2500 - $4999, ..., $100000 or more). The following table summarizes the groupings of the (non-zero earnings) variables relevant to this app:
 
 <br>
@@ -423,7 +423,7 @@ Holds the data from the ACS 2015-2019 5-year detailed table B20005 (Sex By Work 
 
 <br>
 
-### b20005_vars<a href="#b20005-vars"></a>
+### b20005_vars<a name="#b20005-vars"></a>
 
 Has the name (e.g. B20005_003E) and label (e.g. "Estimate!!Total!!Male!!Worked full-time, year-round in the past 12 months") for all B20005 variables. Variable names ending with an `E` are estimates, and those ending with `M` are margins of error.
 - `ruca` contains RUCA (Rural-Urban Commuting Area) codes published by the <a href="https://www.ers.usda.gov/data-products/rural-urban-commuting-area-codes.aspx">U.S. Department of Agriculture Economic Research Service</a> which classify U.S. census tracts using measures of population density. The following table shows the code ranges relevant to this app:
@@ -440,13 +440,13 @@ Has the name (e.g. B20005_003E) and label (e.g. "Estimate!!Total!!Male!!Worked f
 
 <br>
 
-### codes<a href="#codes"></a>
+### codes<a name="#codes"></a>
 olds state FIPS (Federal Information Processing Standards) codes and RUCA levels
 - `design_factors` contains Design Factors for different characteristics (e.g. Person Earnings/Income) which are used to determine "the standard error of total and percentage sample estimates", and "reflect the effects of the actual sample design and estimation procedures used for the ACS." (<a href="https://www2.census.gov/programs-surveys/acs/tech_docs/pums/accuracy/2015_2019AccuracyPUMS.pdf">2015-2019 PUMS 5-Year Accuracy of the Data</a>).
 
 In `prep_db.R`, I use the `DBI` package, `censusapi` and `base` R functions to perform the following protocol for each table:
 
-### Load the Data<a href="#load-the-data"></a>
+### Load the Data<a name="#load-the-data"></a>
 
 - For tables `b20005` and `b20005_vars`, I use the `censusapi::getCensus` and `censusapi::listCensusMetadata` repsectively to get the data
 
@@ -493,7 +493,7 @@ ruca_levels <- read.csv(
 )
 ```
 
-### Create Tables<a href="#create-tables"></a>
+### Create Tables<a name="#create-tables"></a>
 
 Once the data is ready, I use `DBI::dbExecute` to run a SQLite command to create each table. The relationships shown in the image above dictate which fields create the primary key (in some cases, a compound primary key) as listed below:
 
@@ -505,7 +505,7 @@ Once the data is ready, I use `DBI::dbExecute` to run a SQLite command to create
 |`codes`|`(CODE, DESCRIPTION)`|e.g. `(1, "Urban")`| 
 |`design_factors`|`(ST, CHARACTERISTIC)`|e.g. `("27", "Person Earnings/Income")`|
 
-### Write to Tables<a href="#write-to-tables"></a>
+### Write to Tables<a name="#write-to-tables"></a>
 
 Once the table has been created in the database, I write the `data.frame` to the corresponding table with the following call:
 
@@ -518,7 +518,7 @@ dbWriteTable(census_app_db, "<table name>", <data.frame>, append = TRUE
 ## <a name="get-b20005-ruca-aggregate-earnings-r"></a>`get_b20005_ruca_aggregate_earnings.R`
 The function inside this script (with the same name), receives inputs from the server, sends queries to the database and returns the results. The querying process takes three steps:
 
-### Get Variable Names<a href="#get-variable-names"></a>
+### Get Variable Names<a name="#get-variable-names"></a>
 The person using the app selects Sex (M or F), Work Status (Full Time or Other) and State (50 states + D.C. + Puerto Rico) for which they want to view and analyze earnings data. As shown above, different variables in table `b20005` correspond to different sexes and work statuses, and each tract for which there is all that earnings data resides in a given state. 
 
 I first query `b20005_vars` to get the relevent variables names which will be used in the query to `b20005`, as shown below. `name`s that end with "M" (queried with the wilcard `'%M'`) are for margins of error and those that end with "E" (wildcard `'%E'`) are for estimates.
@@ -556,7 +556,7 @@ Since the `label` string contains the sex and work status, I assign a `label_wil
   }
 ```
 
-### Derive RUCA Level Estimates and MOE <a href="#derive-ruca-level-estimates-and-moe"></a>
+### Derive RUCA Level Estimates and MOE <a name="#derive-ruca-level-estimates-and-moe"></a>
 
 Once the variables are returned, the actual values are queried from `b20005`, grouped by RUCA level. The ACS handbook <a href="https://www.census.gov/content/dam/Census/library/publications/2020/acs/acs_general_handbook_2020.pdf">Understanding and Using American Community Survey Data: What All Data Users Need to Know</a> shows how to calculate that margin of error for derived estimates. In our case, the margin of error for a RUCA level such as "Urban" for a given state is derived from the margin of error of individual Census Tracts using the formula below:
 
@@ -609,7 +609,7 @@ return(list("estimate" = estimate_rs, "moe" = moe_rs))
 ## <a name="calculate-median-r"></a>`calculate_median.R`
 The procedure for calculating a median earnings data estimate is shown starting on page 17 of the Accuracy of PUMS documentation. This script follows it closely:
 
-### Create Frequency Distribution <a href="#create-frequency-distribution"></a>
+### Create Frequency Distribution <a name="#create-frequency-distribution"></a>
 
 1. _Obtain the weighted frequency distribution for the selected variable._ `data` is a `data.frame` with earning estimate values. The rows are the earning ranges and the columns are `ruca_level`s:
 
@@ -619,7 +619,7 @@ The procedure for calculating a median earnings data estimate is shown starting 
 cum_percent <- 100.0 * cumsum(data[ruca_level]) / sum(data[ruca_level])
 ```
 
-### Calculate Weighted Total<a href="#calculated-weighted-total"></a>
+### Calculate Weighted Total<a name="#calculated-weighted-total"></a>
 
 2. _Calculate the weighted total to yield the base, B._
 
@@ -629,7 +629,7 @@ cum_percent <- 100.0 * cumsum(data[ruca_level]) / sum(data[ruca_level])
 B <- colSums(data[ruca_level])
 ```
 
-### Approximate Standard Error<a href="#approximate-standard-error"></a>
+### Approximate Standard Error<a name="#approximate-standard-error"></a>
 
 3. _Approximate the standard error of a 50 percent proportion using the formula in Standard Errors for Totals and Percentages_. The `design_factor` is passed to this function by the server who uses the `get_design_factor` function explained below to query the `design_factors` table.
 
@@ -638,7 +638,7 @@ B <- colSums(data[ruca_level])
 ```R
 se_50_percent <- design_factor * sqrt(87.5/(12.5*B) * 50^2)
 ```
-### Calculate Median Estimate Bounds <a href="#calculate-median-estimate-bounds"></a>
+### Calculate Median Estimate Bounds <a name="#calculate-median-estimate-bounds"></a>
 
 4. _Create the variable p_lower by subtracting the SE from 50 percent. Create p_upper by adding the SE to 50 percent._
 
@@ -768,7 +768,7 @@ median_se <- 0.5 * (upper_bound - lower_bound)
 median_90_moe <- 1.645 * median_se
 ```
 
-### Reshape the Data<a href="#reshape-the-data"></a>
+### Reshape the Data<a name="#reshape-the-data"></a>
 Finally, a `data.frame` is returned, which will be displayed in a `tableOutput` element.
 
 <br>
@@ -787,7 +787,7 @@ median_data <- data.frame(
 
 The purpose of this function is to receive two `data.frame` objects, one for earnings `estimate` value, and one for the corresponding `moe` values, and return a single `data.frame` which is ready to be displayed in a `tableOutput`.
 
-### Extract `data.frame` Objects from List<a href="#extract-data-frame-objects-from-list"></a>
+### Extract `data.frame` Objects from List<a name="#extract-data-frame-objects-from-list"></a>
 
 Since `get_b20005_ruca_aggregate_earnings` returns a named list, I first pull out the `estimate` and `moe` `data.frame` objects:
 
@@ -799,7 +799,7 @@ estimate <- rs[["estimate"]]
 moe <- rs[["moe"]]
 ```
 
-### Reshape data.frame Objects<a href="#reshape-data-frame-objects"></a>
+### Reshape data.frame Objects<a name="#reshape-data-frame-objects"></a>
 
 These  `data.frame` objects have RUCA levels in the column `DESCRIPTION` and one column for each population estimate. For example, the `estimate` for Alabama Full Time Female workers looks like this:
 
@@ -870,7 +870,7 @@ colnames(output_table) <- col_names
 ```
 <br>
 
-### Add Descriptive Labels<a href="#add-descriptive-labels"></a>
+### Add Descriptive Labels<a name="#add-descriptive-labels"></a>
 
 Finally, `merge` the `output_table` `data.frame` with `labels` (long form description of the B20005 variables) which are retrieved from the database using the `get_b20005_labels` function explained later on in this post. Remember that the `label` is delimited with `"!!"` and the last substring contains earnings ranges (e.g. "$30,000 to $34,999"):
 
@@ -895,7 +895,7 @@ rownames(output_table) <- split_label$X6
 ## <a name="get-b20005-labels-r"></a>`get_b20005_labels.R`
 This script contains two helper functions to retrieve the `label` column from the `b20005_vars` table. 
 
-### Get Earnings Population Estimate Labels<a href="#get-earnings-population-estimate-labels"></a>
+### Get Earnings Population Estimate Labels<a name="#get-earnings-population-estimate-labels"></a>
 
 The first one, `get_b20005_labels` retrieves the variable `name` and `label` for earning range strings (e.g. "$30,000 to $34,999"):
 
@@ -919,7 +919,7 @@ get_b20005_labels <- function() {
 ```
 <br>
 
-### Get All Labels<a href="#get-all-labels"></a>
+### Get All Labels<a name="#get-all-labels"></a>
 
 The second function, `get_b20005_ALL_labels` returns the whole table:
 
@@ -947,7 +947,7 @@ get_b20005_ALL_labels <- function() {
 ## <a name="get-b20005-tract-earnings-r"></a>`get_b20005_tract_earnings.R`
 This function is similar to `get_b20005_ruca_aggregate_earnings` but does not aggregate by RUCA level, and also includes Census Tracts that are not designated a RUCA level. The `label_wildcard` is constructed the same way as before.
 
-### Get Variable Names<a href="#get-variable-names-tract"></a>
+### Get Variable Names<a name="#get-variable-names-tract"></a>
 The variable `name`s are obtained for both margin of error and estimates in the same query:
 
 <br>
@@ -964,7 +964,7 @@ vars <- dbGetQuery(
 
 <br>
 
-### Join Tables<a href="#join-tables"></a>
+### Join Tables<a name="#join-tables"></a>
 
 The tract-level earnings are queried with the following, using a `LEFT JOIN` between `b20005` and `ruca` tables to include tracts that do not have a RUCA level.
 
