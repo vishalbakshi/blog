@@ -77,7 +77,7 @@ window.onload = wrap_img;
        • <span class="read-time" title="Estimated read time">
     
     
-      16 min read
+      17 min read
     
 </span></p>
 
@@ -591,7 +591,9 @@ ruca_levels &lt;- read.csv(
 <p>The function inside this script (with the same name), receives inputs from the server, sends queries to the database and returns the results. The querying process takes three steps:</p>
 
 <h4 id="get-variable-names">Get variable names</h4>
-<p>The person using the app selects Sex (M or F), Work Status (Full Time or Other) and State (50 states + D.C. + Puerto Rico) for which they want to view and analyze earnings data. As shown above, different variables in table <code class="language-plaintext highlighter-rouge">b20005</code> correspond to different sexes and work statuses, and each tract for which there is all that earnings data, resides in a given state. I first query <code class="language-plaintext highlighter-rouge">b20005_vars</code> to get the relevent variables names which will be used in the query to <code class="language-plaintext highlighter-rouge">b20005</code>, as shown below. <code class="language-plaintext highlighter-rouge">name</code>s that end with “M” (queried with the wilcard <code class="language-plaintext highlighter-rouge">'%M'</code>) are for margins of error and those that end with “E” (wildcard <code class="language-plaintext highlighter-rouge">'%E'</code>) are for estimates.</p>
+<p>The person using the app selects Sex (M or F), Work Status (Full Time or Other) and State (50 states + D.C. + Puerto Rico) for which they want to view and analyze earnings data. As shown above, different variables in table <code class="language-plaintext highlighter-rouge">b20005</code> correspond to different sexes and work statuses, and each tract for which there is all that earnings data resides in a given state.</p>
+
+<p>I first query <code class="language-plaintext highlighter-rouge">b20005_vars</code> to get the relevent variables names which will be used in the query to <code class="language-plaintext highlighter-rouge">b20005</code>, as shown below. <code class="language-plaintext highlighter-rouge">name</code>s that end with “M” (queried with the wilcard <code class="language-plaintext highlighter-rouge">'%M'</code>) are for margins of error and those that end with “E” (wildcard <code class="language-plaintext highlighter-rouge">'%E'</code>) are for estimates.</p>
 
 <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vars &lt;- dbGetQuery(
     census_app_db, 
@@ -600,13 +602,29 @@ ruca_levels &lt;- read.csv(
     AND name LIKE '%M'",
     params=list(label_wildcard=label_wildcard))
 </code></pre></div></div>
-<p>The <code class="language-plaintext highlighter-rouge">b20005_vars.label</code> column holds long string labels (which follow a consistent pattern) that describe the variable’s contents. Here are a couple of examples:
-<br />
-|<code class="language-plaintext highlighter-rouge">b20005_vars.name</code>|<code class="language-plaintext highlighter-rouge">b20005_vars.label</code>|
-|:-:|:-:|
-|<code class="language-plaintext highlighter-rouge">B20005_053E</code>|<code class="language-plaintext highlighter-rouge">"Estimate!!Total!!Female!!Worked full-time, year-round in the past 12 months!!With earnings"</code>)|
-|<code class="language-plaintext highlighter-rouge">B20005_076M</code>|<code class="language-plaintext highlighter-rouge">"Margin of Error!!Total!!Female!!Other!!With earnings!!$1 to $2,499 or loss"</code>|
+<p>The <code class="language-plaintext highlighter-rouge">b20005_vars.label</code> column holds long string labels (which follow a consistent pattern, which is captured by the <code class="language-plaintext highlighter-rouge">$label_wildcard</code>) that describe the variable’s contents. Here are a couple of examples:
 <br /></p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: center"><code class="language-plaintext highlighter-rouge">b20005_vars.name</code></th>
+      <th style="text-align: center"><code class="language-plaintext highlighter-rouge">b20005_vars.label</code></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">B20005_053E</code></td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">"Estimate!!Total!!Female!!Worked full-time, year-round in the past 12 months!!With earnings"</code>)</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">B20005_076M</code></td>
+      <td style="text-align: center"><code class="language-plaintext highlighter-rouge">"Margin of Error!!Total!!Female!!Other!!With earnings!!$1 to $2,499 or loss"</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<p><br /></p>
 
 <p>Since the <code class="language-plaintext highlighter-rouge">label</code> string contains the sex and work status, I assign a <code class="language-plaintext highlighter-rouge">label_wildcard</code> based on the person inputs from the sex and work status UI dropdowns.</p>
 
@@ -620,6 +638,46 @@ ruca_levels &lt;- read.csv(
     if (work_status == 'FT') { label_wildcard &lt;- "%!!Female!!Worked%" }
     if (work_status == 'OTHER') { label_wildcard &lt;- "%!!Female!!Other%" }
   }
+</code></pre></div></div>
+<p>Once the variables are returned, the actual values are queried from <code class="language-plaintext highlighter-rouge">b20005</code>, grouped by RUCA level. The ACS handbook <a href="https://www.census.gov/content/dam/Census/library/publications/2020/acs/acs_general_handbook_2020.pdf">Understanding and Using American Community Survey Data: What All Data Users Need to Know</a> shows how to calculate that margin of error for derived estimates. In our case, the margin of error for a RUCA level such as “Urban” for a given state is derived from the margin of error of individual Census Tracts using the formula below:</p>
+
+<p><img src="/images/moe_formula.png" alt="The MOE for a sum of estimates is the square root of the sum of MOEs squared" /></p>
+
+<p>Translating this to a SQLite query:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code># Construct query string to square root of the sum of margins of error squared grouped by ruca level
+query_string &lt;- paste0(
+    "SQRT(SUM(POWER(b20005.", vars$name, ", 2))) AS ", vars$name, collapse=",")
+</code></pre></div></div>
+<p>Where <code class="language-plaintext highlighter-rouge">vars$name</code> is a list of variable names, and the <code class="language-plaintext highlighter-rouge">collapse</code> parameter converts a list or vector to a string. The beginning of that <code class="language-plaintext highlighter-rouge">query_string</code> looks like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>"SQRT(SUM(POWER(b20005.B20005_001M, 2))) AS B20005_001M, SQRT(..."
+</code></pre></div></div>
+
+<p>The query is further built by adding other statements:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>query_string &lt;- paste(
+    "SELECT ruca.DESCRIPTION,",
+    query_string,
+    "FROM 'b20005' 
+    INNER JOIN ruca 
+    ON b20005.state || b20005.county || b20005.tract = ruca.TRACTFIPS
+    WHERE 
+    b20005.state = $state
+    GROUP BY ruca.DESCRIPTION"
+  )
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">ruca.DESCRIPTION</code> column, which contains RUCA levels (e.g. <code class="language-plaintext highlighter-rouge">"Urban"</code>) is joined onto <code class="language-plaintext highlighter-rouge">b20005</code> from the <code class="language-plaintext highlighter-rouge">ruca</code> table using the foreign keys representing the Census Tract FIPS code (<code class="language-plaintext highlighter-rouge">TRACTFIPS</code> for the <code class="language-plaintext highlighter-rouge">ruca</code> table and the concatenated field <code class="language-plaintext highlighter-rouge">state || county || tract</code> for <code class="language-plaintext highlighter-rouge">b20005</code>). The <code class="language-plaintext highlighter-rouge">$state</code> parameter is assigned the person-selected <code class="language-plaintext highlighter-rouge">state</code> input, and the columns are aggreaggated by RUCA levels (i.e. <code class="language-plaintext highlighter-rouge">GROUP BY ruca.DESCRIPTION</code>). Finally, the RUCA level and square root of the sum of MOEs squared are <code class="language-plaintext highlighter-rouge">SELECT</code>ed from the joined tables.</p>
+
+<p>The query for estimates is simpler than MOEs, because estimates only need to be summed over RUCA levels:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code># Construct a query to sum estimates grouped by ruca level
+  query_string &lt;- paste0("SUM(b20005.",vars$name, ") AS ", vars$name, collapse=",")
+</code></pre></div></div>
+<p><code class="language-plaintext highlighter-rouge">get_b20005_ruca_aggregate_earnings</code> returns the query result <code class="language-plaintext highlighter-rouge">data.frame</code>s in a named <code class="language-plaintext highlighter-rouge">list</code>:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>return(list("estimate" = estimate_rs, "moe" = moe_rs))
 </code></pre></div></div>
 
 <h3 id="calculate_medianr"><a name="calculate-median-r"></a><code class="language-plaintext highlighter-rouge">calculate_median.R</code></h3>
