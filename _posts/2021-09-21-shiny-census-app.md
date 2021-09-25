@@ -795,7 +795,7 @@ colnames(output_table) <- col_names
 ```
 <br>
 
-...finally, `merge` the `output_table` `data.frame` with `labels` (long form description of the B20005 variables) which are retrieved from the database using the `get_b20005_labels` function explained later on in this post. Remember that the `label` is delimited with `"!!"` and the last substring contains earnings ranges (e.g. "$30,000 to $34,999")
+...finally, `merge` the `output_table` `data.frame` with `labels` (long form description of the B20005 variables) which are retrieved from the database using the `get_b20005_labels` function explained later on in this post. Remember that the `label` is delimited with `"!!"` and the last substring contains earnings ranges (e.g. "$30,000 to $34,999"):
 
 <br>
 
@@ -864,12 +864,122 @@ get_b20005_ALL_labels <- function() {
 ---
 
 ## <a name="get-b20005-tract-earnings-r"></a>`get_b20005_tract_earnings.R`
+This function is similar to `get_b20005_ruca_aggregate_earnings` but does not aggregate by RUCA level, and also includes Census Tracts that are not designated a RUCA level. The `label_wildcard` is constructed the same way as before.
+
+The variable `name`s are obtained for both margin of error and estimates in the same query:
+
+<br>
+
+```R
+ # Get b20005 variable names (estimates and moe)
+vars <- dbGetQuery(
+  census_app_db, 
+  "SELECT name FROM b20005_vars 
+  WHERE label LIKE $label_wildcard",
+  params=list(label_wildcard=label_wildcard)
+  )
+```
+
+<br>
+
+The tract-level earnings are queried with the following, using a `LEFT JOIN` between `b20005` and `ruca` tables to include tracts that do not have a RUCA level.
+
+<br>
+
+```R
+# Construct query to get tract-level earnings data
+query_string <- paste(
+  "SELECT ruca.DESCRIPTION,
+  b20005.state || b20005.county || b20005.tract AS TRACTFIPS,",
+  paste0(vars$name, collapse=","),
+  "FROM b20005 
+  LEFT JOIN ruca 
+  ON b20005.state || b20005.county || b20005.tract = ruca.TRACTFIPS
+  WHERE 
+  b20005.state LIKE $state")
+```
+
+<br>
+
+---
 
 ## <a name="get-b20005-states-r"></a>`get_b20005_states.R`
+This function retrieves state codes and names from the `codes` table, and is used to assign `choices` to `selectInput` dropdowns. `"United States"` which has a FIPS code of `"00"` is excluded because the `b20005` table contains state-level data only. The query result is sorted by the state name so that the dropdown menu `choices` are in ascending alphabetical order.
+
+```R
+states <- dbGetQuery(
+  census_app_db, 
+  "SELECT DESCRIPTION, CODE
+  FROM codes 
+  WHERE CATEGORY = 'state'
+  AND CODE <> '00'
+  ORDER BY DESCRIPTION")
+```
+
+<br>
+
+---
 
 ## <a name="get-design-factor-r"></a>`get_design_factor.R`
+This function retrieves a single numeric Design Factor for the "Person Earnings/Income" characteristic from the `design_factors` table for a given `state` parameter:
 
+<br>
 
+```R
+rs <- dbGetQuery(
+  census_app_db, 
+  "SELECT DESIGN_FACTOR FROM design_factors
+  WHERE ST = $state
+  AND CHARACTERISTIC = 'Person Earnings/Income'",
+  params = list(state=state))
+
+rs <- as.numeric(rs[1, "DESIGN_FACTOR"])
+```
+
+<br>
+
+---
 
 ## <a name="make-plot-r"></a>`make_plot.R`
+This is function creates a `ggplot.bar_plot` object using a given data, RUCA level, and title. The x-axis labels are rotated, both axis labels are resized, and plot title and subtitle are formatted.
 
+<br>
+
+```R
+make_plot <- function(data, ruca_level, plot_title){
+  # Prepare x-axis factor for `aes` parameter
+  xs <- rownames(data)
+  xs <- factor(xs, xs)
+
+  bar_plot <- ggplot(
+    data=data,
+    aes(x=xs, y=get(ruca_level))) + 
+    geom_bar(stat='identity') + 
+
+    theme(
+      # Rotate x-axis labels
+      axis.text.x=element_text(
+        angle = -90, 
+        vjust = 0.5, 
+        hjust=1, 
+        size=12),
+
+      # Resize x-axis labels and move them away from axis
+      axis.title.x=element_text(vjust=-0.75,size=14),
+
+      # Resize y-axis labels
+      axis.text.y=element_text(size=12),
+      axis.title.y=element_text(size=14),
+
+      # Set plot title and subtitle font and placement
+      plot.title = element_text(size = 18, hjust=0.5, face='bold'),
+      plot.subtitle = element_text(size = 12, hjust=0.5)) +
+
+    labs(x="Earnings", y="Population Estimate") + 
+    ggtitle(plot_title, subtitle="Population Estimate by Earnings Level")
+
+  return (bar_plot)
+}
+```
+
+<br>
