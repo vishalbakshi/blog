@@ -4,7 +4,9 @@ description: An explanation of my development process for a census data shiny ap
 categories: [markdown]
 title: R Shiny Census App
 ---
-In this blog post, I'll walk through my development process for a U.S. Census data visualization web app I created using the Shiny package in R. You can access the app at [vbakshi.shinyapps.io/census-app](http://vbakshi.shinyapps.io/census-app). In the following video, I demonstrate how to use the app and provide a high-level walk through of the codebase, with details provided below.
+In this blog post, I'll walk through my development process for a U.S. Census data visualization web app I created using the Shiny package in R. 
+
+You can access the app at [vbakshi.shinyapps.io/census-app](http://vbakshi.shinyapps.io/census-app). 
 
 ## Table of Contents
 
@@ -1065,5 +1067,11 @@ make_plot <- function(data, ruca_level, plot_title){
   return (bar_plot)
 }
 ```
+
+<br>
+
+---
+
+If you would like to get in touch, please email me at vdbakshi@gmail.com.
 
 <br>
