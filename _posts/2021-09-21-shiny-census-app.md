@@ -120,7 +120,7 @@ My app's UI has four sections:
 
 1. Dropdowns to select state, sex and work status for which the person using the app wants ACS 5-year earnings estimates
 
-![Dropdowns to select state, sex and work status for which the person using the app wants ACS 5-year earnings estimates]({{ site.baseurl }}/images/ui_dropdowns.png)
+<img src="{{ site.baseurl }}/images/ui_dropdowns.png" alt="Dropdowns to select state, sex and work status for which the person using the app wants ACS 5-year earnings estimates" width="30%"/>
 
 2. A table with the estimate, standard error and margin of error for median earnings
 
