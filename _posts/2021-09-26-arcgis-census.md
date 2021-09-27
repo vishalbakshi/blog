@@ -26,7 +26,8 @@ In this blog post, I’ll walk through my process of creating an ArcGIS geodatab
 - [Normalize the Data](#normalize-the-data)
   - [Create Additional Layouts](#create-additional-layouts)
 
-## Get the Data
+## Get the Data<a name=""></a>
+
 ### Tract Boundaries<a name=""></a>
 
 - Download and unzip 2019 TIGER Shapefile for MN (tl_2019_27_tract.zip) (corresponds to the final year, 2019, in the ACS 5-year estimates). These will contain the Census Tract geographies needed to create a map in ArcGIS.
@@ -116,13 +117,41 @@ write.xlsx(B20005, “acs5_b20005_minnesota.xlsx”, row.names = FALSE)
 
 <br>
 
+## Connect Data to Geodatabase<a name=""></a>
 
+Open ArcGIS Pro and start a new project.
+
+### Tract Boundaries<a name=""></a>
+
+- Right click _Folders_ in the **Contents** pane and click _Add folder_ connection
 
 <img src="{{ site.baseurl }}/images/arcgis_07.png" width="50%" />
+
+- Select the downloaded (and extracted) _tl_2019_27_tract_ folder and click **OK**
+
 <img src="{{ site.baseurl }}/images/arcgis_08.png" width="50%" />
+
+- Click on _tl_2019_27_tract_ folder in the **Contents** pane
+
+- In the **Catalog** pane, right-click _tl_2019_27.shp_ and then click _Export > Feature Class to Geodatabase_
+
 <img src="{{ site.baseurl }}/images/arcgis_09.png" width="50%" />
+
+- Confirm _Input Features_ (tl_2019_27_tract.shp) and _Output Geodatabase_ (Default.gdb or whatever geodatabase you are connected to) and then click the green **Run** button
+
+- Refresh the Geodatabase and click on it in the **Contents** pane to view the added shapefile
+
 <img src="{{ site.baseurl }}/images/arcgis_10.png" width="50%" />
+
+### ACS 5-Year Estimates<a name=""></a>
+
+- Under the **View** ribbon click on _Geoprocessing_ to open that pane
+
+- In the **Geoprocessing** pane, search for _Join Field_ and click on it
+
 <img src="{{ site.baseurl }}/images/arcgis_11.png" width="50%" />
+
+
 <img src="{{ site.baseurl }}/images/arcgis_12.png" width="50%" />
 <img src="{{ site.baseurl }}/images/arcgis_13.png" width="50%" />
 <img src="{{ site.baseurl }}/images/arcgis_14.png" width="50%" />
