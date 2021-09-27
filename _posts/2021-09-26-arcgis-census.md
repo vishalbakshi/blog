@@ -9,6 +9,13 @@ By Vishal Bakshi
 
 In this blog post, I’ll walk through my process of creating an ArcGIS geodatabase and a set of layouts visualizing U.S. Census Data. The data used for this app is from table B20005 (Sex By Work Experience In The Past 12 Months By Earnings In The Past 12 Months).
 
+You can view the final layout PDFs at the following links:
+
+- [Minnesota Female Full Time Worker Estimates by Tract - Counts.pdf](https://github.com/vishalbakshi/blog/blob/master/images/Minnesota%20Female%20Full%20Time%20Worker%20Estimates%20by%20Tract%20-%20Counts.pdf)
+- [Minnesota Female Full Time Worker Estimates by Tract - Percentages.pdf](https://github.com/vishalbakshi/blog/blob/master/images/Minnesota%20Female%20Full%20Time%20Worker%20Estimates%20by%20Tract%20-%20Percentages.pdf)
+- [Minnesota Male Full Time Worker Estimates by Tract - Counts.pdf](https://github.com/vishalbakshi/blog/blob/master/images/Minnesota%20Male%20Full%20Time%20Worker%20Estimates%20by%20Tract%20-%20Counts.pdf)
+- [Minnesota Male Full Time Worker Estimates by Tract - Percentages.pdf](https://github.com/vishalbakshi/blog/blob/master/images/Minnesota%20Male%20Full%20Time%20Worker%20Estimates%20by%20Tract%20-%20Percentages.pdf)
+
 ## Table of Contents
 
 - [Get the Data](#get-the-data)
@@ -26,15 +33,15 @@ In this blog post, I’ll walk through my process of creating an ArcGIS geodatab
 - [Normalize the Data](#normalize-the-data)
   - [Create Additional Layouts](#create-additional-layouts)
 
-## Get the Data<a name=""></a>
+## Get the Data<a name="get-the-data"></a>
 
-### Tract Boundaries<a name=""></a>
+### Tract Boundaries<a name="tract-boundaries-1"></a>
 
 - Download and unzip 2019 TIGER Shapefile for MN (tl_2019_27_tract.zip) (corresponds to the final year, 2019, in the ACS 5-year estimates). These will contain the Census Tract geographies needed to create a map in ArcGIS.
 
-### ACS 5-Year Estimates<a name=""></a>
+### ACS 5-Year Estimates<a name="acs-5-year-estimates-1"></a>
 
-#### Using data.census.gov<a name=""></a>
+#### Using data.census.gov<a name="using-data-census-gov"></a>
 
 - On data.census.gov, search for B20005
 
@@ -66,7 +73,7 @@ In this blog post, I’ll walk through my process of creating an ArcGIS geodatab
 
 - Save/export the file as .XLSX
 
-#### Using the `censusapi` R package<a name=""></a>
+#### Using the `censusapi` R package<a name="using-censusapi"></a>
 
 Pass the following arguments to the `censusapi::listCensusMetadata` function and assign its return value to `B20005_vars`:
 
@@ -83,7 +90,7 @@ B20005_vars <- censusapi::listCensusMetadata(
 <br>
 
 - Pass the following arguments to censusapi::getCensus and assign its return value to B20005:
-- 
+
 <br>
 
 ```R
@@ -117,11 +124,11 @@ write.xlsx(B20005, “acs5_b20005_minnesota.xlsx”, row.names = FALSE)
 
 <br>
 
-## Connect Data to Geodatabase<a name=""></a>
+## Connect Data to Geodatabase<a name="connect-data-to-geodatabase"></a>
 
 Open ArcGIS Pro and start a new project.
 
-### Tract Boundaries<a name=""></a>
+### Tract Boundaries<a name="tract-boundaries-2"></a>
 
 - Right click _Folders_ in the **Contents** pane and click _Add folder_ connection
 
@@ -143,7 +150,7 @@ Open ArcGIS Pro and start a new project.
 
 <img src="{{ site.baseurl }}/images/arcgis_10.png" width="50%" />
 
-### ACS 5-Year Estimates<a name=""></a>
+### ACS 5-Year Estimates<a name="acs-5-year-estimates-2"></a>
 
 - Under the **View** ribbon click on _Geoprocessing_ to open that pane
 
@@ -151,8 +158,10 @@ Open ArcGIS Pro and start a new project.
 
 <img src="{{ site.baseurl }}/images/arcgis_11.png" width="50%" />
 
+
 - Next to _Input Table_ click on the folder icon to _Browse_. Select the _tl_2019_27_tract_ table in your geodatabase
--
+
+
 <img src="{{ site.baseurl }}/images/arcgis_12.png" width="50%" />
 
 - Click the **Input Join Field** dropdown and select _GEOID_
@@ -177,11 +186,11 @@ Open ArcGIS Pro and start a new project.
 
 <img src="{{ site.baseurl }}/images/arcgis_16.png" width="50%" />
 
-## Visualize the Data<a name=""></a>
+## Visualize the Data<a name="visualize-data"></a>
 
 In this section, I’ll create maps and layouts to visualize the population estimates using Census Tract spatial data.
 
-### Create a Map<a name=""></a>
+### Create a Map<a name="create-a-map"></a>
 
 - In the **Catalog pane**, right-click _tl_2019_27_tract > Add to New > Map_
 
@@ -193,7 +202,7 @@ In this section, I’ll create maps and layouts to visualize the population esti
 
 <img src="{{ site.baseurl }}/images/arcgis_19.png" width="50%" />
 
-### Create a Symbology<a name=""></a>
+### Create a Symbology<a name="create-a-symbology"></a>
 
 - Select the _tl_2019_27_tract_ layer in **Contents** pane
 
@@ -223,7 +232,7 @@ In this section, I’ll create maps and layouts to visualize the population esti
 
 <img src="{{ site.baseurl }}/images/arcgis_25.png" width="50%" />
 
-### Create a Layout<a name=""></a>
+### Create a Layout<a name="create-a-layout"></a>
 
 Under the **Insert** ribbon click on _New Layout_ and _Letter (8.5” x 11”)_
 
@@ -273,7 +282,7 @@ Under the **Insert** ribbon click on _New Layout_ and _Letter (8.5” x 11”)_
 
 <img src="{{ site.baseurl }}/images/arcgis_37.png" width="50%" />
 
-## Normalize the Data<a name=""></a>
+## Normalize the Data<a name="normalize-the-data"></a>
 
 While the worker population estimates gives us a sense of how workers are distributed across the state, they are a proxy for population density. Census Tracts in Urban areas, like the Minneapolis, will likely have more workers than Rural areas, because they have a higher population. To supplement this layout, I’ll create layouts that show the percentage of the total sex population who are full time workers.
 
@@ -309,7 +318,7 @@ While the worker population estimates gives us a sense of how workers are distri
 
 <img src="{{ site.baseurl }}/images/arcgis_45.png" width="50%" />
 
-### Create Additional Layouts<a name=""></a>
+### Create Additional Layouts<a name="create-additional-layouts"></a>
 
 - Repeat the process to create the following Layouts given the following class breaks
   - Female Full Time Estimates
