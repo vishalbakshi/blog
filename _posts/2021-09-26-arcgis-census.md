@@ -32,6 +32,7 @@ In this blog post, I’ll walk through my process of creating an ArcGIS geodatab
 - Download and unzip 2019 TIGER Shapefile for MN (tl_2019_27_tract.zip) (corresponds to the final year, 2019, in the ACS 5-year estimates). These will contain the Census Tract geographies needed to create a map in ArcGIS.
 
 ### ACS 5-Year Estimates<a name=""></a>
+
 #### Using data.census.gov<a name=""></a>
 
 - On data.census.gov, search for B20005
@@ -53,7 +54,70 @@ In this blog post, I’ll walk through my process of creating an ArcGIS geodatab
 - In the **Geo*** section, click _Tract > Minnesota > All Census Tracts within Minnesota_
 
 <img src="{{ site.baseurl }}/images/arcgis_05.png" width="50%" />
+
+- Once it’s finished loading, click **Close** and then **Download Table**
+
 <img src="{{ site.baseurl }}/images/arcgis_06.png" width="50%" />
+
+- Once downloaded, extract the zip folder and open the file _ACSDT52015.B20005_data_with_overlays_….xslx_ in Excel any tool that can handle tabular data
+
+- Slice the last 11 characters of the _GEO_ID_ (using the **RIGHT** function in a new column) to replace the existing _GEO_ID_ column values. For example, a GEO_ID of _1400000US27029000100_ should be replaced with _27029000100_. This will later on be matched with the _GEOID_ field in the _tl_2019_27_tract_ shapefile
+
+- Save/export the file as .XLSX
+
+#### Using the `censusapi` R package<a name=""></a>
+
+Pass the following arguments to the `censusapi::listCensusMetadata` function and assign its return value to `B20005_vars`:
+
+<br>
+
+```R
+B20005_vars <- censusapi::listCensusMetadata(
+  name="acs/acs5",
+  vintage="2015",
+  type="variables",
+  group="B20005"
+)
+```
+<br>
+
+- Pass the following arguments to censusapi::getCensus and assign its return value to B20005:
+- 
+<br>
+
+```R
+B20005 <- censusapi::listCensusMetadata(
+  name="acs/acs5",
+  vintage="2015",
+  region="tract:*",
+  regionin="state:27", # 27 = Minnesota state FIPS code
+  vars=c("GEO_ID", "NAME", B20005_vars$name)
+)
+```
+<br>
+
+- Replace _GEO_ID_ (or create a new column) with the last 11 characters
+
+<br>
+
+```R
+B20005 <- substr(B20005$GEO_ID, 10, 20)
+```
+
+<br>
+
+- Export to an .XLSX file
+
+<br>
+
+```R
+write.xlsx(B20005, “acs5_b20005_minnesota.xlsx”, row.names = FALSE)
+```
+
+<br>
+
+
+
 <img src="{{ site.baseurl }}/images/arcgis_07.png" width="50%" />
 <img src="{{ site.baseurl }}/images/arcgis_08.png" width="50%" />
 <img src="{{ site.baseurl }}/images/arcgis_09.png" width="50%" />
