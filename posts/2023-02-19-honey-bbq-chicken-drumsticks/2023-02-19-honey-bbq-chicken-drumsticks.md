@@ -4,9 +4,10 @@ aliases:
 categories:
 - food
 date: '2023-02-19'
-description: An update on my goal to make 10/10 chicken wings
+date-modified: '2023-02-20'
+description: An update on my goal to make 10/10 chicken wings by the 2023 NFL season.
 layout: post
-title: Making Honey BBQ Chicken Drumsticks
+title: Making Chicken Wings
 author: Vishal Bakshi
 ---
 

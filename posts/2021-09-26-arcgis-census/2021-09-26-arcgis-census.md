@@ -5,6 +5,7 @@ categories:
 - ArcGIS
 - data analysis
 date: '2021-09-26'
+date-modified: '2023-02-20'
 description: A tutorial to create a geodatabase, maps and layouts to visualize U.S.
   Census Data in ArcGIS Pro
 layout: post
