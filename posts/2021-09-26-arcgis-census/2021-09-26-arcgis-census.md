@@ -10,6 +10,7 @@ description: A tutorial to create a geodatabase, maps and layouts to visualize U
 layout: post
 title: Visualize U.S. Census Data with ArcGIS
 freeze: true
+author: Vishal Bakshi
 ---
 
 ![A chloropleth map of Minnesota Census data](arcgis_25.png)

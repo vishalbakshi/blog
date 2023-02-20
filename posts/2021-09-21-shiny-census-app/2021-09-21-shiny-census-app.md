@@ -10,6 +10,7 @@ description: An explanation of my development process for a census data shiny ap
 layout: post
 title: R Shiny Census App
 freeze: true
+author: Vishal Bakshi
 ---
 
 In this blog post, I'll walk through my development process for a U.S. Census data visualization web app I created using the Shiny package in R. 
