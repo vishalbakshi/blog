@@ -7,7 +7,7 @@ categories:
   - statistics
 ---
 
-In this blog post, I will work through the textbook [Regression and Other Stories](https://users.aalto.fi/~ave/ROS.pdf) by Andrew Gelman, Jennifer Hill, and Aki Vehtari.
+In this blog post, I will work through the textbook [*Regression and Other Stories*](https://users.aalto.fi/~ave/ROS.pdf) by Andrew Gelman, Jennifer Hill, and Aki Vehtari. I'll be posting excerpts (sometimes verbatim), notes (paraphrased excerpts) and my thoughts about the content (and any other related reading that I come across while understanding the textbook topics).
 
 Before I get into the reading, I'll note that I have not posted my solutions to exercises to honor the request of one of the authors, Aki Vehtari:
 
@@ -117,7 +117,7 @@ library(rprojroot)
 
     -   *Chapter 17*: Use poststratification to generalize from sample to population, and use regression models to impute missing data
 
--   Part 5
+-   Part 5: Implement and understand basic statistical designs and analyses for causal inference
 
     -   *Chapter 18*: Understand assumptions underlying causal inference with a focus on randomized experiments
 
@@ -127,7 +127,7 @@ library(rprojroot)
 
     -   *Chapter 21*: Understand the assumptions underlying more advanced methods that use auxiliary variables or particular data structures to identify causal effects, and be able to fit these models to data
 
--   Part 6
+-   Part 6: Become aware of more advanced regression models
 
     -   *Chapter 22*: Get a sense of the directions in which linear and generalized linear models can be extended to attack various classes of applied problems
 
@@ -138,3 +138,257 @@ library(rprojroot)
     -   *Appendix B*: Become aware of some important ideas in regression workflow
 
 After working through the book, you should be able to fit, graph, understand, and evaluate linear and generalized linear models and use these model fits to make predictions and inferences about quantities of interest, including causal effects of treatments and exposures.
+
+# Part 1: Fundamentals
+
+## Chapter 1: Overview
+
+Alternate title: *Prediction as a unifying theme in statistics and causal inference*
+
+### 1.1 The three challenges of statistics
+
+1.  *Generalizing from sample to population*
+2.  *Generalizing from treatment to support group*
+3.  *Generalizing from observed measurements to the underlying constructs of interest*
+
+**Prediction**: for new people or new items that are not in the sample, future outcomes under differently potentially assigned treatments, and underlying constructs of interest, if they could be measured exactly.
+
+Key skills you should learn from this book:
+
+-   *Understanding regression models:* mathematical models for predicting an outcome variable from a set of predictors, starting with straight-line fits and moving to various nonlinear generalizations
+
+-   *Constructing regression models:* with many options involving the choice of what variables to include and how to transform and constrain them
+
+-   *Fitting regression models to data*
+
+-   *Displaying and interpreting the results*
+
+**Inference**: using mathematical models to make general claims from particular data.
+
+### 1.2 Why learn regression?
+
+**Regression**: a method that allows researchers to summarize how predictions or average values of an *outcome* vary across individuals defined by a set of *predictors*.
+
+```{r}
+# load the data
+data(hibbs)
+
+# make a scatterplot
+plot(
+  hibbs$growth, 
+  hibbs$vote, 
+  xlab = "Average recent growth in personal income",
+  ylab = "Incumbent party's vote share")
+```
+
+```{r}
+#| output: false
+# estimate the regression: y = a + bx + error
+M1 <- stan_glm(vote ~ growth, data=hibbs)
+
+```
+
+```{r}
+# make a scatter plot
+plot(
+  hibbs$growth, 
+  hibbs$vote, 
+  xlab = "Average recent growth in personal income",
+  ylab = "Incumbent party's vote share")
+
+# add fitted line to the graph
+abline(coef(M1), col = 'gray')
+```
+
+```{r}
+# display the fitted model
+print(M1)
+```
+
+*y* = 46.3 + 3.0*x*
+
+**MAD**: Median Absolute Deviations.
+
+**sigma**: the scale of the variation in the data explained by the regression model (the scatter of points above and below the regression line). The linear model predicts vote share roughly to an accuracy of 3.9 percentage points.
+
+Some of the most important uses of regression:
+
+-   *Prediction*: Modeling existing observations or forecasting new data.
+
+-   *Exploring associations*: Summarizing how well one variable, or set of variables, predicts the outcome. One can use a model to explore associations, stratifications, or structural relationships between variables.
+
+-   *Extrapolation*: Adjusting for known differences between the *sample* (observed data) and a population of interest.
+
+-   *Causal inference*: Estimating treatment effects. A key challenge of causal inference is ensuring that treatment and control groups are similar, on average, before exposure to treatment, or else adjusting for differences between these groups.
+
+### 1.3 Some examples of regression
+
+#### Estimating public opinion from an opt-in internet survey
+
+-   A characteristic problem of big data: a very large sample, relatively inexpensive to collect, but not immediately representative of the larger population
+
+#### A randomized experiment on the effect of an educational television program
+
+#### Estimating the effects of United Nations peacekeeping, using pre-treatment variables to adjust for differences between treatment and control groups
+
+-   Selection bias: perhaps peacekeepers chose the easy cases, which would explain the difference in outcomes. The treatment--peacekeeping--was not randomly assigned. They had an *observational study* rather than an *experiment*, where we must do our best to adjust for pre-treatment differences between the treatment and control groups.
+
+-   Censoring: certain ranges of data cannot be observed (e.g. countries where civil war had not yet returned by the time data collection ended)
+
+-   When adjusting for badness, peacekeeping was performed in tougher conditions, on average. As a result, the adjustment increases the estimated beneficial effects of peacekeeping, at least during the study.
+
+#### Estimating the effects of gun laws, and the difficulty of inference using regression with a large number of predictors
+
+-   In this sort of regression with 50 data points and 30 predictors and no prior information to guide the inference, the coefficient estimates will be hopelessly noisy and compromised by dependence among predictors.
+
+-   The treatments are observational and not externally applied. There is no reason to believe that the big differences in gun-related deaths between states are mostly attributable to particular policies.
+
+#### Comparing the peacekeeping and gun-control studies
+
+-   In both cases, policy conclusions have been drawn from observational data, using regression modeling to adjust for differences between treatment and control groups.
+
+-   It is more practical to perform adjustments when there is a single goal (peacekeeping study)
+
+    -   particular concern that the UN might be more likely to step in when the situation on the ground was not so bad
+
+    -   the data analysis found the opposite
+
+    -   the measure of badness is constructed based on particular measured variables and so it is possible that there are important unmeasured characteristics that would cause adjustments to go the other way
+
+-   The gun-control model adjusts for many potential causal variables at once
+
+    -   The effect of each law is estimated conditional on all others being held constant (not realistic---no particular reason for their effects to add up in a simple manner)
+
+    -   The comparison is between states, which vary in systematic ways (it is not at all clear that a simple model can hope to adjust for the relevant differences)
+
+    -   Regression analysis was taken naively to be able to control for variation and give valid causal inference from observational data
+
+### 1.4 Challenges in building, understanding, and interpreting regressions
+
+Two different ways in which regression is used for causal inference: estimating a relationship and adjusting for background variables.
+
+#### Regression to estimate a relationship of interest
+
+**Randomization:** a design in which people---or, more generally, experimental units---are randomly assigned to treatment or control groups.
+
+There are various ways to attain approximate comparability of treatment and control groups, and to adjust for known or modeled differences between the groups.
+
+We assume the comparability of the groups assigned to different treatments so that a regression analysis predicting the outcome given the treatment gives us a direct estimate of the causal effect.
+
+It is always possible to estimate a linear model, even if it does not fit the data.
+
+**Interactions**: treatment effects that vary as a function of other predictors in a model.
+
+-   Example: the relation between cancer rate and radon is different for smokers and nonsmokers. The effect of radon is assumed to be linear but with an interaction with smoking.
+
+#### Regression to adjust for differences between treatment and control groups
+
+In most real-world causal inference problems, there are systematic differences between experimental units that receive treatment and control. In such settings it is important to *adjust* for pre-treatment differences between the groups, and we can use regression to do this.
+
+Adjusting for background variables is particularly important when there is *imbalance* so that the treated and control groups differ on key pre-treatment predictors.
+
+The estimated treatment effect is necessarily model based.
+
+#### Interpreting coefficients in a predictive model
+
+A model fit to survey data: earnings = 11000 + 1500 \* (height - 60) + error, with errors in the range of mean of 0 and standard deviation of 22000.
+
+-   *Prediction*: useless for forecasting because errors are too large
+
+-   *Exploring an association*: best fit for this example, as the estimated slope is positive, can lead to further research to study reasons taller people earn more than shorter people
+
+-   *Sampling inference*: the regression coefficients can be interpreted directly to the extent that people in the survey are a representative sample of the population of interest
+
+-   *Causal inference*: height is not a randomly assigned treatment. Tall and short people may differ in many other ways.
+
+#### Building, interpreting and checking regression models
+
+Statistical analysis cycles through four steps:
+
+1.  Model building
+2.  Model fitting
+3.  Understanding model fits
+4.  Criticism
+
+Accept that we can learn from statistical analysis---we can generalize from sample to population, from treatment to control, and from observed measurements to underlying constructs of interest---even while these inferences can be flawed.
+
+*Overinterpretation of noisy data*: the gun control study took existing variations among states and too eagerly attributed it to available factors.
+
+No study is perfect.
+
+We should *recognize* challenges in extrapolation and then work to *adjust* for them.
+
+### 1.5 Classical and Bayesian Inference
+
+Three concerns related to fitting models to data and using models to make predictions:
+
+1.  what *information* is being used in the estimation process
+2.  what *assumptions* are being made
+3.  how estimates and predictions are *interpreted*, in a classical or Bayesian framework
+
+#### Information
+
+-   The starting point for any regression problem is data on an outcome variable *y* and one or more predictors *x*.
+
+-   Information should be available on what data were observed at all
+
+-   We typically have prior knowledge coming from sources other than the data at hand. Where local data are weak it would be foolish to draw conclusions without using prior knowledge
+
+#### Assumptions
+
+-   Three sorts of assumptions that are essential to any regression model of an outcome *y* given predictors *x*.
+
+    -   The functional form of the relation between *x* and *y*
+
+    -   Where the data comes from (strongest assumptions tend to be simple and easy to understand, weaker assumptions, being more general, can also be more complicated)
+
+    -   Real-world relevance of the measured data
+
+        -   The interpretation of a regression of *y* on *x* depends also on the relation between the measured *x* and the underlying predictors of interest, and on the relation between the measured *y* and the underlying outcomes of interest
+
+#### Classical inference
+
+The traditional approach to statistical analysis is based on summarizing the information in the data, not using prior information, but getting estimates and predictions that have well-understood statistical properties, low bias and low variance.
+
+**Unbiasedness:** estimates should be true on average
+
+**Coverage:** confidence intervals should cover the true parameter value 95% of the time
+
+**Conservatism:** sometimes data are weak and we can't make strong statements, but we'd like to be able to say, at least approximately, that our estimates are unbiased and our intervals have the advertised coverage.
+
+In classical statistics there should be a clear and unambiguous ("objective") path from data to inferences, which in turn should be checkable, at least in theory, based on their frequency properties.
+
+#### Bayesian inference
+
+Incorporates prior information into inferences, going beyond the goal of merely summarizing existing data. The analysis gives more reasonable results and can be used to make direct predictions about future outcomes and about the results of future experiments.
+
+The prior distribution represents the arena over which any predictions will be evaluated.
+
+We have a choice: classical inference, leading to pure summaries of data which can have limited value as predictions; or Bayesian inference, which in theory can yield valid predictions even with weak data, but relies on additional assumptions.
+
+All Bayesian inferences are probabilistic and thus can be represented by random simulations. For this reason, whenever we want to summarize uncertainty in estimation beyond simple confidence intervals, and whenever we want to use regression models for predictions, we go Bayesian.
+
+### 1.6 Computing least squares and Bayesian regression
+
+In general, we recommend using Bayesian inference for regression
+
+-   If prior information is available, you can use it
+
+-   if not, Bayesian regression with weakly informative default priors still has the advantage of yielding stable estimates and producing simulations that enable you to express inferential and predictive uncertainty (estimates with uncertainties and probabilistic predictions or forecasts)
+
+Bayesian regression in R:
+
+```         
+fit <- stan_glm(y ~ x, data=mydata)
+
+# stan_glm can run slow for large datasets, make it faster by running in optimizing mode
+fit <- stan_glm(y ~ x, data=mydata, algorithm="optimizing")
+```
+
+least squares regression (classical statistics)
+
+```         
+fit <- lm(y ~ x, data=mydata)
+```
+
+Bayesian and simulation approaches become more important when fitting regularized regression and multilevel models.
