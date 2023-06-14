@@ -392,3 +392,463 @@ fit <- lm(y ~ x, data=mydata)
 ```
 
 Bayesian and simulation approaches become more important when fitting regularized regression and multilevel models.
+
+### 1.8 Exercises
+
+It took me 8-9 days to complete the 10 exercises at the end of this chapter. A few observations:
+
+-   Experiment design, even with simple paper helicopters, still requires time, effort and attention to detail. Even then, a well thought out and executed plan can still end up with uninspiring results. It is therefore the process of experimentation and not the result where I learned the most. It was important to continue experimentation (as it resulted in finding a high-performing copter) even after my initial approach didn't seem to work as I had thought it would.
+
+-   Finding good and bad examples of research is hard on your own! I relied on others existing work where they explicitly called out (and explained) good and bad research, sometimes with great detail, in order to answer exercises 1.7 and 1.8.
+
+-   Think about the problem in real life! I don't know if my answer to 1.9 is correct, but it helped to think about the physical phenomenon that was taking place (a helicopter falling through air, pulled by gravity) in order to come up with a better model fit than the example provided. I found that thinking of physical constraints of the real world problem helped narrow the theoretical model form.
+
+-   Pick something you're interested in and is worth your while! For exercise 1.10, the dataset I have chosen is the [NFL Play-by-Play dataset](https://github.com/nflverse/nflverse-data/releases/tag/pbp), as I'm already working on [a separate project where I'll be practicing writing SQL queries to analyze the data](http://vishalbakshi.com/blog/posts/2023-02-11-nflverse/2023-02-11-nflverse.html). Play-by-play data going back to 1999 will provide me with ample opportunities to pursue different modeling choices. My interest in football will keep me dedicated through the tough times.
+
+## Chapter 2: Data and Measurement
+
+In this book we will be:
+
+-   fitting lines and curves to data.
+
+-   making comparisons and predictions and assessing our uncertainties in the resulting inferences.
+
+-   discuss the assumptions underlying regression models, methods for checking these assumptions, and directions for improving fitted models.
+
+-   discussing the challenges of extrapolating from available data to make causal inferences and predictions for new data.
+
+-   using computer simulations to summarize the uncertainties in our estimates and predictions.
+
+### 2.1 Examining where data comes from
+
+I'll recreate the charts shown in the textbook by following the code provided in the website supplement to the book, using tidyverse where it makes sense:
+
+```{r}
+# load the Human Development Index data
+# start using DT to produce better table outputs
+library(DT)
+hdi <- read.table("../../../ROS_data/HDI/data/hdi.dat", header=TRUE)
+DT::datatable(head(hdi))
+```
+
+```{r}
+# load income data via the votes data
+library(foreign)
+votes <- read.dta("../../../ROS_data/HDI/data/state vote and income, 68-00.dta")
+DT::datatable(head(votes), options=list(scrollX=TRUE))
+```
+
+```{r}
+# preprocess
+income2000 <- votes[votes[,"st_year"]==2000, "st_income"]
+
+# it seems like the income dataset doesn't have DC
+# whereas HDI does
+# so we're placing an NA for DC in the income list
+state.income <- c(income2000[1:8], NA, income2000[9:50])
+state.abb.long <- c(state.abb[1:8], "DC", state.abb[9:50])
+state.name.long <- c(state.name[1:8], "Washington, D.C.", state.name[9:50])
+hdi.ordered <- rep(NA, 51)
+can <- rep(NA, 51)
+
+for (i in 1:51) {
+  ok <- hdi[,"state"]==state.name.long[i]
+  hdi.ordered[i] <- hdi[ok, "hdi"]
+  can[i] <- hdi[ok, "canada.dist"]
+}
+no.dc <- state.abb.long != "DC"
+```
+
+```{r}
+# plot average state income and Human Development Index
+par(mar=c(3, 3, 2.5, 1), mgp=c(1.5, .2, 0), tck=-0.01, pty='s')
+plot(
+  state.income, 
+  hdi.ordered, 
+  xlab="Average state income in 2020",
+  ylab="Human Development Index",
+  type="n")
+
+text(state.income, hdi.ordered, state.abb.long)
+```
+
+The pattern between HDI numbers and average state income is strong and nonlinear. If anyone is interested in following up on this, we suggest looking into South Carolina and Kentucky, which are so close in average income and so far apart on HDI.
+
+```{r}
+# plot rank of average state income and Human Development Index
+par(mar=c(3, 3, 2.5, 1), mgp=c(1.5, 0.2, 0), tck=-0.01, pty='s')
+plot(
+  rank(state.income[no.dc]), 
+  rank(hdi.ordered[no.dc]),
+  xlab="Rank of average state income in 2000",
+  ylab="Rank of Human Development Index", 
+  type="n")
+
+text(rank(state.income[no.dc]), rank(hdi.ordered[no.dc]), state.abb)
+```
+
+There is a high correlation between the ranking of HDI and state income.
+
+I will redo the above data processing and plotting with tidyverse and ggplot for practice:
+
+```{r}
+# plot average state income and Human Development Index
+# using tidyverse and ggplot
+merged_data <- hdi %>% dplyr::left_join(
+  votes %>% filter(st_year==2000),
+  by = c("state" = "st_state")
+) 
+
+p <- ggplot(
+  merged_data,
+  aes(x = st_income, y = hdi, label =  st_stateabb)
+) + theme(
+    plot.margin = margin(3, 3, 2.5, 1, "lines"),
+    panel.border = element_rect(colour = "black", fill=NA, size=1),
+    panel.background = element_rect(fill = 'white'),
+    aspect.ratio = 1
+  ) +
+  labs(
+    x = "Average state income in 2020",
+    y = "Human Development Index"
+  )
+
+p + geom_text()
+```
+
+None of the tidyverse methods I found (`row_number`, `min_rank`, `dense_rank`, `percent_rank`, `cume_dist`, or `ntile`) work quite like rank (where "ties" are averaged), so I continued using `rank` for this plot:
+
+```{r}
+# plot rank of average state income and Human Development Index
+p <- ggplot(
+  merged_data %>% filter(state != 'Washington, D.C.'), 
+  aes(x = rank(st_income), y = rank(hdi), label = st_stateabb),
+  ) + theme(
+    plot.margin = margin(3, 3, 2.5, 1, "lines"),
+    panel.border = element_rect(colour = "black", fill=NA, size=1),
+    panel.background = element_rect(fill = 'white'),
+    aspect.ratio = 1
+  ) +
+  labs(
+    x = "Rank of average state income in 2000",
+    y = "Rank of Human Development Index"
+  )
+
+p + geom_text()
+```
+
+The relevance of this example is that we were better able to understand the data by plotting them in different ways.
+
+#### Details of measurement can be important
+
+In the code chunks below, I will recreate the plots in Figure 2.3 in the text (distribution of political ideology by income and distribution of party identification by income).
+
+```{r}
+pew_pre <- read.dta("../../../ROS_data/Pew/data/pew_research_center_june_elect_wknd_data.dta")
+n <- nrow(pew_pre)
+head(pew_pre)
+```
+
+```{r}
+# weight
+pop.weight0 <- pew_pre$weight
+
+head(unique(pop.weight0))
+```
+
+```{r}
+# income (1-9 scale)
+inc <- as.numeric(pew_pre$income)
+
+# remove "dk/refused" income level
+inc[inc==10] <- NA
+
+levels(pew_pre$income)
+unique(inc)
+```
+
+```{r}
+# I believe these are the midpoints of the income levels
+value.inc <- c(5,15,25,35,45,62.5,87.5,125,200)
+
+# maximum income value
+n.inc <- max(inc, na.rm = TRUE)
+n.inc
+```
+
+```{r}
+# party id
+pid0 <- as.numeric(pew_pre[,"party"])
+lean0 <- as.numeric(pew_pre[,"partyln"])
+
+levels(pew_pre[,"party"])
+levels(pew_pre[,"partyln"])
+unique(pid0)
+unique(lean0)
+```
+
+```{r}
+# assigning new integers for party id
+pid <- ifelse(pid0==2, 5,  # Republican
+         ifelse(pid0==3, 1,  # Democrat
+         ifelse(lean0==2, 4, # Lean Republican
+         ifelse(lean0==4, 2, # Lean Democrat
+         3)))) # Independent
+
+pid.label <- c("Democrat", "Lean Dem.", "Independent", "Lean Rep.", "Republican")
+n.pid <- max(pid, na.rm=TRUE)
+```
+
+```{r}
+# ideology
+ideology0 <- as.numeric(pew_pre[,"ideo"])
+
+levels(pew_pre[,"ideo"])
+unique(ideology0)
+```
+
+```{r}
+# assign new integers for ideology
+ideology <- ifelse(ideology0==2, 5, # Very conservative
+              ifelse(ideology0==3, 4, # Conservative
+              ifelse(ideology0==6, 1, # Very liberal
+              ifelse(ideology0==5, 2, # Liberal
+              3)))) # Moderate
+ideology.label <- c("Very liberal", "Liberal", "Moderate", "Conservative", "Very conservative")
+n.ideology <- max(ideology, na.rm=TRUE)
+```
+
+```{r}
+# plot settings
+par(mar=c(3,2,2.5,1), mgp=c(1.5, .7, 0), tck=-0.01)
+
+# this creates an empty plot
+plot(c(1,n.inc), c(0,1), xaxs="i", yaxs="i", type="n", xlab="", ylab="", xaxt="n", yaxt="n")
+
+# add x-axis tick marks with empty string labels
+axis(1, 1:n.inc, rep("", n.inc))
+
+# add x-axis labels
+axis(1, seq(1.5, n.inc-.5, length=3), c("Low income", "Middle income", "High income"), tck=0)
+
+# add y-axis tick marks and labels
+axis(2, c(0, 0.5, 1), c(0, "50%", "100%"))
+
+center <- floor((1 + n.inc) / 2)
+
+incprop <- array(NA, c(n.pid + 1, n.inc))
+
+incprop[n.pid + 1,] <- 1
+
+
+for (i in 1:n.pid) {
+  for (j in 1:n.inc) {
+    incprop[i, j] <- weighted.mean((pid<i)[inc==j], pop.weight0[inc==j], na.rm = TRUE)
+  }
+}
+
+for (i in 1:n.pid){
+  polygon(c(1:n.inc, n.inc:1), c(incprop[i,], rev(incprop[i+1,])), col=paste("gray", 40+10*i, sep=""))
+  lines(1:n.inc, incprop[i,])
+  text(center, mean(incprop[c(i,i+1),center]), pid.label[i])
+}
+mtext("Self-declared party identification, by income", side=3, line=1, cex=1.2)
+```
+
+```{r}
+par(mar=c(3,2,2.5,1), mgp=c(1.5,.7,0), tck=-.01)
+plot(c(1,n.inc), c(0,1), xaxs="i", yaxs="i", type="n", xlab="", ylab="", xaxt="n", yaxt="n")
+axis(1, 1:n.inc, rep("",n.inc))
+axis(1, seq(1.5,n.inc-.5,length=3), c("Low income", "Middle income", "High income"), tck=0)
+axis(2, c(0,.5,1), c(0,"50%","100%"))
+center <- floor((1+n.inc)/2)
+incprop <- array(NA, c(n.ideology+1,n.inc))
+incprop[n.ideology+1,] <- 1
+for (i in 1:n.ideology){
+  for (j in 1:n.inc){
+    incprop[i,j] <- weighted.mean((ideology<i)[inc==j], pop.weight0[inc==j], na.rm=TRUE)
+  }
+}
+for (i in 1:n.ideology){
+  polygon(c(1:n.inc, n.inc:1), c(incprop[i,], rev(incprop[i+1,])), col=paste("gray", 40+10*i, sep=""))
+  lines(1:n.inc, incprop[i,])
+  text(center, mean(incprop[c(i,i+1),center]), ideology.label[i])
+}
+mtext("Self-declared political ideology, by income", side=3, line=1, cex=1.2)
+```
+
+I'll try to recreate the two plots using tidyverse and ggplot. I referenced [this article by the Pew Research Center which shows how to calculated weighted estimates.](https://www.pewresearch.org/decoded/2019/06/12/using-tidy-verse-tools-with-pew-research-center-survey-data-in-r/)
+
+```{r}
+pew_pre <- pew_pre %>%
+  mutate(
+    # create an integer column for income levels
+    inc = as.numeric(income),
+    # remove "dk/refuse" value for income
+    inc = case_when(
+      inc == 10 ~ NA,
+      TRUE ~ inc
+    ),
+    # set political party integer column
+    pid0 = as.numeric(party),
+    # set lean integer column
+    lean0 = as.numeric(partyln),
+    # set ideology integer column
+    ideology0 = as.numeric(ideo),
+    # re-assign party values
+    pid = case_when(
+      pid0 == 2 ~ 5, # Repubican
+      pid0 == 3 ~ 1, # Democrat
+      lean0 == 2 ~ 4, # Lean Republican
+      lean0 == 4 ~ 2, # Lean Democrat
+      is.na(pid0) ~ NA,
+      TRUE ~ 3 # Independent
+    ),
+    # reassign ideology values
+    ideology = case_when(
+      ideology0 == 2 ~ 5, # Very conservative
+      ideology0 == 3 ~ 4, # Conservative
+      ideology0 == 6 ~ 1, # Very liberal
+      ideology0 == 5 ~ 2, # Liberal
+      is.na(ideology0) ~ NA,
+      TRUE ~ 3 # Moderate
+    )
+  )
+
+# constants
+n_inc <- max(pew_pre$inc, na.rm = TRUE)
+n_pid <- max(pew_pre$pid, na.rm = TRUE)
+n_ideology <- max(pew_pre$ideology, na.rm = TRUE)
+```
+
+```{r}
+# calculate income proportions using population weight
+inc_totals <- pew_pre %>% group_by(
+  inc
+) %>% summarize(
+  total_inc = n()
+)
+
+pid_weighted_estimates <- pew_pre %>% dplyr::left_join(
+  inc_totals
+) %>% group_by(
+  inc,
+  pid
+) %>% summarise(
+  weighted_n = sum(weight)
+) %>% mutate(
+  weighted_group_size = sum(weighted_n),
+  weighted_estimate = weighted_n / weighted_group_size
+) %>% arrange(
+  inc
+)
+```
+
+```{r}
+DT::datatable(pid_weighted_estimates)
+```
+
+```{r}
+ggplot(pid_weighted_estimates, aes(x=inc, y=weighted_estimate)) + 
+  geom_area(aes(group = pid, fill = pid), position = position_stack(reverse = TRUE), show.legend = FALSE) +
+  annotate("text", x=5, y=.2, label="Democrat", color="white") + 
+  annotate("text", x=5, y=.425, label="Lean Dem.", color="white") + 
+  annotate("text", x=5, y=.55, label="Independent", color="white") + 
+  annotate("text", x=5, y=.68, label="Lean Rep.") + 
+  annotate("text", x=5, y=.87, label="Republican") + 
+  scale_x_continuous("Average Income Level", breaks=c(1,5,9), labels = c("Low Income", "Middle Income", "High Income"), , expand = c(0, 0)) +
+  scale_y_continuous("Proportion of Sample", breaks=c(0,.5, 1), labels = c("0%", "50%", "100%"), expand = c(0, 0)) +
+  theme(
+    plot.margin = margin(3, 3, 2.5, 1, "lines"),
+    panel.border = element_rect(colour = "black", fill=NA, size=1),
+    plot.title = element_text(size=14,hjust = 0.5),
+    axis.text = element_text(size = 10)
+  ) + 
+  ggtitle("Party Identification by Income Levels")
+```
+
+```{r}
+# ideology data prep
+ideo_weighted_estimates <- pew_pre %>% dplyr::left_join(
+  inc_totals
+) %>% group_by(
+  inc,
+  ideology
+) %>% summarise(
+  weighted_n = sum(weight)
+) %>% mutate(
+  weighted_group_size = sum(weighted_n),
+  weighted_estimate = weighted_n / weighted_group_size
+) %>% arrange(
+  inc
+)
+```
+
+```{r}
+DT::datatable(ideo_weighted_estimates)
+```
+
+```{r}
+ggplot(ideo_weighted_estimates, aes(x=inc, y=weighted_estimate)) + 
+  geom_area(aes(group = ideology, fill = ideology), position = position_stack(reverse = TRUE), show.legend = FALSE) +
+  annotate("text", x=5, y=.03, label="Very Liberal", color="white", size=3) + 
+  annotate("text", x=5, y=.13, label="Liberal", color="white", size=3) + 
+  annotate("text", x=5, y=.4, label="Moderate", color="white", size=3) + 
+  annotate("text", x=5, y=.75, label="Conservative", size=3) + 
+  annotate("text", x=5, y=.95, label="Very Conservative", size=3) + 
+  scale_x_continuous("Average Income Level", breaks=c(1,5,9), labels = c("Low Income", "Middle Income", "High Income"), , expand = c(0, 0)) +
+  scale_y_continuous("Proportion of Sample", breaks=c(0,.5, 1), labels = c("0%", "50%", "100%"), expand = c(0, 0)) +
+  theme(
+    plot.margin = margin(3, 3, 2.5, 1, "lines"),
+    panel.border = element_rect(colour = "black", fill=NA, size=1),
+    plot.title = element_text(size=14,hjust = 0.5),
+    axis.text = element_text(size = 10)
+  ) + 
+  ggtitle("Ideology by Income Levels")
+```
+
+Overall, I think the plots I made look pretty similar to the textbook's. The main bottleneck was learning how to calculate proportions based on weighted estimates. Once that took shape, I was able to figure out how to present the data visually in a way that resembles the authors' approach.
+
+The figure "Ideology by Income Levels" shows that the proportion of political liberals, moderates, and conservatives is about the same for all income levels. The figure "Party Identification by Income Levels" shows a strong relation between income and Republican partisanship, at least as of 2008. The partisanship and ideology example is a reminder that even very similar measures can answer quite different questions.
+
+### 2.2 Validity and reliability
+
+Data analysis reaches a dead end if we have poor data.
+
+Two reasons for discussing measurement:
+
+-   we need to understand what our data actually mean, otherwise we cannot extract the right information
+
+-   learning about accuracy, reliability and validity will set a foundation for understanding variance, correlation, and error, which will be useful in setting up linear models in the forthcoming chapters
+
+The property of being precise enough is a combination of the properties of the scale and what we are trying to use it for.
+
+In social science, the way to measure what we are trying to measure is not as transparent as it is in everyday life.
+
+Other times, the thing we are trying to measure is pretty straightforward, but a little bit fuzzy, and the ways to tally it up aren't obvious.
+
+Sometimes we are trying to measure something that we all agree has meaning, but which is subjective for every person and does not correspond to a "thing" we can count or measure with a ruler.
+
+Attitudes are private; you can't just weigh them or measure their widths.
+
+It can be helpful to take multiple measurements on an underlying construct of interest.
+
+#### Validity
+
+A measure is *valid* to the degree that it represents what you are trying to measure. Asking people how satisfied they are with some government service might not be considered a valid measure of the effectiveness of that service.
+
+Valid measures are ones in which there is general agreement that the observations are closely related to the intended construct.
+
+**validity:** the property of giving the right answer on average across a wide range of plausible scenarios. To study validity in an empirical way, ideally you want settings in which there is an observable true value and multiple measurements can be taken.
+
+#### Reliability
+
+A *reliable* measure is one that is precise and stable. We would hope the variability in our sample is due to real differences among people or things, and not due to random error incurred during the measurement process.
+
+#### Sample selection
+
+**selection:** the idea that the data you see may be a nonrepresentative sample of a larger population you will not see.
+
+In addition to selection bias, there are also biases from nonresponse to particular survey items, partially observed measurements, and choices in coding and interpretation of data.
+
+### 2.3 All graphs are comparisons
