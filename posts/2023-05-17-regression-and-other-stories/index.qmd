@@ -1748,6 +1748,25 @@ axis(1, seq(1990,2020,5))
 grid(col="gray")
 ```
 
+As an aside, I want to better understand how the `avg_age` vector is calculated:
+
+```{r}
+# flag for when data is from 1999 and for ages 45 to 54
+ok <- data[,"Year"]==1999 & data[,"Age"] %in% ages_decade[[2]]
+
+# range of ages 45 to 54
+ages_decade[[2]]
+
+# 1999 population for ages 45 to 54
+data[ok & male,"Population"] + data[ok & !male,"Population"]
+
+# manually calculated weighted mean
+sum(ages_decade[[2]] * (data[ok & male,"Population"] + data[ok & !male,"Population"]) / (sum(data[ok & male,"Population"] + data[ok & !male,"Population"])))
+
+# weighted.mean output
+avg_age[1] # this equals the manually calculated weighted mean. Nice!
+```
+
 ```{r}
 length(avg_age) # 15 years: 1999-2013
 head(avg_age)
@@ -1803,4 +1822,457 @@ text(2003, 1.053, "Using 1999\nage dist", cex=.8)
 text(2004, 1.032, "Using 2013\nage dist", cex=.8)
 axis(1, seq(1990,2020,5))
 grid(col="gray")
+```
+
+Next, I'll recreate the plots in Figures 2.11 and 2.12 using tidyverse and ggplot. I'll go in the order of plots displayed in the supplemental website. They start with Figure 2.11a (Observed increase in raw mortality rates among 45-to-54-year-old non-Hispanic whites, unadjusted for age.
+
+```{r}
+# load death rate data for white non-hispanic individuals
+mort_data_fpath <- file.path(data_root_path, "AgePeriodCohort/data","white_nonhisp_death_rates_from_1999_to_2013_by_sex.txt")
+
+mort_data2 <- readr::read_table(mort_data_fpath) %>% filter(
+  # get data for the age decade in question
+  Age %in% 45:54
+)
+
+DT::datatable(mort_data2)
+```
+
+I'll look at their vector `raw_death_rate` to compare my recreated data.frame with.
+
+```{r}
+raw_death_rate[,2,1]
+```
+
+I'll calculate the raw death rate for each Year. In their code, they multiple it by 100,000 to get per 100,000 deaths, but I'll follow the textbook plot which shows it as a decimal.
+
+```{r}
+raw_death_rate_data <- mort_data2 %>% group_by(
+  Year
+) %>% summarize(
+  death_rate = sum(Deaths) / sum(Population)
+)
+
+DT::datatable(raw_death_rate_data)
+```
+
+Next, I'll plot the data
+
+```{r}
+ggplot(raw_death_rate_data, aes(x = Year, y = death_rate)) + 
+  geom_line() + 
+  scale_y_continuous("Death rates among non-Hisp whites 45-54", expand = c(0,0)) +
+  scale_x_continuous("Year", breaks = c(2000, 2005, 2010), expand = c(0,0)) + 
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.line.x = element_line(color = "black"),
+    axis.line.y = element_line(color = "black"),
+    panel.grid.major = element_line(color = "grey", linetype = "dotted", size = 0.5),
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_text(size = 10)
+  ) +
+  ggtitle("Raw death rates\nfor 45-54-year-old non-Hispanic whites")
+```
+
+Next, I'll recreate the data and plots for Figure 2.12c (trends in age-adjusted death rates broken down by sex). I'll start by calculating the average death rate for Males and Females:
+
+```{r}
+avg_death_rate <- mort_data2 %>% group_by(
+  Year,
+  Male
+) %>% summarise(
+  avg_rate = mean(Rate)
+) %>% mutate(
+  age_adj_death_rate = case_when(
+    Male == 0 ~ avg_rate / 288.19,
+    Male == 1 ~ avg_rate / 495.37
+  ),
+  # convert Male to discrete value
+  Male = case_when(
+    Male == 0 ~ "Women",
+    Male == 1 ~ "Men"
+  )
+)
+
+DT::datatable(avg_death_rate)
+```
+
+Next, I'll plot the age-adjusted death rates (relative to 1999) for Non-Hispanic White Males and Females aged 45 - 54 between 1999 and 2013:
+
+```{r}
+ggplot(avg_death_rate, aes(x = Year, y = age_adj_death_rate, color = Male)) + 
+  geom_line(aes(group = Male), show.legend = FALSE) + 
+  scale_color_manual(values = c("blue", "red")) + 
+  annotate("text", x = 2011.5, y = 1.075, label = "Women", color = "red") + 
+  annotate("text", x = 2010.5, y = 1.02, label= "Men", color = "blue") + 
+  scale_y_continuous("Death rate relative to 1999") + 
+  scale_x_continuous("Year") + 
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.line.x = element_line(color = "black"),
+    axis.line.y = element_line(color = "black"),
+    panel.grid.major = element_line(color = "grey", linetype = "dotted", size = 0.5),
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_text(size = 10)
+  ) +
+  ggtitle("Age-adjusted death rates for non-Hispanic whites aged 45-54:\nTrends for women and men")
+```
+
+Looks great! My grid lines are at different placements (5 years and 0.025 death rate) than the textbook but I'm happy with how the plot turned out. One hiccup that needed to be addressed was that the group aesthetic needs to be discrete (it was integer 1 for Male and integer 0 for Female) in order to use `scale_color_manual`.
+
+Next, I'll recreate Figure 2.11b (increase in average age of this group as the baby boom generation moves through).
+
+```{r}
+avg_age_data <- mort_data2 %>% group_by(
+  Year,
+  Age
+) %>% summarise(
+  total_pop = sum(Population)
+) %>% mutate(
+  # calculated weighted mean
+  weighted_age = Age * total_pop
+) %>% group_by(
+  # in order to calculate weighted mean age by Year, 
+  # group only by Year
+  Year
+) %>% summarize(
+  weighted_mean_age = sum(weighted_age) / sum(total_pop)
+)
+
+DT::datatable(avg_age_data)
+```
+
+Let's compare it with the actual `avg_age` values:
+
+```{r}
+avg_age
+```
+
+Next, I'll plot weighted mean age vs years:
+
+```{r}
+ggplot(avg_age_data, aes(x = Year, y = weighted_mean_age)) + 
+  geom_line() + 
+  scale_y_continuous("Avg age among non-Hispanic whites 45-54", expand = c(0,0)) +
+  scale_x_continuous("Year", expand = c(0,0)) + 
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.line.x = element_line(color = "black"),
+    axis.line.y = element_line(color = "black"),
+    panel.grid.major = element_line(color = "grey", linetype = "dotted", size = 0.5),
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_text(size = 10)
+  ) +
+  ggtitle("But the average age in this group is going up!")
+```
+
+Next, I'll recreate Figure 2.11c (raw death rate, along with trend in death rate attributable by change in age distribution alone, had age-specific mortality rates been at the 2013 level throughout).
+
+As an aside, I'm going to manually calculate the first value of `death_rate_extrap_2013`:
+
+```{r}
+# death rates in 2013 for ages 45:54
+death_rate_2013
+
+# weighted mean of 2013 death rates of ages 45:54 by 1999-2013 population of ages 45-54
+death_rate_extrap_2013 
+
+# flag for when data is from 1999 and for ages 45 to 54
+ok <- data[,"Year"]==1999 & data[,"Age"] %in% ages_decade[[2]]
+
+# 1999 population for ages 45 to 54
+data[ok & male,"Population"] + data[ok & !male,"Population"]
+
+# numerator of weighted mean
+death_rate_2013 * (data[ok & male,"Population"] + data[ok & !male,"Population"])
+
+# weighted mean of death_rate_2013 and 1999 population
+sum(death_rate_2013 * (data[ok & male,"Population"] + data[ok & !male,"Population"]) / (sum(data[ok & male,"Population"] + data[ok & !male,"Population"])))
+```
+
+I'll first calculate the total deaths, population and death rate for each year and age value.
+
+```{r}
+mort_data_totals <- mort_data2 %>% group_by(
+  # calculate total death rate and total population
+  # for each year and age
+  Year,
+  Age
+) %>% summarise(
+  total_deaths = sum(Deaths),
+  total_pop = sum(Population),
+  total_death_rate = total_deaths / total_pop
+)
+
+DT::datatable(mort_data_totals %>% filter(Year == 2013)) # matches death_rate_2013
+```
+
+Next, I'll widen the data:
+
+```{r}
+death_rate_extrap_2013_data <- mort_data_totals %>% pivot_wider(
+  names_from = Year,
+  values_from = c(total_death_rate, total_pop),
+  names_vary = "slowest",
+  id_cols = c(Age)
+) %>% mutate(
+  # multiply each year's age population with 2013 death rate
+  across(starts_with("total_pop"), ~ .x * total_death_rate_2013, .names = "extrap_{.col}")
+) %>% pivot_longer(
+  # return back to a long table 
+  # in order to group by Age, Year and calculate weighted mean
+  !Age,
+  names_to = c(".value", "Year"),
+  names_pattern = "^(.*)_([0-9]{4})$"
+) %>% group_by(
+  Year
+) %>% summarise(
+  weighted_mean_extrap = sum(extrap_total_pop) / sum(total_pop)
+) 
+
+DT::datatable(death_rate_extrap_2013_data, options = list(scrollX = TRUE))
+```
+
+My calculated values match `death_rate_extrap_2013`. Yes!
+
+Next, I'll prepare the data to recreate `number_of_deaths/number_of_people` in the text:
+
+```{r}
+yearly_total_death_rate <- mort_data2 %>% group_by(
+  # calculate total death rate and total population
+  # for each year 
+  Year
+) %>% summarise(
+  total_death_rate = sum(Deaths) / sum(Population)
+) %>% mutate(
+  Year = as.character(Year)
+)
+
+DT::datatable(yearly_total_death_rate)
+```
+
+Next, I'll plot the extrapolated death rate vs. years:
+
+```{r}
+ggplot() + 
+  geom_line(data = death_rate_extrap_2013_data, aes(x = Year, y = weighted_mean_extrap, group = 1), color = "green4") +
+  geom_line(data = yearly_total_death_rate, aes(x = Year, y = total_death_rate, group = 1), color = "black") +
+  scale_y_continuous("Death rate for 45-54 non-Hisp whites", expand = c(0,0)) +
+  scale_x_discrete("Year", breaks = c(2000, 2005, 2010), expand = c(0,0)) + 
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.line.x = element_line(color = "black"),
+    axis.line.y = element_line(color = "black"),
+    panel.grid.major = element_line(color = "grey", linetype = "dotted", size = 0.5),
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_text(size = 10)
+  ) +
+  ggtitle("Projecting backward from 2013 makes it clear that\nall the underlying change happened between 1999 and 2005") + 
+  annotate("text", x = "2003", y = 0.00395, label = "Raw death rate") +
+  annotate("text", x = "2002", y = 0.004075, label = "Expected just from\nage shift", color="green4")
+```
+
+The next plot I'll recreate is Figure 2.12a (Age-adjusted death rates among 45-to-54-year-old non-Hispanic whites, showing an increase from 1999 to 2005 and a steady pattern since 2005).
+
+I'll start by looking at the vector `age_adj_rate_flat`:
+
+```{r}
+age_adj_rate_flat
+```
+
+Then run the calculation for the first value for 1999:
+
+```{r}
+# flag for data in 1999 for ages 45 to 54
+ok <- data[,"Year"]==1999 & data[,"Age"] %in% ages_decade[[2]]
+
+# calculation of death rates
+rates <- (data[ok&male,"Deaths"] + data[ok&!male,"Deaths"])/(data[ok&male,"Population"] + data[ok&!male,"Population"])
+
+print(rates)
+
+# non-weighted mean
+mean(rates)
+
+# calculation of age_adj_rate_flat
+weighted.mean(rates, rep(1,10))
+```
+
+The calculation for this metric is similar to Figure 2.12c which showed the age-adjusted death rate by sex. Instead of separating by sex, I'll combine Men and Women deaths and populations in this death rate calculation.
+
+```{r}
+age_adj_rate_flat_data <- mort_data2 %>% group_by(
+  Year,
+  Age
+) %>% summarise(
+  # calculate death rate for each Year and Age
+  avg_rate = sum(Deaths) / sum(Population)
+) %>% group_by(
+  Year
+) %>% summarise(
+  # calculate average death rate across ages 45-54 for each Year
+  avg_rate = mean(avg_rate)
+) %>% mutate(
+  # adjust death rate relative to 1999
+  adj_death_rate = avg_rate / 0.00390820851324269
+)
+
+DT::datatable(age_adj_rate_flat_data)
+```
+
+Next, I'll plot age-adjusted death rate relative to 1999 vs. Years:
+
+```{r}
+ggplot(age_adj_rate_flat_data, aes(x = Year, y = adj_death_rate)) + 
+  geom_line() +
+  scale_y_continuous("Age-adj death rate, relative to 1999", expand = c(0,0)) +
+  scale_x_continuous("Year", breaks = c(2000, 2005, 2010), expand = c(0,0)) + 
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.line.x = element_line(color = "black"),
+    axis.line.y = element_line(color = "black"),
+    panel.grid.major = element_line(color = "grey", linetype = "dotted", size = 0.5),
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_text(size = 10)
+  ) +
+  ggtitle("Trend in age-adjusted death rate\nfor 45-54-year-old non-Hisp whites")
+```
+
+The final figure I'll recreate is Figure 2.12b (comparison of two different age adjustments).
+
+I'll start by looking at the vectors in question, `age_adj_rate_1999` and `age_adj_rate_2013`.
+
+```{r}
+age_adj_rate_1999
+age_adj_rate_2013
+```
+
+As an aside, I'll view the first values (1999 and 2013) from each of the two vectors respectively, following the their code.
+
+```{r}
+# flag for 1999 and 45-54 age range
+ok <- data[,"Year"]==1999 & data[,"Age"] %in% ages_decade[[2]]
+
+# average death rates
+rates <- (data[ok&male,"Deaths"] + data[ok&!male,"Deaths"])/(data[ok&male,"Population"] + data[ok&!male,"Population"])
+
+# 1999 average death rates
+print(rates)
+
+# 1999 population
+print(pop1999)
+
+# first value of age_adj_rate_1999
+weighted.mean(rates, pop1999)
+
+# flag for 1999 and 45-54 age range
+ok <- data[,"Year"]==2013 & data[,"Age"] %in% ages_decade[[2]]
+
+# average death rates
+rates <- (data[ok&male,"Deaths"] + data[ok&!male,"Deaths"])/(data[ok&male,"Population"] + data[ok&!male,"Population"])
+
+# 2013 average death rates
+print(rates)
+
+# 2013 population
+print(pop2013)
+
+# first value of age_adj_rate_2013
+weighted.mean(rates, pop2013)
+```
+
+I'll start by reusing my data.frame `mort_data_totals` which contains Year, Age, total_deaths, total_pop and total_death_rate.
+
+```{r}
+DT::datatable(mort_data_totals)
+```
+
+I'll use a similar approach to how I created `death_rate_extrap_2013_data`.
+
+```{r}
+pop_1999_adj_death_rate <- mort_data_totals %>% pivot_wider(
+  names_from = Year,
+  values_from = c(total_death_rate, total_pop),
+  names_vary = "slowest",
+  id_cols = c(Age)
+) %>% mutate(
+  # calculate weighted mean for death rates with 1999 population
+  across(starts_with("total_death_rate"), ~ sum(.x * total_pop_1999) / sum(total_pop_1999), .names = "adj_{.col}")
+) %>% pivot_longer(
+  # return back to a long table
+  !Age,
+  names_to = c(".value", "Year"),
+  names_pattern = "^(.*)_([0-9]{4})$"
+) %>% group_by(
+  Year
+) %>% dplyr::select(
+  # pull columns needed for plot
+  Year,
+  adj_total_death_rate
+) %>% distinct(
+  Year, adj_total_death_rate
+) %>% mutate(
+  # normalize death rate relative to 1999 value
+  adj_total_death_rate = adj_total_death_rate / 0.0038151430187487,
+  # make Year continuous
+  Year = as.numeric(Year)
+)
+
+DT::datatable(pop_1999_adj_death_rate, options = list(scrollX = TRUE))
+```
+
+I'll create the same data.frame for the 2013 adjusted death rates:
+
+```{r}
+pop_2013_adj_death_rate <- mort_data_totals %>% pivot_wider(
+  names_from = Year,
+  values_from = c(total_death_rate, total_pop),
+  names_vary = "slowest",
+  id_cols = c(Age)
+) %>% mutate(
+  # calculate weighted mean for death rates with 1999 population
+  across(starts_with("total_death_rate"), ~ sum(.x * total_pop_2013) / sum(total_pop_2013), .names = "adj_{.col}")
+) %>% pivot_longer(
+  # return back to a long table
+  !Age,
+  names_to = c(".value", "Year"),
+  names_pattern = "^(.*)_([0-9]{4})$"
+) %>% group_by(
+  Year
+) %>% dplyr::select(
+  # pull columns needed for plot
+  Year,
+  adj_total_death_rate
+) %>% distinct(
+  Year, adj_total_death_rate
+) %>% mutate(
+  # normalize death rate relative to 1999 value
+  adj_total_death_rate = adj_total_death_rate / 0.00397199977461337,
+  # make Year continuous
+  Year = as.numeric(Year)
+)
+
+DT::datatable(pop_2013_adj_death_rate, options = list(scrollX = TRUE))
+```
+
+Finally, I'll plot the three lines:
+
+```{r}
+ggplot() + 
+  geom_line(data = age_adj_rate_flat_data, aes(x = Year, y = adj_death_rate)) +
+  geom_line(data = pop_1999_adj_death_rate, aes(x = Year, y = adj_total_death_rate), linetype = "dashed") +
+  geom_line(data = pop_2013_adj_death_rate, aes(x = Year, y = adj_total_death_rate), linetype = "dotted") + 
+  scale_y_continuous("Age-adj death rate, relative to 1999", expand = c(0,0)) +
+  scale_x_continuous("Year", breaks = c(2000, 2005, 2010), expand = c(0,0)) + 
+  theme(
+    panel.background = element_rect(fill = "white"),
+    axis.line.x = element_line(color = "black"),
+    axis.line.y = element_line(color = "black"),
+    panel.grid.major = element_line(color = "grey", linetype = "dotted", size = 0.5),
+    plot.title = element_text(hjust = 0.5),
+    axis.text = element_text(size = 10)
+  ) +
+  ggtitle("It doesn't matter too much what age adjustment\nyou use for 45-54-year-old non-Hisp whites") + 
+  annotate("text", x = 2003, y = 1.053, label = "Using 1999\nage dist") + 
+  annotate("text", x = 2004, y = 1.032, label = "Using 2013\nage dist")
 ```
