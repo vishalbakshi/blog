@@ -35,7 +35,7 @@ You can view the final layout PDFs at the following links:
 - [Connect Data to Geodatabase](#connect-data-to-geodatabase)
   - [Tract Boundaries](#tract-boundaries-2)
   - [ACS 5-Year Estimates](#acs-5-year-estimates-2)
-- [Visualize Data](#visualize-data)
+- [Visualize Data](#visualize-the-data)
   - [Create a Map](#create-a-map)
   - [Create a Symbology](#create-a-symbology)
   - [Create a Layout](#create-a-layout)
