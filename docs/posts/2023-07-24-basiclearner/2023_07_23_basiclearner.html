@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="description" content="In this blog post, I write a BasicLearner class which trains a neural net to classify handwritten digits.">
+
+<title>vishal bakshi - Implementing a fastai Learner from Scratch</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">vishal bakshi</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#mnist_sample-training-loop" id="toc-mnist_sample-training-loop" class="nav-link" data-scroll-target="#mnist_sample-training-loop"><code>MNIST_SAMPLE</code> Training Loop</a>
+  <ul class="collapse">
+  <li><a href="#load-and-prepare-the-data" id="toc-load-and-prepare-the-data" class="nav-link" data-scroll-target="#load-and-prepare-the-data">Load and Prepare the Data</a></li>
+  <li><a href="#create-our-model" id="toc-create-our-model" class="nav-link" data-scroll-target="#create-our-model">Create Our Model</a></li>
+  <li><a href="#create-a-loss-function" id="toc-create-a-loss-function" class="nav-link" data-scroll-target="#create-a-loss-function">Create a Loss Function</a></li>
+  <li><a href="#create-a-function-to-calculate-predictions-loss-and-gradients" id="toc-create-a-function-to-calculate-predictions-loss-and-gradients" class="nav-link" data-scroll-target="#create-a-function-to-calculate-predictions-loss-and-gradients">Create a Function to Calculate Predictions, Loss and Gradients</a></li>
+  <li><a href="#create-an-optimizer" id="toc-create-an-optimizer" class="nav-link" data-scroll-target="#create-an-optimizer">Create an Optimizer</a></li>
+  <li><a href="#create-a-function-to-train-one-epoch" id="toc-create-a-function-to-train-one-epoch" class="nav-link" data-scroll-target="#create-a-function-to-train-one-epoch">Create a Function to Train One Epoch</a></li>
+  <li><a href="#create-a-function-to-calculate-a-metric-for-one-batch" id="toc-create-a-function-to-calculate-a-metric-for-one-batch" class="nav-link" data-scroll-target="#create-a-function-to-calculate-a-metric-for-one-batch">Create a Function to Calculate a Metric for One Batch</a></li>
+  <li><a href="#create-a-function-to-calculate-the-metric-for-one-epoch" id="toc-create-a-function-to-calculate-the-metric-for-one-epoch" class="nav-link" data-scroll-target="#create-a-function-to-calculate-the-metric-for-one-epoch">Create a Function to Calculate the Metric for One Epoch</a></li>
+  <li><a href="#create-a-function-for-the-training-loop" id="toc-create-a-function-for-the-training-loop" class="nav-link" data-scroll-target="#create-a-function-for-the-training-loop">Create a Function for the Training Loop</a></li>
+  <li><a href="#train-the-model" id="toc-train-the-model" class="nav-link" data-scroll-target="#train-the-model">Train the Model</a></li>
+  </ul></li>
+  <li><a href="#basiclearner-class" id="toc-basiclearner-class" class="nav-link" data-scroll-target="#basiclearner-class"><code>BasicLearner</code> Class</a>
+  <ul class="collapse">
+  <li><a href="#inputs-and-outputs" id="toc-inputs-and-outputs" class="nav-link" data-scroll-target="#inputs-and-outputs">Inputs and Outputs</a></li>
+  </ul></li>
+  <li><a href="#improving-the-basiclearner-class" id="toc-improving-the-basiclearner-class" class="nav-link" data-scroll-target="#improving-the-basiclearner-class">Improving the <code>BasicLearner</code> Class</a></li>
+  <li><a href="#further-improvements" id="toc-further-improvements" class="nav-link" data-scroll-target="#further-improvements">Further Improvements</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Implementing a fastai Learner from Scratch</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">deep learning</div>
+    <div class="quarto-category">python</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    In this blog post, I write a <code>BasicLearner</code> class which trains a neural net to classify handwritten digits.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In this notebook, I’ll work through the first “Further Research” exercise at the end of <a href="https://github.com/fastai/fastbook/blob/master/04_mnist_basics.ipynb">Chapter 4 of the Practical Deep Learning for Coders textbook</a>:</p>
+<blockquote class="blockquote">
+<p>Create your own implementation of Learner from scratch, <strong>based on the training loop shown in this chapter.</strong></p>
+</blockquote>
+<p>I’ve emphasized that this <code>Learner</code> implementation is basic, based on what we’ve learned in Chapter 4. I’ll call my implementation <code>BasicLearner</code>, as it corresponds to the <code>BasicOptim</code> optimizer created in the chapter. I’ll use my <code>BasicLearner</code> implementation to train a simple neural net on the <code>MNIST_SAMPLE</code> dataset.</p>
+</section>
+<section id="mnist_sample-training-loop" class="level2">
+<h2 class="anchored" data-anchor-id="mnist_sample-training-loop"><code>MNIST_SAMPLE</code> Training Loop</h2>
+<p>I’ll start by recreating the training loop in Chapter 4 to train a simple neural net to classify the handwritten digits 3s and 7s.</p>
+<section id="load-and-prepare-the-data" class="level3">
+<h3 class="anchored" data-anchor-id="load-and-prepare-the-data">Load and Prepare the Data</h3>
+<div class="cell" data-execution_count="83">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fastai.vision.<span class="bu">all</span> <span class="im">import</span> <span class="op">*</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The <code>MNIST_SAMPLE</code> dataset is available through fastai’s <code>URLs</code> which I download using <code>untar_data</code>.</p>
+<div class="cell" data-execution_count="84">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>path <span class="op">=</span> untar_data(URLs.MNIST_SAMPLE)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="6204a996-b944-4e90-9109-14d71330529e" data-execution_count="85">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>path.ls()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="85">
+<pre><code>(#3) [Path('/root/.fastai/data/mnist_sample/train'),Path('/root/.fastai/data/mnist_sample/valid'),Path('/root/.fastai/data/mnist_sample/labels.csv')]</code></pre>
+</div>
+</div>
+<p>Then stack the list of training set and validation set tensor images into 3-dimensional tensors.</p>
+<div class="cell" data-outputid="2de999ef-5c9b-400b-d6ca-60b8c79bb1e0" data-execution_count="86">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>stacked_threes <span class="op">=</span> torch.stack([tensor(Image.<span class="bu">open</span>(o)) <span class="cf">for</span> o <span class="kw">in</span> (path<span class="op">/</span><span class="st">'train'</span><span class="op">/</span><span class="st">'3'</span>).ls().<span class="bu">sorted</span>()]).<span class="bu">float</span>()<span class="op">/</span><span class="dv">255</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>stacked_sevens <span class="op">=</span> torch.stack([tensor(Image.<span class="bu">open</span>(o)) <span class="cf">for</span> o <span class="kw">in</span> (path<span class="op">/</span><span class="st">'train'</span><span class="op">/</span><span class="st">'7'</span>).ls().<span class="bu">sorted</span>()]).<span class="bu">float</span>()<span class="op">/</span><span class="dv">255</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>stacked_threes.shape, stacked_sevens.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="86">
+<pre><code>(torch.Size([6131, 28, 28]), torch.Size([6265, 28, 28]))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="c0b032c6-8989-45c1-a487-58e9ebb37760" data-execution_count="87">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>show_image(stacked_threes[<span class="dv">0</span>])<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<p><img src="2023_07_23_basiclearner_files/figure-html/cell-6-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+<div class="cell" data-outputid="c1219fdd-396e-45d2-e84a-51cf16c7ea0a" data-execution_count="88">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>show_image(stacked_sevens[<span class="dv">0</span>])<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<p><img src="2023_07_23_basiclearner_files/figure-html/cell-7-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+<div class="cell" data-outputid="30bcc230-a4d8-456e-b806-b379ec71943f" data-execution_count="89">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>valid_3_tens <span class="op">=</span> torch.stack([tensor(Image.<span class="bu">open</span>(o)) <span class="cf">for</span> o <span class="kw">in</span> (path<span class="op">/</span><span class="st">'valid'</span><span class="op">/</span><span class="st">'3'</span>).ls()]).<span class="bu">float</span>()<span class="op">/</span><span class="dv">255</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>valid_7_tens <span class="op">=</span> torch.stack([tensor(Image.<span class="bu">open</span>(o)) <span class="cf">for</span> o <span class="kw">in</span> (path<span class="op">/</span><span class="st">'valid'</span><span class="op">/</span><span class="st">'7'</span>).ls()]).<span class="bu">float</span>()<span class="op">/</span><span class="dv">255</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>valid_3_tens.shape, valid_7_tens.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="89">
+<pre><code>(torch.Size([1010, 28, 28]), torch.Size([1028, 28, 28]))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="f8d09d7d-67d9-488c-ada9-fdaef55d029e" data-execution_count="90">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>show_image(valid_3_tens[<span class="dv">0</span>])<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<p><img src="2023_07_23_basiclearner_files/figure-html/cell-9-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+<div class="cell" data-outputid="8b8ec42a-a978-4b8c-8fa8-897bc6e45890" data-execution_count="91">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>show_image(valid_7_tens[<span class="dv">0</span>])<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<p><img src="2023_07_23_basiclearner_files/figure-html/cell-10-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+<p>We then combine the training sets for 3s and 7s and “flatten” (not sure if that’s the right term) the tensors so that each image’s pixels are in a one-dimensional row.</p>
+<div class="cell" data-outputid="7a149aa2-de36-49a6-a897-02a2df977045" data-execution_count="92">
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>train_x <span class="op">=</span> torch.cat([stacked_threes, stacked_sevens]).view(<span class="op">-</span><span class="dv">1</span>, <span class="dv">28</span><span class="op">*</span><span class="dv">28</span>)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>train_y <span class="op">=</span> tensor([<span class="dv">1</span>]<span class="op">*</span>stacked_threes.shape[<span class="dv">0</span>] <span class="op">+</span> [<span class="dv">0</span>]<span class="op">*</span>stacked_sevens.shape[<span class="dv">0</span>]).unsqueeze(<span class="dv">1</span>)</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>train_x.shape, train_y.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="92">
+<pre><code>(torch.Size([12396, 784]), torch.Size([12396, 1]))</code></pre>
+</div>
+</div>
+<p>Then do the same for the validation sets:</p>
+<div class="cell" data-outputid="318277ac-1b1a-4144-9719-7e969dd15178" data-execution_count="93">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>valid_x <span class="op">=</span> torch.cat([valid_3_tens, valid_7_tens]).view(<span class="op">-</span><span class="dv">1</span>, <span class="dv">28</span><span class="op">*</span><span class="dv">28</span>)</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>valid_y <span class="op">=</span> tensor([<span class="dv">1</span>]<span class="op">*</span><span class="bu">len</span>(valid_3_tens) <span class="op">+</span> [<span class="dv">0</span>]<span class="op">*</span><span class="bu">len</span>(valid_7_tens)).unsqueeze(<span class="dv">1</span>)</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>valid_x.shape, valid_y.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="93">
+<pre><code>(torch.Size([2038, 784]), torch.Size([2038, 1]))</code></pre>
+</div>
+</div>
+<p>We create training and validation datasets with the same structure as PyTorch’s <code>Dataset</code>:</p>
+<div class="cell" data-outputid="dbaabd64-b71e-4661-b8a2-d6ea8da2558a" data-execution_count="94">
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>dset <span class="op">=</span> <span class="bu">list</span>(<span class="bu">zip</span>(train_x, train_y))</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>x,y <span class="op">=</span> dset[<span class="dv">0</span>]</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>x.shape, y</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="94">
+<pre><code>(torch.Size([784]), tensor([1]))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="197f9130-4c47-4338-a2fd-cadd0ef24aaf" data-execution_count="95">
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>valid_dset <span class="op">=</span> <span class="bu">list</span>(<span class="bu">zip</span>(valid_x, valid_y))</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>x,y <span class="op">=</span> valid_dset[<span class="dv">0</span>]</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>x.shape, y</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="95">
+<pre><code>(torch.Size([784]), tensor([1]))</code></pre>
+</div>
+</div>
+<p>Then feed those datasets into fastai’s <code>DataLoader</code>s:</p>
+<div class="cell" data-outputid="175fd394-b891-4daf-e1ea-e4b3dcdaf28d" data-execution_count="96">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>dl <span class="op">=</span> DataLoader(dset, batch_size<span class="op">=</span><span class="dv">256</span>)</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>xb,yb <span class="op">=</span> first(dl)</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>xb.shape, yb.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="96">
+<pre><code>(torch.Size([256, 784]), torch.Size([256, 1]))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="1d04d8e0-3316-4e9c-8759-28f7742aded7" data-execution_count="97">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>valid_dl <span class="op">=</span> DataLoader(valid_dset, batch_size<span class="op">=</span><span class="dv">256</span>)</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>valid_xb, valid_yb <span class="op">=</span> first(valid_dl)</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>valid_xb.shape, valid_yb.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="97">
+<pre><code>(torch.Size([256, 784]), torch.Size([256, 1]))</code></pre>
+</div>
+</div>
+</section>
+<section id="create-our-model" class="level3">
+<h3 class="anchored" data-anchor-id="create-our-model">Create Our Model</h3>
+<p>For this exercise they have us create a simple neural net with a ReLU sandwiched between two linear functions. I have kept the number of intermediate activations (30) the same as the text</p>
+<div class="cell" data-execution_count="98">
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>simple_net <span class="op">=</span> nn.Sequential(</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>    nn.Linear(<span class="dv">28</span><span class="op">*</span><span class="dv">28</span>, <span class="dv">30</span>),</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>    nn.ReLU(),</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    nn.Linear(<span class="dv">30</span>, <span class="dv">1</span>)</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="create-a-loss-function" class="level3">
+<h3 class="anchored" data-anchor-id="create-a-loss-function">Create a Loss Function</h3>
+<p>The loss function we will use does the following:</p>
+<ul>
+<li>Pass the model’s activations through a sigmoid function so that they are between 0 and 1.</li>
+<li>When the target is 1 (the digit 3), take the difference between 1 and the activation. When the target is 0 (the digit 7), take the difference between 0 and the activation.</li>
+<li>Take the mean of the distance between activations and targets.</li>
+</ul>
+<div class="cell" data-execution_count="99">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> mnist_loss(predictions, targets):</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>  predictions <span class="op">=</span> predictions.sigmoid()</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> torch.where(targets<span class="op">==</span><span class="dv">1</span>, <span class="dv">1</span><span class="op">-</span>predictions, predictions).mean()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="create-a-function-to-calculate-predictions-loss-and-gradients" class="level3">
+<h3 class="anchored" data-anchor-id="create-a-function-to-calculate-predictions-loss-and-gradients">Create a Function to Calculate Predictions, Loss and Gradients</h3>
+<p>The <code>calc_grad</code> function takes as inputs the independent and dependent data batches, passes them through the model to get the activations (predictions), calculates the batch’s loss, and calls <code>backward</code> on the loss to calculate the weights’ gradients:</p>
+<div class="cell" data-execution_count="100">
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> calc_grad(xb, yb, model):</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>  preds <span class="op">=</span> model(xb)</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>  loss <span class="op">=</span> mnist_loss(preds, yb)</span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>  loss.backward()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="create-an-optimizer" class="level3">
+<h3 class="anchored" data-anchor-id="create-an-optimizer">Create an Optimizer</h3>
+<p>The optimizer handles the calculation to step the weights and reset the gradients. When stepping the weights, the <code>.data</code> attribute of the parameters is used since PyTorch doesn’t calculate gradients on it. The <code>zero_grad</code> method sets the gradients to 0 (<code>None</code>) so that they don’t accumulate additively when the next epoch’s gradients are calculated:</p>
+<div class="cell" data-execution_count="101">
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> BasicOptim:</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>,params,lr): <span class="va">self</span>.params,<span class="va">self</span>.lr <span class="op">=</span> <span class="bu">list</span>(params),lr</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> step(<span class="va">self</span>, <span class="op">*</span>args, <span class="op">**</span>kwargs):</span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> p <span class="kw">in</span> <span class="va">self</span>.params: p.data <span class="op">-=</span> p.grad.data <span class="op">*</span> <span class="va">self</span>.lr</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> zero_grad(<span class="va">self</span>, <span class="op">*</span>args, <span class="op">**</span>kwargs):</span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> p <span class="kw">in</span> <span class="va">self</span>.params: p.grad <span class="op">=</span> <span class="va">None</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="102">
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>lr <span class="op">=</span> <span class="fl">0.1</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="103">
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>opt <span class="op">=</span> BasicOptim(simple_net.parameters(), lr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="create-a-function-to-train-one-epoch" class="level3">
+<h3 class="anchored" data-anchor-id="create-a-function-to-train-one-epoch">Create a Function to Train One Epoch</h3>
+<p>For each training epoch:</p>
+<ul>
+<li>Get a batch from the training <code>DataLoader</code>.</li>
+<li>Calculate the activations, loss, and gradients.</li>
+<li>Step the weights in the direction opposite of the gradients.</li>
+<li>Reset the gradients to zero.</li>
+</ul>
+<div class="cell" data-execution_count="104">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> train_epoch(model):</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> xb,yb <span class="kw">in</span> dl:</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>    calc_grad(xb, yb, model)</span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>    opt.step()</span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>    opt.zero_grad()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="create-a-function-to-calculate-a-metric-for-one-batch" class="level3">
+<h3 class="anchored" data-anchor-id="create-a-function-to-calculate-a-metric-for-one-batch">Create a Function to Calculate a Metric for One Batch</h3>
+<p>The metric of choice in the chapter is accuracy, which is the mean of correctly predicted digits across the batch:</p>
+<div class="cell" data-execution_count="105">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> batch_accuracy(xb, yb):</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>  preds <span class="op">=</span> xb.sigmoid()</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>  correct <span class="op">=</span> (preds<span class="op">&gt;</span><span class="fl">0.5</span>) <span class="op">==</span> yb</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> correct.<span class="bu">float</span>().mean()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="create-a-function-to-calculate-the-metric-for-one-epoch" class="level3">
+<h3 class="anchored" data-anchor-id="create-a-function-to-calculate-the-metric-for-one-epoch">Create a Function to Calculate the Metric for One Epoch</h3>
+<p>For each batch in the validation <code>DataLoader</code>, calculate the accuracy. Then, take the mean of all batch accuracy values as the accuracy for the epoch:</p>
+<div class="cell" data-execution_count="106">
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> validate_epoch(model):</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>  accs <span class="op">=</span> [batch_accuracy(model(xb), yb) <span class="cf">for</span> xb,yb <span class="kw">in</span> valid_dl]</span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> <span class="bu">round</span>(torch.stack(accs).mean().item(), <span class="dv">4</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="create-a-function-for-the-training-loop" class="level3">
+<h3 class="anchored" data-anchor-id="create-a-function-for-the-training-loop">Create a Function for the Training Loop</h3>
+<p><code>train_model</code> takes a model, and number of epochs that you want to train the model for as inputs. For each epoch, it trains the model on the training set batches, and outputs the epoch’s metric on the validation set batches:</p>
+<div class="cell" data-execution_count="107">
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> train_model(model, epochs):</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(epochs):</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>    train_epoch(model)</span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(validate_epoch(model), end<span class="op">=</span><span class="st">' '</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="train-the-model" class="level3">
+<h3 class="anchored" data-anchor-id="train-the-model">Train the Model</h3>
+<p>As is done in the text, I’ll train the model for 40 epochs.</p>
+<div class="cell" data-outputid="83bb0d34-9676-492d-c0e5-67cc505cfd57" data-execution_count="108">
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>train_model(simple_net, <span class="dv">40</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>0.5127 0.8013 0.9175 0.9419 0.957 0.9653 0.9672 0.9677 0.9687 0.9702 0.9726 0.9736 0.9745 0.9755 0.9755 0.9765 0.977 0.9785 0.9785 0.9785 0.9795 0.9799 0.9804 0.9809 0.9809 0.9814 0.9819 0.9819 0.9819 0.9824 0.9829 0.9829 0.9829 0.9829 0.9829 0.9829 0.9829 0.9829 0.9829 0.9829 </code></pre>
+</div>
+</div>
+<p>I get a similar starting and final accuracy as the example from the text.</p>
+</section>
+</section>
+<section id="basiclearner-class" class="level2">
+<h2 class="anchored" data-anchor-id="basiclearner-class"><code>BasicLearner</code> Class</h2>
+<p>My <code>BasicLearner</code> should recreate the training process performed in the above sections. I’ll start by defining the inputs and outputs for an instance of this class:</p>
+<section id="inputs-and-outputs" class="level3">
+<h3 class="anchored" data-anchor-id="inputs-and-outputs">Inputs and Outputs</h3>
+<p>The fastai <code>Learner</code> requires the following inputs:</p>
+<ul>
+<li><code>DataLoaders</code> with training and validation sets.</li>
+<li>The model we want to train with.</li>
+<li>An optimizer function.</li>
+<li>A loss function.</li>
+<li>Any metrics we want calculated.</li>
+</ul>
+<p>The <code>Learner</code> outputs a table with the following information when a <code>fit(epochs, lr)</code> method is called. I’ve bolded the items that I’m going to show in the first iteration of my <code>Learner</code>:</p>
+<ul>
+<li><strong>Epoch #.</strong></li>
+<li>Training Loss.</li>
+<li>Validation Loss.</li>
+<li><strong>Metric.</strong></li>
+<li>Time.</li>
+</ul>
+<p>With these inputs and outputs in mind, I’ll write the <code>BasicLearner</code> class:</p>
+<div class="cell" data-execution_count="109">
+<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> BasicLearner:</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, dls, model, opt_func, loss_func, metric):</span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.dls <span class="op">=</span> dls</span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.model <span class="op">=</span> model</span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.opt_func <span class="op">=</span> opt_func</span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.loss_func <span class="op">=</span> loss_func</span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.metric <span class="op">=</span> metric</span>
+<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> calc_grad(<span class="va">self</span>, xb, yb, model):</span>
+<span id="cb37-10"><a href="#cb37-10" aria-hidden="true" tabindex="-1"></a>    preds <span class="op">=</span> <span class="va">self</span>.model(xb)</span>
+<span id="cb37-11"><a href="#cb37-11" aria-hidden="true" tabindex="-1"></a>    loss <span class="op">=</span> <span class="va">self</span>.loss_func(preds, yb)</span>
+<span id="cb37-12"><a href="#cb37-12" aria-hidden="true" tabindex="-1"></a>    loss.backward()</span>
+<span id="cb37-13"><a href="#cb37-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-14"><a href="#cb37-14" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> train_epoch(<span class="va">self</span>):</span>
+<span id="cb37-15"><a href="#cb37-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> xb,yb <span class="kw">in</span> <span class="va">self</span>.dls.train:</span>
+<span id="cb37-16"><a href="#cb37-16" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.calc_grad(xb, yb, <span class="va">self</span>.model)</span>
+<span id="cb37-17"><a href="#cb37-17" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.opt.step()</span>
+<span id="cb37-18"><a href="#cb37-18" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.opt.zero_grad()</span>
+<span id="cb37-19"><a href="#cb37-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-20"><a href="#cb37-20" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> validate_epoch(<span class="va">self</span>):</span>
+<span id="cb37-21"><a href="#cb37-21" aria-hidden="true" tabindex="-1"></a>    accs <span class="op">=</span> [<span class="va">self</span>.metric(<span class="va">self</span>.model(xb), yb) <span class="cf">for</span> xb,yb <span class="kw">in</span> <span class="va">self</span>.dls.valid]</span>
+<span id="cb37-22"><a href="#cb37-22" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="bu">round</span>(torch.stack(accs).mean().item(), <span class="dv">4</span>)</span>
+<span id="cb37-23"><a href="#cb37-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-24"><a href="#cb37-24" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> train_model(<span class="va">self</span>, model, epochs):</span>
+<span id="cb37-25"><a href="#cb37-25" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"Epoch"</span>, <span class="va">self</span>.metric.<span class="va">__name__</span>, sep<span class="op">=</span><span class="st">"</span><span class="ch">\t</span><span class="st">"</span>)</span>
+<span id="cb37-26"><a href="#cb37-26" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="va">self</span>.epochs):</span>
+<span id="cb37-27"><a href="#cb37-27" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.train_epoch()</span>
+<span id="cb37-28"><a href="#cb37-28" aria-hidden="true" tabindex="-1"></a>      <span class="bu">print</span>(i, <span class="va">self</span>.validate_epoch(), sep<span class="op">=</span><span class="st">"</span><span class="ch">\t</span><span class="st">"</span>)</span>
+<span id="cb37-29"><a href="#cb37-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-30"><a href="#cb37-30" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> fit(<span class="va">self</span>, epochs, lr):</span>
+<span id="cb37-31"><a href="#cb37-31" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.lr <span class="op">=</span> lr</span>
+<span id="cb37-32"><a href="#cb37-32" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.epochs <span class="op">=</span> epochs</span>
+<span id="cb37-33"><a href="#cb37-33" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.opt <span class="op">=</span> <span class="va">self</span>.opt_func(<span class="va">self</span>.model.parameters(), <span class="va">self</span>.lr)</span>
+<span id="cb37-34"><a href="#cb37-34" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.train_model(<span class="va">self</span>.model, <span class="va">self</span>.epochs)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I’ll combine my training and validation <code>DataLoader</code>s and confirm that they contain the correct number of tuples in their datasets:</p>
+<div class="cell" data-execution_count="110">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> DataLoaders(dl, valid_dl)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="2ff0f59f-d9d8-4222-f36e-4b86dd0b44b4" data-execution_count="111">
+<div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(dls.train.dataset)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="111">
+<pre><code>12396</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="6b2bbb4a-11b1-4a8e-b669-71112f552835" data-execution_count="112">
+<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(dls.valid.dataset)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="112">
+<pre><code>2038</code></pre>
+</div>
+</div>
+<p>I’ll create a fresh neural net to use as a from-scratch model during training:</p>
+<div class="cell" data-execution_count="113">
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a>simple_net <span class="op">=</span> nn.Sequential(</span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>    nn.Linear(<span class="dv">28</span><span class="op">*</span><span class="dv">28</span>, <span class="dv">30</span>),</span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>    nn.ReLU(),</span>
+<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a>    nn.Linear(<span class="dv">30</span>, <span class="dv">1</span>)</span>
+<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I’ll instantiate my <code>BasicLearner</code> class:</p>
+<div class="cell" data-execution_count="114">
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>learn <span class="op">=</span> BasicLearner(dls<span class="op">=</span>dls,</span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>                     model<span class="op">=</span>simple_net,</span>
+<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>                     opt_func<span class="op">=</span>BasicOptim,</span>
+<span id="cb44-4"><a href="#cb44-4" aria-hidden="true" tabindex="-1"></a>                     loss_func<span class="op">=</span>mnist_loss,</span>
+<span id="cb44-5"><a href="#cb44-5" aria-hidden="true" tabindex="-1"></a>                     metric<span class="op">=</span>batch_accuracy)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>And train the model:</p>
+<div class="cell" data-outputid="e64d5343-39f9-408d-d9e1-76b0b301c6e3" data-execution_count="115">
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>learn.fit(<span class="dv">40</span>, <span class="fl">0.1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Epoch   batch_accuracy
+0   0.5068
+1   0.814
+2   0.9184
+3   0.9419
+4   0.9575
+5   0.9648
+6   0.9663
+7   0.9677
+8   0.9692
+9   0.9707
+10  0.9736
+11  0.9736
+12  0.9741
+13  0.9755
+14  0.9765
+15  0.9775
+16  0.978
+17  0.9785
+18  0.979
+19  0.979
+20  0.979
+21  0.9795
+22  0.9795
+23  0.9804
+24  0.9804
+25  0.9809
+26  0.9814
+27  0.9819
+28  0.9819
+29  0.9819
+30  0.9814
+31  0.9819
+32  0.9819
+33  0.9824
+34  0.9824
+35  0.9829
+36  0.9829
+37  0.9829
+38  0.9829
+39  0.9829</code></pre>
+</div>
+</div>
+<p>Looks good! I’m getting similar starting and ending accuracy values as before.</p>
+</section>
+</section>
+<section id="improving-the-basiclearner-class" class="level2">
+<h2 class="anchored" data-anchor-id="improving-the-basiclearner-class">Improving the <code>BasicLearner</code> Class</h2>
+<p>Now that I’ve confirmed that my <code>BasicLearner</code> is able to train a neural net to get 98% accuracy classifying 3s and 7s, I would like to add a bit more functionality to the class.</p>
+<p>First, I’d like to add a <code>predict</code> method to the learner which will take as input a tensor image, and then output the prediction, so that I can test if my model has truly learned how to classify 3s and 7s.</p>
+<div class="cell" data-execution_count="116">
+<div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> BasicLearner:</span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, dls, model, opt_func, loss_func, metric):</span>
+<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.dls <span class="op">=</span> dls</span>
+<span id="cb47-4"><a href="#cb47-4" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.model <span class="op">=</span> model</span>
+<span id="cb47-5"><a href="#cb47-5" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.opt_func <span class="op">=</span> opt_func</span>
+<span id="cb47-6"><a href="#cb47-6" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.loss_func <span class="op">=</span> loss_func</span>
+<span id="cb47-7"><a href="#cb47-7" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.metric <span class="op">=</span> metric</span>
+<span id="cb47-8"><a href="#cb47-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb47-9"><a href="#cb47-9" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> calc_grad(<span class="va">self</span>, xb, yb, model):</span>
+<span id="cb47-10"><a href="#cb47-10" aria-hidden="true" tabindex="-1"></a>    preds <span class="op">=</span> <span class="va">self</span>.model(xb)</span>
+<span id="cb47-11"><a href="#cb47-11" aria-hidden="true" tabindex="-1"></a>    loss <span class="op">=</span> <span class="va">self</span>.loss_func(preds, yb)</span>
+<span id="cb47-12"><a href="#cb47-12" aria-hidden="true" tabindex="-1"></a>    loss.backward()</span>
+<span id="cb47-13"><a href="#cb47-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb47-14"><a href="#cb47-14" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> train_epoch(<span class="va">self</span>):</span>
+<span id="cb47-15"><a href="#cb47-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> xb,yb <span class="kw">in</span> <span class="va">self</span>.dls.train:</span>
+<span id="cb47-16"><a href="#cb47-16" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.calc_grad(xb, yb, <span class="va">self</span>.model)</span>
+<span id="cb47-17"><a href="#cb47-17" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.opt.step()</span>
+<span id="cb47-18"><a href="#cb47-18" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.opt.zero_grad()</span>
+<span id="cb47-19"><a href="#cb47-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb47-20"><a href="#cb47-20" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> validate_epoch(<span class="va">self</span>):</span>
+<span id="cb47-21"><a href="#cb47-21" aria-hidden="true" tabindex="-1"></a>    accs <span class="op">=</span> [<span class="va">self</span>.metric(<span class="va">self</span>.model(xb), yb) <span class="cf">for</span> xb,yb <span class="kw">in</span> <span class="va">self</span>.dls.valid]</span>
+<span id="cb47-22"><a href="#cb47-22" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="bu">round</span>(torch.stack(accs).mean().item(), <span class="dv">4</span>)</span>
+<span id="cb47-23"><a href="#cb47-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb47-24"><a href="#cb47-24" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> train_model(<span class="va">self</span>, model, epochs):</span>
+<span id="cb47-25"><a href="#cb47-25" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"Epoch"</span>, <span class="va">self</span>.metric.<span class="va">__name__</span>, sep<span class="op">=</span><span class="st">"</span><span class="ch">\t</span><span class="st">"</span>)</span>
+<span id="cb47-26"><a href="#cb47-26" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="va">self</span>.epochs):</span>
+<span id="cb47-27"><a href="#cb47-27" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.train_epoch()</span>
+<span id="cb47-28"><a href="#cb47-28" aria-hidden="true" tabindex="-1"></a>      <span class="bu">print</span>(i, <span class="va">self</span>.validate_epoch(), sep<span class="op">=</span><span class="st">"</span><span class="ch">\t</span><span class="st">"</span>)</span>
+<span id="cb47-29"><a href="#cb47-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb47-30"><a href="#cb47-30" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> fit(<span class="va">self</span>, epochs, lr):</span>
+<span id="cb47-31"><a href="#cb47-31" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.lr <span class="op">=</span> lr</span>
+<span id="cb47-32"><a href="#cb47-32" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.epochs <span class="op">=</span> epochs</span>
+<span id="cb47-33"><a href="#cb47-33" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.opt <span class="op">=</span> <span class="va">self</span>.opt_func(<span class="va">self</span>.model.parameters(), <span class="va">self</span>.lr)</span>
+<span id="cb47-34"><a href="#cb47-34" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.train_model(<span class="va">self</span>.model, <span class="va">self</span>.epochs)</span>
+<span id="cb47-35"><a href="#cb47-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb47-36"><a href="#cb47-36" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> predict(<span class="va">self</span>, x):</span>
+<span id="cb47-37"><a href="#cb47-37" aria-hidden="true" tabindex="-1"></a>    prediction <span class="op">=</span> <span class="va">self</span>.model(x)</span>
+<span id="cb47-38"><a href="#cb47-38" aria-hidden="true" tabindex="-1"></a>    prediction <span class="op">=</span> prediction.sigmoid()</span>
+<span id="cb47-39"><a href="#cb47-39" aria-hidden="true" tabindex="-1"></a>    label <span class="op">=</span> <span class="st">"3"</span> <span class="cf">if</span> prediction <span class="op">&gt;</span> <span class="fl">0.5</span> <span class="cf">else</span> <span class="st">"7"</span></span>
+<span id="cb47-40"><a href="#cb47-40" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> prediction, label</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I’ll instantiate a new model and <code>BasicLearner</code> and train it again:</p>
+<div class="cell" data-execution_count="117">
+<div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a>simple_net <span class="op">=</span> nn.Sequential(</span>
+<span id="cb48-2"><a href="#cb48-2" aria-hidden="true" tabindex="-1"></a>    nn.Linear(<span class="dv">28</span><span class="op">*</span><span class="dv">28</span>, <span class="dv">30</span>),</span>
+<span id="cb48-3"><a href="#cb48-3" aria-hidden="true" tabindex="-1"></a>    nn.ReLU(),</span>
+<span id="cb48-4"><a href="#cb48-4" aria-hidden="true" tabindex="-1"></a>    nn.Linear(<span class="dv">30</span>, <span class="dv">1</span>)</span>
+<span id="cb48-5"><a href="#cb48-5" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="118">
+<div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>learn <span class="op">=</span> BasicLearner(dls<span class="op">=</span>dls,</span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>                     model<span class="op">=</span>simple_net,</span>
+<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a>                     opt_func<span class="op">=</span>BasicOptim,</span>
+<span id="cb49-4"><a href="#cb49-4" aria-hidden="true" tabindex="-1"></a>                     loss_func<span class="op">=</span>mnist_loss,</span>
+<span id="cb49-5"><a href="#cb49-5" aria-hidden="true" tabindex="-1"></a>                     metric<span class="op">=</span>batch_accuracy)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="f6687710-57fd-499d-d499-9f74a3512941" data-execution_count="119">
+<div class="sourceCode cell-code" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a>learn.fit(<span class="dv">40</span>, <span class="fl">0.1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Epoch   batch_accuracy
+0   0.5073
+1   0.8184
+2   0.9194
+3   0.9419
+4   0.957
+5   0.9638
+6   0.9658
+7   0.9672
+8   0.9697
+9   0.9706
+10  0.9726
+11  0.9741
+12  0.9741
+13  0.9755
+14  0.976
+15  0.9765
+16  0.9765
+17  0.978
+18  0.978
+19  0.978
+20  0.9795
+21  0.9795
+22  0.9799
+23  0.9809
+24  0.9809
+25  0.9814
+26  0.9814
+27  0.9814
+28  0.9819
+29  0.9814
+30  0.9814
+31  0.9824
+32  0.9829
+33  0.9829
+34  0.9829
+35  0.9829
+36  0.9824
+37  0.9824
+38  0.9824
+39  0.9824</code></pre>
+</div>
+</div>
+<p>With the model trained, I can see if it predicts an image of a 3 correctly:</p>
+<div class="cell" data-outputid="6af50cbc-d362-4dc8-b7eb-253da47cee97" data-execution_count="120">
+<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a>show_image(dls.valid.dataset[<span class="dv">1</span>][<span class="dv">0</span>].view(<span class="op">-</span><span class="dv">1</span>,<span class="dv">28</span>,<span class="dv">28</span>))<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<p><img src="2023_07_23_basiclearner_files/figure-html/cell-39-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+<div class="cell" data-outputid="e5f476ad-f4ba-4bd4-99da-74a002b0c700" data-execution_count="121">
+<div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a>learn.predict(dls.valid.dataset[<span class="dv">1</span>][<span class="dv">0</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="121">
+<pre><code>(tensor([1.0000], grad_fn=&lt;SigmoidBackward0&gt;), '3')</code></pre>
+</div>
+</div>
+<p>The final piece that I’ll add is a “training loss” column in the <code>fit</code> method’s output during training. The training loss of each batch will be stored in a tensor, at the end of each epoch I’ll calculate the mean loss value, print it out, and reset the loss tensor to 0.</p>
+<div class="cell" data-execution_count="139">
+<div class="sourceCode cell-code" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> BasicLearner:</span>
+<span id="cb55-2"><a href="#cb55-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, dls, model, opt_func, loss_func, metric):</span>
+<span id="cb55-3"><a href="#cb55-3" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.dls <span class="op">=</span> dls</span>
+<span id="cb55-4"><a href="#cb55-4" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.model <span class="op">=</span> model</span>
+<span id="cb55-5"><a href="#cb55-5" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.opt_func <span class="op">=</span> opt_func</span>
+<span id="cb55-6"><a href="#cb55-6" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.loss_func <span class="op">=</span> loss_func</span>
+<span id="cb55-7"><a href="#cb55-7" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.metric <span class="op">=</span> metric</span>
+<span id="cb55-8"><a href="#cb55-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb55-9"><a href="#cb55-9" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> calc_grad(<span class="va">self</span>, xb, yb, model):</span>
+<span id="cb55-10"><a href="#cb55-10" aria-hidden="true" tabindex="-1"></a>    preds <span class="op">=</span> <span class="va">self</span>.model(xb)</span>
+<span id="cb55-11"><a href="#cb55-11" aria-hidden="true" tabindex="-1"></a>    loss <span class="op">=</span> <span class="va">self</span>.loss_func(preds, yb)</span>
+<span id="cb55-12"><a href="#cb55-12" aria-hidden="true" tabindex="-1"></a>    <span class="co"># store the loss of each batch</span></span>
+<span id="cb55-13"><a href="#cb55-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># later to be averaged across the epoch</span></span>
+<span id="cb55-14"><a href="#cb55-14" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.loss <span class="op">=</span> torch.cat((<span class="va">self</span>.loss, tensor([loss])))</span>
+<span id="cb55-15"><a href="#cb55-15" aria-hidden="true" tabindex="-1"></a>    loss.backward()</span>
+<span id="cb55-16"><a href="#cb55-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb55-17"><a href="#cb55-17" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> train_epoch(<span class="va">self</span>):</span>
+<span id="cb55-18"><a href="#cb55-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> xb,yb <span class="kw">in</span> <span class="va">self</span>.dls.train:</span>
+<span id="cb55-19"><a href="#cb55-19" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.calc_grad(xb, yb, <span class="va">self</span>.model)</span>
+<span id="cb55-20"><a href="#cb55-20" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.opt.step()</span>
+<span id="cb55-21"><a href="#cb55-21" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.opt.zero_grad()</span>
+<span id="cb55-22"><a href="#cb55-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb55-23"><a href="#cb55-23" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> validate_epoch(<span class="va">self</span>):</span>
+<span id="cb55-24"><a href="#cb55-24" aria-hidden="true" tabindex="-1"></a>    accs <span class="op">=</span> [<span class="va">self</span>.metric(<span class="va">self</span>.model(xb), yb) <span class="cf">for</span> xb,yb <span class="kw">in</span> <span class="va">self</span>.dls.valid]</span>
+<span id="cb55-25"><a href="#cb55-25" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="bu">round</span>(torch.stack(accs).mean().item(), <span class="dv">4</span>)</span>
+<span id="cb55-26"><a href="#cb55-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb55-27"><a href="#cb55-27" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> train_model(<span class="va">self</span>, model, epochs):</span>
+<span id="cb55-28"><a href="#cb55-28" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"Epoch"</span>, <span class="st">"Train Loss"</span>, <span class="va">self</span>.metric.<span class="va">__name__</span>, sep<span class="op">=</span><span class="st">"</span><span class="ch">\t</span><span class="st">"</span>)</span>
+<span id="cb55-29"><a href="#cb55-29" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="va">self</span>.epochs):</span>
+<span id="cb55-30"><a href="#cb55-30" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.loss <span class="op">=</span> tensor([])</span>
+<span id="cb55-31"><a href="#cb55-31" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.train_epoch()</span>
+<span id="cb55-32"><a href="#cb55-32" aria-hidden="true" tabindex="-1"></a>      <span class="bu">print</span>(i, <span class="bu">round</span>(<span class="va">self</span>.loss.mean().item(), <span class="dv">4</span>), <span class="va">self</span>.validate_epoch(), sep<span class="op">=</span><span class="st">"</span><span class="ch">\t\t</span><span class="st">"</span>)</span>
+<span id="cb55-33"><a href="#cb55-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb55-34"><a href="#cb55-34" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> fit(<span class="va">self</span>, epochs, lr):</span>
+<span id="cb55-35"><a href="#cb55-35" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.lr <span class="op">=</span> lr</span>
+<span id="cb55-36"><a href="#cb55-36" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.epochs <span class="op">=</span> epochs</span>
+<span id="cb55-37"><a href="#cb55-37" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.opt <span class="op">=</span> <span class="va">self</span>.opt_func(<span class="va">self</span>.model.parameters(), <span class="va">self</span>.lr)</span>
+<span id="cb55-38"><a href="#cb55-38" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.train_model(<span class="va">self</span>.model, <span class="va">self</span>.epochs)</span>
+<span id="cb55-39"><a href="#cb55-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb55-40"><a href="#cb55-40" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> predict(<span class="va">self</span>, x):</span>
+<span id="cb55-41"><a href="#cb55-41" aria-hidden="true" tabindex="-1"></a>    prediction <span class="op">=</span> <span class="va">self</span>.model(x)</span>
+<span id="cb55-42"><a href="#cb55-42" aria-hidden="true" tabindex="-1"></a>    prediction <span class="op">=</span> prediction.sigmoid()</span>
+<span id="cb55-43"><a href="#cb55-43" aria-hidden="true" tabindex="-1"></a>    label <span class="op">=</span> <span class="st">"3"</span> <span class="cf">if</span> prediction <span class="op">&gt;</span> <span class="fl">0.5</span> <span class="cf">else</span> <span class="st">"7"</span></span>
+<span id="cb55-44"><a href="#cb55-44" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> prediction, label</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="140">
+<div class="sourceCode cell-code" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a>simple_net <span class="op">=</span> nn.Sequential(</span>
+<span id="cb56-2"><a href="#cb56-2" aria-hidden="true" tabindex="-1"></a>    nn.Linear(<span class="dv">28</span><span class="op">*</span><span class="dv">28</span>, <span class="dv">30</span>),</span>
+<span id="cb56-3"><a href="#cb56-3" aria-hidden="true" tabindex="-1"></a>    nn.ReLU(),</span>
+<span id="cb56-4"><a href="#cb56-4" aria-hidden="true" tabindex="-1"></a>    nn.Linear(<span class="dv">30</span>, <span class="dv">1</span>)</span>
+<span id="cb56-5"><a href="#cb56-5" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="141">
+<div class="sourceCode cell-code" id="cb57"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1"><a href="#cb57-1" aria-hidden="true" tabindex="-1"></a>learn <span class="op">=</span> BasicLearner(dls<span class="op">=</span>dls,</span>
+<span id="cb57-2"><a href="#cb57-2" aria-hidden="true" tabindex="-1"></a>                     model<span class="op">=</span>simple_net,</span>
+<span id="cb57-3"><a href="#cb57-3" aria-hidden="true" tabindex="-1"></a>                     opt_func<span class="op">=</span>BasicOptim,</span>
+<span id="cb57-4"><a href="#cb57-4" aria-hidden="true" tabindex="-1"></a>                     loss_func<span class="op">=</span>mnist_loss,</span>
+<span id="cb57-5"><a href="#cb57-5" aria-hidden="true" tabindex="-1"></a>                     metric<span class="op">=</span>batch_accuracy)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="4ba79dd8-fab5-4157-c7f4-8481894e4e9a" data-execution_count="142">
+<div class="sourceCode cell-code" id="cb58"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb58-1"><a href="#cb58-1" aria-hidden="true" tabindex="-1"></a>learn.fit(<span class="dv">40</span>, <span class="fl">0.1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Epoch   Train Loss  batch_accuracy
+0       0.3627      0.5229
+1       0.1088      0.7715
+2       0.0593      0.9111
+3       0.0439      0.9389
+4       0.0375      0.9516
+5       0.0337      0.9629
+6       0.0311      0.9653
+7       0.0291      0.9667
+8       0.0275      0.9672
+9       0.0261      0.9687
+10      0.025       0.9721
+11      0.0241      0.9736
+12      0.0233      0.9746
+13      0.0225      0.9755
+14      0.0219      0.9755
+15      0.0213      0.976
+16      0.0208      0.9765
+17      0.0204      0.978
+18      0.02        0.9785
+19      0.0196      0.9785
+20      0.0193      0.979
+21      0.0189      0.979
+22      0.0186      0.979
+23      0.0184      0.9799
+24      0.0181      0.9804
+25      0.0178      0.9804
+26      0.0176      0.9804
+27      0.0174      0.9804
+28      0.0172      0.9804
+29      0.017       0.9814
+30      0.0168      0.9824
+31      0.0166      0.9824
+32      0.0164      0.9829
+33      0.0163      0.9829
+34      0.0161      0.9829
+35      0.016       0.9824
+36      0.0158      0.9829
+37      0.0157      0.9829
+38      0.0155      0.9829
+39      0.0154      0.9829</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="c405159b-1ae0-4a41-938b-d8924802b929" data-execution_count="143">
+<div class="sourceCode cell-code" id="cb60"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb60-1"><a href="#cb60-1" aria-hidden="true" tabindex="-1"></a><span class="co"># check prediction again</span></span>
+<span id="cb60-2"><a href="#cb60-2" aria-hidden="true" tabindex="-1"></a>learn.predict(dls.valid.dataset[<span class="dv">1</span>][<span class="dv">0</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="143">
+<pre><code>(tensor([1.0000], grad_fn=&lt;SigmoidBackward0&gt;), '3')</code></pre>
+</div>
+</div>
+</section>
+<section id="further-improvements" class="level2">
+<h2 class="anchored" data-anchor-id="further-improvements">Further Improvements</h2>
+<p>My <code>BasicLearner</code> is able to train a neural net classifying two digits to an accuracy of 98%. During training, it prints out the epoch number, training loss and metric. It also has a <code>predict</code> method to test its classification on new tensor images. While I’m happy with the result of this exercise, there are certainly numerous improvements and additions that can be made to expand this learner to match the functionality of the fastai <code>Learner</code> class.</p>
+<p>I hope you enjoyed reading this blog post!</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>
