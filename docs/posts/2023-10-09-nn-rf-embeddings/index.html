@@ -1,0 +1,3410 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="description" content="In this notebook I replace categorical features in a dataset with corresponding neural net embedding outputs to improve the performance of a random forest.">
+
+<title>vishal bakshi - Using Neural Net Embeddings to Improve a Random Forest</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">vishal bakshi</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#load-the-data" id="toc-load-the-data" class="nav-link" data-scroll-target="#load-the-data">Load the Data</a></li>
+  <li><a href="#clean-the-data" id="toc-clean-the-data" class="nav-link" data-scroll-target="#clean-the-data">Clean the Data</a></li>
+  <li><a href="#create-training-and-validation-sets" id="toc-create-training-and-validation-sets" class="nav-link" data-scroll-target="#create-training-and-validation-sets">Create Training and Validation Sets</a></li>
+  <li><a href="#removing-features" id="toc-removing-features" class="nav-link" data-scroll-target="#removing-features">Removing Features</a>
+  <ul class="collapse">
+  <li><a href="#low-importance-features" id="toc-low-importance-features" class="nav-link" data-scroll-target="#low-importance-features">Low-Importance Features</a></li>
+  <li><a href="#redundant-features" id="toc-redundant-features" class="nav-link" data-scroll-target="#redundant-features">Redundant Features</a></li>
+  <li><a href="#out-of-domain-features" id="toc-out-of-domain-features" class="nav-link" data-scroll-target="#out-of-domain-features">Out-of-Domain Features</a></li>
+  </ul></li>
+  <li><a href="#train-a-neural-net" id="toc-train-a-neural-net" class="nav-link" data-scroll-target="#train-a-neural-net">Train a Neural Net</a></li>
+  <li><a href="#neural-net-embeddings" id="toc-neural-net-embeddings" class="nav-link" data-scroll-target="#neural-net-embeddings">Neural Net Embeddings</a></li>
+  <li><a href="#fitting-a-random-forest" id="toc-fitting-a-random-forest" class="nav-link" data-scroll-target="#fitting-a-random-forest">Fitting a Random Forest</a>
+  <ul class="collapse">
+  <li><a href="#removing-features-1" id="toc-removing-features-1" class="nav-link" data-scroll-target="#removing-features-1">Removing Features</a></li>
+  </ul></li>
+  <li><a href="#final-thoughts" id="toc-final-thoughts" class="nav-link" data-scroll-target="#final-thoughts">Final Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Using Neural Net Embeddings to Improve a Random Forest</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">deep learning</div>
+    <div class="quarto-category">python</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    In this notebook I replace categorical features in a dataset with corresponding neural net embedding outputs to improve the performance of a random forest.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In this blog post I’ll work through the third “Further Research” exercise from Chapter 9 of the fastai textbook:</p>
+<blockquote class="blockquote">
+<p>Use the embeddings from the neural net in this chapter in a random forest, and see if you can improve on the random forest results we saw.</p>
+</blockquote>
+<p>I’ll train a neural net on the dataset, grab its embeddings for categorical variables, replace the existing categorical variables in the dataset with them, and then train a random forest on that updated dataset.</p>
+<p>The neural net in the chapter was trained on only a subset of columns (after removing columns that were redundant and low importance). I’ll first go through the process of reducing the number of used columns with a random forest as done in the chapter text before training the neural net.</p>
+<p>In addition to the textbook, I also heavily reference the code provided in <a href="https://towardsdatascience.com/entity-embeddings-for-ml-2387eb68e49">this medium post by Adam Mehdi</a> a similar implementation of which was shared in <a href="https://forums.fast.ai/t/using-embedding-from-the-neural-network-in-random-forests/80063/10?u=vbakshi">this fastai forum post (sign-in required)</a>.</p>
+<hr>
+<p>Here is a summary of error values for models fit on the original and embedding-filled datasets in this exercise:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Model</th>
+<th style="text-align: center;">Validation MSE</th>
+<th style="text-align: center;">Reduction in MSE</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">RF (no embedding columns)</td>
+<td style="text-align: center;">0.247074</td>
+<td style="text-align: center;">–</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">RF (329 embedding columns)</td>
+<td style="text-align: center;">0.238825</td>
+<td style="text-align: center;">3.33%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">RF (32 embedding columns)</td>
+<td style="text-align: center;">0.243094</td>
+<td style="text-align: center;">1.6%</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="load-the-data" class="level2">
+<h2 class="anchored" data-anchor-id="load-the-data">Load the Data</h2>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>pip install dtreeviz</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pandas.api.types <span class="im">import</span> is_string_dtype, is_numeric_dtype, is_categorical_dtype</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fastai.tabular.<span class="bu">all</span> <span class="im">import</span> <span class="op">*</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.ensemble <span class="im">import</span> RandomForestRegressor</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.tree <span class="im">import</span> DecisionTreeRegressor</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dtreeviz.trees <span class="im">import</span> <span class="op">*</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> IPython.display <span class="im">import</span> Image, display_svg, SVG</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>pd.options.display.max_rows <span class="op">=</span> <span class="dv">20</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>pd.options.display.max_columns <span class="op">=</span> <span class="dv">8</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>cred_path <span class="op">=</span> Path(<span class="st">"~/.kaggle/kaggle.json"</span>).expanduser()</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="kw">not</span> cred_path.exists():</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>  cred_path.parent.mkdir(exist_ok<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  cred_path.write_text(creds)</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>  cred_path.chmod(<span class="bn">0o600</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="c47e2d81-0a24-4044-d726-8ce93bbe36b3">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> zipfile,kaggle</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>path <span class="op">=</span> Path(<span class="st">'bluebook-for-bulldozers'</span>)</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="kw">not</span> path.exists():</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  kaggle.api.competition_download_cli(<span class="bu">str</span>(path))</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>  zipfile.ZipFile(<span class="ss">f'</span><span class="sc">{</span>path<span class="sc">}</span><span class="ss">.zip'</span>).extractall(path)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Downloading bluebook-for-bulldozers.zip to /content</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>100%|██████████| 48.4M/48.4M [00:00&lt;00:00, 65.2MB/s]</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code></code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pd.read_csv(path<span class="op">/</span><span class="st">'TrainAndValid.csv'</span>, low_memory<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="712c14ee-d316-439b-d375-30a0f56daca6">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>df.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+
+
+  <div id="df-80b7226e-daf3-47fb-a183-b781613e4a92" class="colab-df-container">
+    <div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>SalesID</th>
+      <th>SalePrice</th>
+      <th>MachineID</th>
+      <th>ModelID</th>
+      <th>...</th>
+      <th>Blade_Type</th>
+      <th>Travel_Controls</th>
+      <th>Differential_Type</th>
+      <th>Steering_Controls</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>1139246</td>
+      <td>66000.0</td>
+      <td>999089</td>
+      <td>3157</td>
+      <td>...</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>Standard</td>
+      <td>Conventional</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>1139248</td>
+      <td>57000.0</td>
+      <td>117657</td>
+      <td>77</td>
+      <td>...</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>Standard</td>
+      <td>Conventional</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>1139249</td>
+      <td>10000.0</td>
+      <td>434808</td>
+      <td>7009</td>
+      <td>...</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>1139251</td>
+      <td>38500.0</td>
+      <td>1026470</td>
+      <td>332</td>
+      <td>...</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>1139253</td>
+      <td>11000.0</td>
+      <td>1057373</td>
+      <td>17311</td>
+      <td>...</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+  </tbody>
+</table>
+<p>5 rows × 53 columns</p>
+</div>
+    <div class="colab-df-buttons">
+
+  <div class="colab-df-container">
+    <button class="colab-df-convert" onclick="convertToInteractive('df-80b7226e-daf3-47fb-a183-b781613e4a92')" title="Convert this dataframe to an interactive table." style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
+    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
+  </svg>
+    </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    .colab-df-buttons div {
+      margin-bottom: 4px;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+    <script>
+      const buttonEl =
+        document.querySelector('#df-80b7226e-daf3-47fb-a183-b781613e4a92 button.colab-df-convert');
+      buttonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+      async function convertToInteractive(key) {
+        const element = document.querySelector('#df-80b7226e-daf3-47fb-a183-b781613e4a92');
+        const dataTable =
+          await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                    [key], {});
+        if (!dataTable) return;
+
+        const docLinkHtml = 'Like what you see? Visit the ' +
+          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+          + ' to learn more about interactive tables.';
+        element.innerHTML = '';
+        dataTable['output_type'] = 'display_data';
+        await google.colab.output.renderOutput(dataTable, element);
+        const docLink = document.createElement('div');
+        docLink.innerHTML = docLinkHtml;
+        element.appendChild(docLink);
+      }
+    </script>
+  </div>
+
+
+<div id="df-b96d0412-cacb-4088-8ad1-1a325fc00584">
+  <button class="colab-df-quickchart" onclick="quickchart('df-b96d0412-cacb-4088-8ad1-1a325fc00584')" title="Suggest charts." style="display:none;">
+
+<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
+    <g>
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
+    </g>
+</svg>
+  </button>
+
+<style>
+  .colab-df-quickchart {
+      --bg-color: #E8F0FE;
+      --fill-color: #1967D2;
+      --hover-bg-color: #E2EBFA;
+      --hover-fill-color: #174EA6;
+      --disabled-fill-color: #AAA;
+      --disabled-bg-color: #DDD;
+  }
+
+  [theme=dark] .colab-df-quickchart {
+      --bg-color: #3B4455;
+      --fill-color: #D2E3FC;
+      --hover-bg-color: #434B5C;
+      --hover-fill-color: #FFFFFF;
+      --disabled-bg-color: #3B4455;
+      --disabled-fill-color: #666;
+  }
+
+  .colab-df-quickchart {
+    background-color: var(--bg-color);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: none;
+    fill: var(--fill-color);
+    height: 32px;
+    padding: 0;
+    width: 32px;
+  }
+
+  .colab-df-quickchart:hover {
+    background-color: var(--hover-bg-color);
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    fill: var(--button-hover-fill-color);
+  }
+
+  .colab-df-quickchart-complete:disabled,
+  .colab-df-quickchart-complete:disabled:hover {
+    background-color: var(--disabled-bg-color);
+    fill: var(--disabled-fill-color);
+    box-shadow: none;
+  }
+
+  .colab-df-spinner {
+    border: 2px solid var(--fill-color);
+    border-color: transparent;
+    border-bottom-color: var(--fill-color);
+    animation:
+      spin 1s steps(1) infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+      border-left-color: var(--fill-color);
+    }
+    20% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    30% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+      border-right-color: var(--fill-color);
+    }
+    40% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    60% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+    }
+    80% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-bottom-color: var(--fill-color);
+    }
+    90% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+    }
+  }
+</style>
+
+  <script>
+    async function quickchart(key) {
+      const quickchartButtonEl =
+        document.querySelector('#' + key + ' button');
+      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
+      quickchartButtonEl.classList.add('colab-df-spinner');
+      try {
+        const charts = await google.colab.kernel.invokeFunction(
+            'suggestCharts', [key], {});
+      } catch (error) {
+        console.error('Error during call to suggestCharts:', error);
+      }
+      quickchartButtonEl.classList.remove('colab-df-spinner');
+      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
+    }
+    (() => {
+      let quickchartButtonEl =
+        document.querySelector('#df-b96d0412-cacb-4088-8ad1-1a325fc00584 button');
+      quickchartButtonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+    })();
+  </script>
+</div>
+    </div>
+  </div>
+</div>
+</div>
+</section>
+<section id="clean-the-data" class="level2">
+<h2 class="anchored" data-anchor-id="clean-the-data">Clean the Data</h2>
+<p>Categorize the <code>ProductSize</code> variable:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>sizes <span class="op">=</span> <span class="st">'Large'</span>, <span class="st">'Large / Medium'</span>, <span class="st">'Medium'</span>, <span class="st">'Small'</span>, <span class="st">'Mini'</span>, <span class="st">'Compact'</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>df[<span class="st">'ProductSize'</span>] <span class="op">=</span> df[<span class="st">'ProductSize'</span>].astype(<span class="st">'category'</span>)</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>df[<span class="st">'ProductSize'</span>].cat.set_categories(sizes, ordered<span class="op">=</span><span class="va">True</span>, inplace<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Take the <code>log</code> of the dependent variable, <code>SalePrice</code>:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>dep_var <span class="op">=</span> <span class="st">'SalePrice'</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>df[dep_var] <span class="op">=</span> np.log(df[dep_var])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Add date-related additional columns—I’ll deviate from the textbook here and save the original <code>saledate</code> column so I can more accurately create the training and validation sets. I’ll likely remove it later on when I remove redundant features.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>saledate <span class="op">=</span> df.saledate</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> add_datepart(df, <span class="st">'saledate'</span>)</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>df[<span class="st">'saledate'</span>] <span class="op">=</span> saledate</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="039a7f91-ed00-4a58-f0b3-0589260a22c2">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co">' '</span>.join(o <span class="cf">for</span> o <span class="kw">in</span> df.columns <span class="cf">if</span> o.startswith(<span class="st">'sale'</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<pre><code>'saleYear saleMonth saleWeek saleDay saleDayofweek saleDayofyear saleIs_month_end saleIs_month_start saleIs_quarter_end saleIs_quarter_start saleIs_year_end saleIs_year_start saleElapsed saledate'</code></pre>
+</div>
+</div>
+</section>
+<section id="create-training-and-validation-sets" class="level2">
+<h2 class="anchored" data-anchor-id="create-training-and-validation-sets">Create Training and Validation Sets</h2>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>procs <span class="op">=</span> [Categorify, FillMissing]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I’ll define a validation set consisting of data from after November 2011:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>df[<span class="st">'saledate'</span>] <span class="op">=</span> pd.to_datetime(df[<span class="st">'saledate'</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="dcd3b5ff-425b-48b9-e6d3-25506d48d0c8">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>df</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+
+
+  <div id="df-f23b5b91-a156-45a5-bb62-1b731ccaa105" class="colab-df-container">
+    <div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>SalesID</th>
+      <th>SalePrice</th>
+      <th>MachineID</th>
+      <th>ModelID</th>
+      <th>...</th>
+      <th>saleIs_year_end</th>
+      <th>saleIs_year_start</th>
+      <th>saleElapsed</th>
+      <th>saledate</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>1139246</td>
+      <td>11.097410</td>
+      <td>999089</td>
+      <td>3157</td>
+      <td>...</td>
+      <td>False</td>
+      <td>False</td>
+      <td>1.163635e+09</td>
+      <td>2006-11-16</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>1139248</td>
+      <td>10.950807</td>
+      <td>117657</td>
+      <td>77</td>
+      <td>...</td>
+      <td>False</td>
+      <td>False</td>
+      <td>1.080259e+09</td>
+      <td>2004-03-26</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>1139249</td>
+      <td>9.210340</td>
+      <td>434808</td>
+      <td>7009</td>
+      <td>...</td>
+      <td>False</td>
+      <td>False</td>
+      <td>1.077754e+09</td>
+      <td>2004-02-26</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>1139251</td>
+      <td>10.558414</td>
+      <td>1026470</td>
+      <td>332</td>
+      <td>...</td>
+      <td>False</td>
+      <td>False</td>
+      <td>1.305763e+09</td>
+      <td>2011-05-19</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>1139253</td>
+      <td>9.305651</td>
+      <td>1057373</td>
+      <td>17311</td>
+      <td>...</td>
+      <td>False</td>
+      <td>False</td>
+      <td>1.248307e+09</td>
+      <td>2009-07-23</td>
+    </tr>
+    <tr>
+      <th>...</th>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+    </tr>
+    <tr>
+      <th>412693</th>
+      <td>6333344</td>
+      <td>9.210340</td>
+      <td>1919201</td>
+      <td>21435</td>
+      <td>...</td>
+      <td>False</td>
+      <td>False</td>
+      <td>1.331078e+09</td>
+      <td>2012-03-07</td>
+    </tr>
+    <tr>
+      <th>412694</th>
+      <td>6333345</td>
+      <td>9.259131</td>
+      <td>1882122</td>
+      <td>21436</td>
+      <td>...</td>
+      <td>False</td>
+      <td>False</td>
+      <td>1.327709e+09</td>
+      <td>2012-01-28</td>
+    </tr>
+    <tr>
+      <th>412695</th>
+      <td>6333347</td>
+      <td>9.433484</td>
+      <td>1944213</td>
+      <td>21435</td>
+      <td>...</td>
+      <td>False</td>
+      <td>False</td>
+      <td>1.327709e+09</td>
+      <td>2012-01-28</td>
+    </tr>
+    <tr>
+      <th>412696</th>
+      <td>6333348</td>
+      <td>9.210340</td>
+      <td>1794518</td>
+      <td>21435</td>
+      <td>...</td>
+      <td>False</td>
+      <td>False</td>
+      <td>1.331078e+09</td>
+      <td>2012-03-07</td>
+    </tr>
+    <tr>
+      <th>412697</th>
+      <td>6333349</td>
+      <td>9.472705</td>
+      <td>1944743</td>
+      <td>21436</td>
+      <td>...</td>
+      <td>False</td>
+      <td>False</td>
+      <td>1.327709e+09</td>
+      <td>2012-01-28</td>
+    </tr>
+  </tbody>
+</table>
+<p>412698 rows × 66 columns</p>
+</div>
+    <div class="colab-df-buttons">
+
+  <div class="colab-df-container">
+    <button class="colab-df-convert" onclick="convertToInteractive('df-f23b5b91-a156-45a5-bb62-1b731ccaa105')" title="Convert this dataframe to an interactive table." style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
+    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
+  </svg>
+    </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    .colab-df-buttons div {
+      margin-bottom: 4px;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+    <script>
+      const buttonEl =
+        document.querySelector('#df-f23b5b91-a156-45a5-bb62-1b731ccaa105 button.colab-df-convert');
+      buttonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+      async function convertToInteractive(key) {
+        const element = document.querySelector('#df-f23b5b91-a156-45a5-bb62-1b731ccaa105');
+        const dataTable =
+          await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                    [key], {});
+        if (!dataTable) return;
+
+        const docLinkHtml = 'Like what you see? Visit the ' +
+          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+          + ' to learn more about interactive tables.';
+        element.innerHTML = '';
+        dataTable['output_type'] = 'display_data';
+        await google.colab.output.renderOutput(dataTable, element);
+        const docLink = document.createElement('div');
+        docLink.innerHTML = docLinkHtml;
+        element.appendChild(docLink);
+      }
+    </script>
+  </div>
+
+
+<div id="df-bce6eeed-0bc4-4b32-92b9-d7bc7d564853">
+  <button class="colab-df-quickchart" onclick="quickchart('df-bce6eeed-0bc4-4b32-92b9-d7bc7d564853')" title="Suggest charts." style="display:none;">
+
+<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
+    <g>
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
+    </g>
+</svg>
+  </button>
+
+<style>
+  .colab-df-quickchart {
+      --bg-color: #E8F0FE;
+      --fill-color: #1967D2;
+      --hover-bg-color: #E2EBFA;
+      --hover-fill-color: #174EA6;
+      --disabled-fill-color: #AAA;
+      --disabled-bg-color: #DDD;
+  }
+
+  [theme=dark] .colab-df-quickchart {
+      --bg-color: #3B4455;
+      --fill-color: #D2E3FC;
+      --hover-bg-color: #434B5C;
+      --hover-fill-color: #FFFFFF;
+      --disabled-bg-color: #3B4455;
+      --disabled-fill-color: #666;
+  }
+
+  .colab-df-quickchart {
+    background-color: var(--bg-color);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: none;
+    fill: var(--fill-color);
+    height: 32px;
+    padding: 0;
+    width: 32px;
+  }
+
+  .colab-df-quickchart:hover {
+    background-color: var(--hover-bg-color);
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    fill: var(--button-hover-fill-color);
+  }
+
+  .colab-df-quickchart-complete:disabled,
+  .colab-df-quickchart-complete:disabled:hover {
+    background-color: var(--disabled-bg-color);
+    fill: var(--disabled-fill-color);
+    box-shadow: none;
+  }
+
+  .colab-df-spinner {
+    border: 2px solid var(--fill-color);
+    border-color: transparent;
+    border-bottom-color: var(--fill-color);
+    animation:
+      spin 1s steps(1) infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+      border-left-color: var(--fill-color);
+    }
+    20% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    30% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+      border-right-color: var(--fill-color);
+    }
+    40% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    60% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+    }
+    80% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-bottom-color: var(--fill-color);
+    }
+    90% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+    }
+  }
+</style>
+
+  <script>
+    async function quickchart(key) {
+      const quickchartButtonEl =
+        document.querySelector('#' + key + ' button');
+      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
+      quickchartButtonEl.classList.add('colab-df-spinner');
+      try {
+        const charts = await google.colab.kernel.invokeFunction(
+            'suggestCharts', [key], {});
+      } catch (error) {
+        console.error('Error during call to suggestCharts:', error);
+      }
+      quickchartButtonEl.classList.remove('colab-df-spinner');
+      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
+    }
+    (() => {
+      let quickchartButtonEl =
+        document.querySelector('#df-bce6eeed-0bc4-4b32-92b9-d7bc7d564853 button');
+      quickchartButtonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+    })();
+  </script>
+</div>
+    </div>
+  </div>
+</div>
+</div>
+<div class="cell" data-outputid="c66f162c-4e8f-41d6-e705-509bd2158194">
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>df[<span class="st">'saledate'</span>] <span class="op">&lt;</span> <span class="st">'2011-11-01'</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<pre><code>0          True
+1          True
+2          True
+3          True
+4          True
+          ...  
+412693    False
+412694    False
+412695    False
+412696    False
+412697    False
+Name: saledate, Length: 412698, dtype: bool</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>cond <span class="op">=</span> df[<span class="st">'saledate'</span>] <span class="op">&lt;</span> <span class="st">'2011-11-01'</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>train_idx <span class="op">=</span> np.where( cond)[<span class="dv">0</span>]</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>valid_idx <span class="op">=</span> np.where(<span class="op">~</span>cond)[<span class="dv">0</span>]</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>splits <span class="op">=</span> (<span class="bu">list</span>(train_idx), <span class="bu">list</span>(valid_idx))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>cont,cat <span class="op">=</span> cont_cat_split(df, <span class="dv">1</span>, dep_var<span class="op">=</span>dep_var)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>to <span class="op">=</span> TabularPandas(df, procs, cat, cont, y_names<span class="op">=</span>dep_var, splits<span class="op">=</span>splits)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="3fcd95d9-3063-4e00-fd57-81b48d3dd3c8">
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(to.train), <span class="bu">len</span>(to.valid)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="18">
+<pre><code>(395371, 17327)</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>xs,y <span class="op">=</span> to.train.xs, to.train.y</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>valid_xs, valid_y <span class="op">=</span> to.valid.xs, to.valid.y</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="removing-features" class="level2">
+<h2 class="anchored" data-anchor-id="removing-features">Removing Features</h2>
+<p>To simplify our model, and in some cases improve the accuracy, I will follow the procedure in the textbook to reduce the number of features we use for training.</p>
+<div class="cell" data-execution_count="10">
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> r_mse(pred,y): <span class="cf">return</span> <span class="bu">round</span>(math.sqrt(((pred<span class="op">-</span>y)<span class="op">**</span><span class="dv">2</span>).mean()), <span class="dv">6</span>)</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> m_rmse(m, xs, y): <span class="cf">return</span> r_mse(m.predict(xs), y)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="84">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> rf(xs, y, n_estimators<span class="op">=</span><span class="dv">40</span>, max_samples<span class="op">=</span><span class="dv">200_000</span>, max_features<span class="op">=</span><span class="fl">0.5</span>, min_samples_leaf<span class="op">=</span><span class="dv">5</span>, <span class="op">**</span>kwargs):</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> RandomForestRegressor(n_jobs<span class="op">=-</span><span class="dv">1</span>, n_estimators<span class="op">=</span>n_estimators, max_samples<span class="op">=</span>max_samples, max_features<span class="op">=</span>max_features, min_samples_leaf<span class="op">=</span>min_samples_leaf, oob_score<span class="op">=</span><span class="va">True</span>).fit(xs,y)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="85">
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> rf_feat_importance(m, df):</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> pd.DataFrame({</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>      <span class="st">'cols'</span>: df.columns,</span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>      <span class="st">'imp'</span>: m.feature_importances_}</span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>                      ).sort_values(<span class="st">'imp'</span>, ascending<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I’ll start by fitting a random forest to the data and establishing a baseline MSE on the validation set to use in comparison at each step of reducing features.</p>
+<div class="cell" data-outputid="f176deef-a199-4012-b411-51c9a08ef120">
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>m <span class="op">=</span> rf(xs, y)<span class="op">;</span></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>m_rmse(m, xs, y), m_rmse(m, valid_xs, valid_y)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="23">
+<pre><code>(0.169314, 0.29212)</code></pre>
+</div>
+</div>
+<section id="low-importance-features" class="level3">
+<h3 class="anchored" data-anchor-id="low-importance-features">Low-Importance Features</h3>
+<p>Next, I’ll take a look at the most important features and remove low-importance features from the dataset.</p>
+<div class="cell" data-outputid="b88e5fe6-6456-44c1-e3fd-14d979de6973">
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>fi <span class="op">=</span> rf_feat_importance(m, xs)</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>fi[:<span class="dv">10</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="24">
+
+
+  <div id="df-100d8e01-9db3-4c2a-8eec-c964942a511a" class="colab-df-container">
+    <div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>cols</th>
+      <th>imp</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>58</th>
+      <td>YearMade</td>
+      <td>0.182072</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>ProductSize</td>
+      <td>0.114709</td>
+    </tr>
+    <tr>
+      <th>30</th>
+      <td>Coupler_System</td>
+      <td>0.104344</td>
+    </tr>
+    <tr>
+      <th>7</th>
+      <td>fiProductClassDesc</td>
+      <td>0.064090</td>
+    </tr>
+    <tr>
+      <th>55</th>
+      <td>ModelID</td>
+      <td>0.057407</td>
+    </tr>
+    <tr>
+      <th>31</th>
+      <td>Grouser_Tracks</td>
+      <td>0.047770</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>fiSecondaryDesc</td>
+      <td>0.042480</td>
+    </tr>
+    <tr>
+      <th>10</th>
+      <td>ProductGroupDesc</td>
+      <td>0.038196</td>
+    </tr>
+    <tr>
+      <th>32</th>
+      <td>Hydraulics_Flow</td>
+      <td>0.034735</td>
+    </tr>
+    <tr>
+      <th>50</th>
+      <td>saledate</td>
+      <td>0.033807</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+    <div class="colab-df-buttons">
+
+  <div class="colab-df-container">
+    <button class="colab-df-convert" onclick="convertToInteractive('df-100d8e01-9db3-4c2a-8eec-c964942a511a')" title="Convert this dataframe to an interactive table." style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
+    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
+  </svg>
+    </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    .colab-df-buttons div {
+      margin-bottom: 4px;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+    <script>
+      const buttonEl =
+        document.querySelector('#df-100d8e01-9db3-4c2a-8eec-c964942a511a button.colab-df-convert');
+      buttonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+      async function convertToInteractive(key) {
+        const element = document.querySelector('#df-100d8e01-9db3-4c2a-8eec-c964942a511a');
+        const dataTable =
+          await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                    [key], {});
+        if (!dataTable) return;
+
+        const docLinkHtml = 'Like what you see? Visit the ' +
+          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+          + ' to learn more about interactive tables.';
+        element.innerHTML = '';
+        dataTable['output_type'] = 'display_data';
+        await google.colab.output.renderOutput(dataTable, element);
+        const docLink = document.createElement('div');
+        docLink.innerHTML = docLinkHtml;
+        element.appendChild(docLink);
+      }
+    </script>
+  </div>
+
+
+<div id="df-f47b6fe7-46f6-494d-a911-e710f023b4d1">
+  <button class="colab-df-quickchart" onclick="quickchart('df-f47b6fe7-46f6-494d-a911-e710f023b4d1')" title="Suggest charts." style="display:none;">
+
+<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
+    <g>
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
+    </g>
+</svg>
+  </button>
+
+<style>
+  .colab-df-quickchart {
+      --bg-color: #E8F0FE;
+      --fill-color: #1967D2;
+      --hover-bg-color: #E2EBFA;
+      --hover-fill-color: #174EA6;
+      --disabled-fill-color: #AAA;
+      --disabled-bg-color: #DDD;
+  }
+
+  [theme=dark] .colab-df-quickchart {
+      --bg-color: #3B4455;
+      --fill-color: #D2E3FC;
+      --hover-bg-color: #434B5C;
+      --hover-fill-color: #FFFFFF;
+      --disabled-bg-color: #3B4455;
+      --disabled-fill-color: #666;
+  }
+
+  .colab-df-quickchart {
+    background-color: var(--bg-color);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: none;
+    fill: var(--fill-color);
+    height: 32px;
+    padding: 0;
+    width: 32px;
+  }
+
+  .colab-df-quickchart:hover {
+    background-color: var(--hover-bg-color);
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    fill: var(--button-hover-fill-color);
+  }
+
+  .colab-df-quickchart-complete:disabled,
+  .colab-df-quickchart-complete:disabled:hover {
+    background-color: var(--disabled-bg-color);
+    fill: var(--disabled-fill-color);
+    box-shadow: none;
+  }
+
+  .colab-df-spinner {
+    border: 2px solid var(--fill-color);
+    border-color: transparent;
+    border-bottom-color: var(--fill-color);
+    animation:
+      spin 1s steps(1) infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+      border-left-color: var(--fill-color);
+    }
+    20% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    30% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+      border-right-color: var(--fill-color);
+    }
+    40% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    60% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+    }
+    80% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-bottom-color: var(--fill-color);
+    }
+    90% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+    }
+  }
+</style>
+
+  <script>
+    async function quickchart(key) {
+      const quickchartButtonEl =
+        document.querySelector('#' + key + ' button');
+      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
+      quickchartButtonEl.classList.add('colab-df-spinner');
+      try {
+        const charts = await google.colab.kernel.invokeFunction(
+            'suggestCharts', [key], {});
+      } catch (error) {
+        console.error('Error during call to suggestCharts:', error);
+      }
+      quickchartButtonEl.classList.remove('colab-df-spinner');
+      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
+    }
+    (() => {
+      let quickchartButtonEl =
+        document.querySelector('#df-f47b6fe7-46f6-494d-a911-e710f023b4d1 button');
+      quickchartButtonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+    })();
+  </script>
+</div>
+    </div>
+  </div>
+</div>
+</div>
+<div class="cell" data-outputid="9865814e-5b5e-4fb4-81b5-f9a9bb757fa3">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_fi(fi):</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> fi.plot(<span class="st">'cols'</span>, <span class="st">'imp'</span>, <span class="st">'barh'</span>, figsize<span class="op">=</span>(<span class="dv">12</span>,<span class="dv">7</span>), legend<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>plot_fi(fi[:<span class="dv">30</span>])<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<p><img src="index_files/figure-html/cell-25-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+<div class="cell" data-outputid="07a83c47-081c-4efa-c2dc-cdc2f0f2a94d">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>to_keep <span class="op">=</span> fi[fi.imp<span class="op">&gt;</span><span class="fl">0.005</span>].cols</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(to_keep)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="26">
+<pre><code>23</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>xs_imp <span class="op">=</span> xs[to_keep]</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>valid_xs_imp <span class="op">=</span> valid_xs[to_keep]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I’ll check the accuracy on the validation set with the low-importance features removed:</p>
+<div class="cell" data-outputid="45feefba-b0b6-4c64-e089-27da4ac2f005">
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>m <span class="op">=</span> rf(xs_imp, y)<span class="op">;</span></span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>m_rmse(m, xs_imp, y), m_rmse(m, valid_xs_imp, valid_y)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="28">
+<pre><code>(0.178435, 0.284805)</code></pre>
+</div>
+</div>
+<p>Our model is much simpler (fewer features to analyze) with a similar error as before.</p>
+<div class="cell" data-outputid="a1c69cac-2a1f-43b9-c8c6-d5789aa8368e">
+<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(xs.columns), <span class="bu">len</span>(xs_imp.columns)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="29">
+<pre><code>(67, 23)</code></pre>
+</div>
+</div>
+</section>
+<section id="redundant-features" class="level3">
+<h3 class="anchored" data-anchor-id="redundant-features">Redundant Features</h3>
+<p>Next, I’ll take a look at which features are redundant and try to remove some of them (as long as they don’t diminish the model’s OOB score):</p>
+<div class="cell" data-execution_count="98">
+<div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> scipy.cluster <span class="im">import</span> hierarchy <span class="im">as</span> hc</span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> cluster_columns(df, figsize<span class="op">=</span>(<span class="dv">10</span>,<span class="dv">6</span>), font_size<span class="op">=</span><span class="dv">12</span>):</span>
+<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a>    corr <span class="op">=</span> np.<span class="bu">round</span>(scipy.stats.spearmanr(df).correlation, <span class="dv">4</span>)</span>
+<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a>    corr_condensed <span class="op">=</span> hc.distance.squareform(<span class="dv">1</span><span class="op">-</span>corr)</span>
+<span id="cb39-6"><a href="#cb39-6" aria-hidden="true" tabindex="-1"></a>    z <span class="op">=</span> hc.linkage(corr_condensed, method<span class="op">=</span><span class="st">'average'</span>)</span>
+<span id="cb39-7"><a href="#cb39-7" aria-hidden="true" tabindex="-1"></a>    fig <span class="op">=</span> plt.figure(figsize<span class="op">=</span>figsize)</span>
+<span id="cb39-8"><a href="#cb39-8" aria-hidden="true" tabindex="-1"></a>    hc.dendrogram(z, labels<span class="op">=</span>df.columns, orientation<span class="op">=</span><span class="st">'left'</span>, leaf_font_size<span class="op">=</span>font_size)</span>
+<span id="cb39-9"><a href="#cb39-9" aria-hidden="true" tabindex="-1"></a>    plt.show()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="0290b796-3745-4106-fe98-4d586e1c7343">
+<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>cluster_columns(xs_imp)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<p><img src="index_files/figure-html/cell-31-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+<div class="cell" data-execution_count="101">
+<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_oob(df):</span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>  m <span class="op">=</span> RandomForestRegressor(n_estimators<span class="op">=</span><span class="dv">40</span>, min_samples_leaf<span class="op">=</span><span class="dv">15</span>,</span>
+<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>                            max_samples<span class="op">=</span><span class="dv">50_000</span>, max_features<span class="op">=</span><span class="fl">0.5</span>, n_jobs<span class="op">=-</span><span class="dv">1</span>, oob_score<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a>  m.fit(df, y)</span>
+<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> m.oob_score_</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Here’s the baseline OOB score for the dataset with only high-importance variables:</p>
+<div class="cell" data-outputid="ba822010-6045-4903-8224-8946d3f8bfd8">
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>get_oob(xs_imp)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="33">
+<pre><code>0.8775680670271139</code></pre>
+</div>
+</div>
+<p>Here are the OOB scores if we drop redundant features from the dataset—the higher the OOB score the better:</p>
+<div class="cell" data-outputid="cd18197f-db76-42fb-a955-c1bab2ba396f">
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>{c: get_oob(xs_imp.drop(c, axis<span class="op">=</span><span class="dv">1</span>)) <span class="cf">for</span> c <span class="kw">in</span> (</span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'Hydraulics_Flow'</span>, <span class="st">'Grouser_Tracks'</span>, <span class="st">'Coupler_System'</span>,</span>
+<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">'saleElapsed'</span>, <span class="st">'saledate'</span>, <span class="st">'saleYear'</span>,</span>
+<span id="cb44-4"><a href="#cb44-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">'ProductGroup'</span>, <span class="st">'ProductGroupDesc'</span>,</span>
+<span id="cb44-5"><a href="#cb44-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">'fiBaseModel'</span>, <span class="st">'fiModelDesc'</span>)}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="34">
+<pre><code>{'Hydraulics_Flow': 0.8784714680954607,
+ 'Grouser_Tracks': 0.8781347745872132,
+ 'Coupler_System': 0.8782757080902821,
+ 'saleElapsed': 0.8780747364566069,
+ 'saledate': 0.8775743905455275,
+ 'saleYear': 0.8777160634533703,
+ 'ProductGroup': 0.8777345710442639,
+ 'ProductGroupDesc': 0.8785070588073342,
+ 'fiBaseModel': 0.8775911401001298,
+ 'fiModelDesc': 0.8764381706728157}</code></pre>
+</div>
+</div>
+<p>I’ll select the variable from each redundant group, the removal of which increased the OOB score (or kept it the same) and remove it from the dataset:</p>
+<div class="cell" data-outputid="fb88f6a5-8aa6-4fa0-9deb-0fcba8a5913e">
+<div class="sourceCode cell-code" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a>to_drop <span class="op">=</span> [<span class="st">'Hydraulics_Flow'</span>, <span class="st">'saleElapsed'</span>, <span class="st">'ProductGroupDesc'</span>, <span class="st">'fiBaseModel'</span>]</span>
+<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a>get_oob(xs_imp.drop(to_drop, axis<span class="op">=</span><span class="dv">1</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="35">
+<pre><code>0.8759470650709008</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="c303e519-924b-4985-efae-0030b788abfc">
+<div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a><span class="fl">0.8759470650709008</span><span class="op">/</span><span class="fl">0.8775680670271139</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="38">
+<pre><code>0.9981528476056514</code></pre>
+</div>
+</div>
+<p>The OOB score slightly decreased, but now we have fewer redundant features in the dataset.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a>xs_final <span class="op">=</span> xs_imp.drop(to_drop, axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a>valid_xs_final <span class="op">=</span> valid_xs_imp.drop(to_drop, axis<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="c0b9fc58-0aae-4b0c-9253-456f664de6bf">
+<div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a><span class="co"># check error</span></span>
+<span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>m <span class="op">=</span> rf(xs_final, y)</span>
+<span id="cb51-3"><a href="#cb51-3" aria-hidden="true" tabindex="-1"></a>m_rmse(m, xs_final, y), m_rmse(m, valid_xs_final, valid_y)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="37">
+<pre><code>(0.181023, 0.37027)</code></pre>
+</div>
+</div>
+<p>The validation error is more than twice the training error and has considerably increased from previous datasets. I’ll see if removing out-of-domain features improves the error.</p>
+</section>
+<section id="out-of-domain-features" class="level3">
+<h3 class="anchored" data-anchor-id="out-of-domain-features">Out-of-Domain Features</h3>
+<p>I’ll remove columns from the training set that are out-of-domain (i.e., significantly different in values from) in the validation set. I’ll identify these columns by fitting a random forest to predict whether a row is in the training or validation set and then observing the most important features in this prediction:</p>
+<div class="cell" data-outputid="b96b35ab-134c-4659-a766-b0b0b19158f6">
+<div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a>df_dom <span class="op">=</span> pd.concat([xs_final, valid_xs_final])</span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>is_valid <span class="op">=</span> np.array([<span class="dv">0</span>]<span class="op">*</span><span class="bu">len</span>(xs_final) <span class="op">+</span> [<span class="dv">1</span>]<span class="op">*</span><span class="bu">len</span>(valid_xs_final))</span>
+<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a>m <span class="op">=</span> rf(df_dom, is_valid)</span>
+<span id="cb53-5"><a href="#cb53-5" aria-hidden="true" tabindex="-1"></a>rf_feat_importance(m, df_dom)[:<span class="dv">6</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="39">
+
+
+  <div id="df-89729694-70d0-49b5-8875-041d5640cbd0" class="colab-df-container">
+    <div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>cols</th>
+      <th>imp</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>7</th>
+      <td>saledate</td>
+      <td>0.704401</td>
+    </tr>
+    <tr>
+      <th>15</th>
+      <td>saleYear</td>
+      <td>0.215157</td>
+    </tr>
+    <tr>
+      <th>10</th>
+      <td>SalesID</td>
+      <td>0.075075</td>
+    </tr>
+    <tr>
+      <th>13</th>
+      <td>MachineID</td>
+      <td>0.003997</td>
+    </tr>
+    <tr>
+      <th>0</th>
+      <td>YearMade</td>
+      <td>0.000683</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>ModelID</td>
+      <td>0.000228</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+    <div class="colab-df-buttons">
+
+  <div class="colab-df-container">
+    <button class="colab-df-convert" onclick="convertToInteractive('df-89729694-70d0-49b5-8875-041d5640cbd0')" title="Convert this dataframe to an interactive table." style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
+    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
+  </svg>
+    </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    .colab-df-buttons div {
+      margin-bottom: 4px;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+    <script>
+      const buttonEl =
+        document.querySelector('#df-89729694-70d0-49b5-8875-041d5640cbd0 button.colab-df-convert');
+      buttonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+      async function convertToInteractive(key) {
+        const element = document.querySelector('#df-89729694-70d0-49b5-8875-041d5640cbd0');
+        const dataTable =
+          await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                    [key], {});
+        if (!dataTable) return;
+
+        const docLinkHtml = 'Like what you see? Visit the ' +
+          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+          + ' to learn more about interactive tables.';
+        element.innerHTML = '';
+        dataTable['output_type'] = 'display_data';
+        await google.colab.output.renderOutput(dataTable, element);
+        const docLink = document.createElement('div');
+        docLink.innerHTML = docLinkHtml;
+        element.appendChild(docLink);
+      }
+    </script>
+  </div>
+
+
+<div id="df-6fa20863-8778-4de8-b9fa-39724efa6ef9">
+  <button class="colab-df-quickchart" onclick="quickchart('df-6fa20863-8778-4de8-b9fa-39724efa6ef9')" title="Suggest charts." style="display:none;">
+
+<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
+    <g>
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
+    </g>
+</svg>
+  </button>
+
+<style>
+  .colab-df-quickchart {
+      --bg-color: #E8F0FE;
+      --fill-color: #1967D2;
+      --hover-bg-color: #E2EBFA;
+      --hover-fill-color: #174EA6;
+      --disabled-fill-color: #AAA;
+      --disabled-bg-color: #DDD;
+  }
+
+  [theme=dark] .colab-df-quickchart {
+      --bg-color: #3B4455;
+      --fill-color: #D2E3FC;
+      --hover-bg-color: #434B5C;
+      --hover-fill-color: #FFFFFF;
+      --disabled-bg-color: #3B4455;
+      --disabled-fill-color: #666;
+  }
+
+  .colab-df-quickchart {
+    background-color: var(--bg-color);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: none;
+    fill: var(--fill-color);
+    height: 32px;
+    padding: 0;
+    width: 32px;
+  }
+
+  .colab-df-quickchart:hover {
+    background-color: var(--hover-bg-color);
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    fill: var(--button-hover-fill-color);
+  }
+
+  .colab-df-quickchart-complete:disabled,
+  .colab-df-quickchart-complete:disabled:hover {
+    background-color: var(--disabled-bg-color);
+    fill: var(--disabled-fill-color);
+    box-shadow: none;
+  }
+
+  .colab-df-spinner {
+    border: 2px solid var(--fill-color);
+    border-color: transparent;
+    border-bottom-color: var(--fill-color);
+    animation:
+      spin 1s steps(1) infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+      border-left-color: var(--fill-color);
+    }
+    20% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    30% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+      border-right-color: var(--fill-color);
+    }
+    40% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    60% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+    }
+    80% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-bottom-color: var(--fill-color);
+    }
+    90% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+    }
+  }
+</style>
+
+  <script>
+    async function quickchart(key) {
+      const quickchartButtonEl =
+        document.querySelector('#' + key + ' button');
+      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
+      quickchartButtonEl.classList.add('colab-df-spinner');
+      try {
+        const charts = await google.colab.kernel.invokeFunction(
+            'suggestCharts', [key], {});
+      } catch (error) {
+        console.error('Error during call to suggestCharts:', error);
+      }
+      quickchartButtonEl.classList.remove('colab-df-spinner');
+      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
+    }
+    (() => {
+      let quickchartButtonEl =
+        document.querySelector('#df-6fa20863-8778-4de8-b9fa-39724efa6ef9 button');
+      quickchartButtonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+    })();
+  </script>
+</div>
+    </div>
+  </div>
+</div>
+</div>
+<p>The most important feature in predicting whether a row is in the training or validation set is the <code>saledate</code> feature. This makes sense because I explicitly define the training and validation sets based on <code>saledate</code>. The next two features of high importance are <code>saleYear</code> and <code>SalesID</code> which also are related to when the sale occured.</p>
+<div class="cell" data-outputid="35e1cb96-b217-48e7-b00e-c6d034fc1af0">
+<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a><span class="co"># baseline</span></span>
+<span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a>m <span class="op">=</span> rf(xs_final, y)</span>
+<span id="cb54-3"><a href="#cb54-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">'orig'</span>, m_rmse(m, valid_xs_final, valid_y))</span>
+<span id="cb54-4"><a href="#cb54-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-5"><a href="#cb54-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> c <span class="kw">in</span> (<span class="st">'saledate'</span>, <span class="st">'saleYear'</span>, <span class="st">'SalesID'</span>):</span>
+<span id="cb54-6"><a href="#cb54-6" aria-hidden="true" tabindex="-1"></a>  m <span class="op">=</span> rf(xs_final.drop(c, axis<span class="op">=</span><span class="dv">1</span>), y)</span>
+<span id="cb54-7"><a href="#cb54-7" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(c, m_rmse(m, valid_xs_final.drop(c,axis<span class="op">=</span><span class="dv">1</span>), valid_y))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>orig 0.365206
+saledate 0.246061
+saleYear 0.437766
+SalesID 0.402223</code></pre>
+</div>
+</div>
+<p>Removing <code>saledate</code> reduces the error by a third!</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a>xs_final_time <span class="op">=</span> xs_final.drop(<span class="st">'saledate'</span>, axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb56-2"><a href="#cb56-2" aria-hidden="true" tabindex="-1"></a>valid_xs_time <span class="op">=</span> valid_xs_final.drop(<span class="st">'saledate'</span>, axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb56-3"><a href="#cb56-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb56-4"><a href="#cb56-4" aria-hidden="true" tabindex="-1"></a>m <span class="op">=</span> rf(xs_final_time, y)</span>
+<span id="cb56-5"><a href="#cb56-5" aria-hidden="true" tabindex="-1"></a>m_rmse(m, valid_xs_time, valid_y)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="359d99db-ca66-482c-cc04-c8b4a7f7b506">
+<div class="sourceCode cell-code" id="cb57"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1"><a href="#cb57-1" aria-hidden="true" tabindex="-1"></a>m_rmse(m, xs_final_time, y), m_rmse(m, valid_xs_time, valid_y)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="42">
+<pre><code>(0.189063, 0.247074)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="5477d449-094e-4c1f-8fc2-38a2c1a6218a">
+<div class="sourceCode cell-code" id="cb59"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1"><a href="#cb59-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(xs_final_time.columns)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="43">
+<pre><code>18</code></pre>
+</div>
+</div>
+<p>The validation error is still larger than the training error but removing <code>saledate</code> has reduced the validation error considerably, even when compared to the original dataset and the dataset after only low-importance features were removed. I consider this process of feature removal successful.</p>
+</section>
+</section>
+<section id="train-a-neural-net" class="level2">
+<h2 class="anchored" data-anchor-id="train-a-neural-net">Train a Neural Net</h2>
+<p>I’ll re-load the data and apply the same feature engineering as before:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb61"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb61-1"><a href="#cb61-1" aria-hidden="true" tabindex="-1"></a>df_nn <span class="op">=</span> pd.read_csv(path<span class="op">/</span><span class="st">'TrainAndValid.csv'</span>, low_memory<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb61-2"><a href="#cb61-2" aria-hidden="true" tabindex="-1"></a>df_nn[<span class="st">'ProductSize'</span>] <span class="op">=</span> df_nn[<span class="st">'ProductSize'</span>].astype(<span class="st">'category'</span>)</span>
+<span id="cb61-3"><a href="#cb61-3" aria-hidden="true" tabindex="-1"></a>df_nn[<span class="st">'ProductSize'</span>].cat.set_categories(sizes, ordered<span class="op">=</span><span class="va">True</span>, inplace<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb61-4"><a href="#cb61-4" aria-hidden="true" tabindex="-1"></a>df_nn[dep_var] <span class="op">=</span> np.log(df_nn[dep_var])</span>
+<span id="cb61-5"><a href="#cb61-5" aria-hidden="true" tabindex="-1"></a>df_nn <span class="op">=</span> add_datepart(df_nn, <span class="st">'saledate'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb62"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1" aria-hidden="true" tabindex="-1"></a>df_nn_final <span class="op">=</span> df_nn[<span class="bu">list</span>(xs_final_time.columns) <span class="op">+</span> [dep_var]]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="3abab71f-c37f-46c3-cc15-47bbbd18b7c6">
+<div class="sourceCode cell-code" id="cb63"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1"><a href="#cb63-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(df_nn_final.columns)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="46">
+<pre><code>19</code></pre>
+</div>
+</div>
+<p>I’ll split the columns into continuous and categorical groups:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb65"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a>cont_nn, cat_nn <span class="op">=</span> cont_cat_split(df_nn_final, max_card<span class="op">=</span><span class="dv">9000</span>, dep_var<span class="op">=</span>dep_var)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I’ll look at the cardinality of the categorical variables and see if there are any variables that have similarly large cardinality (as those would be candidates for removal). I also want to look at cardinality so I can later on identify which embeddings belong to which categorical variables.</p>
+<div class="cell" data-outputid="26e3423d-1b9b-455c-bdb7-bbfd2c85223a">
+<div class="sourceCode cell-code" id="cb66"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb66-1"><a href="#cb66-1" aria-hidden="true" tabindex="-1"></a>df_nn_final[cat_nn].nunique()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="48">
+<pre><code>YearMade                73
+ProductSize              6
+Coupler_System           2
+fiProductClassDesc      74
+ModelID               5281
+Grouser_Tracks           2
+fiSecondaryDesc        177
+fiModelDesc           5059
+ProductGroup             6
+Enclosure                6
+fiModelDescriptor      140
+Hydraulics              12
+saleYear                24
+Drive_System             4
+Tire_Size               17
+Pad_Type                 4
+dtype: int64</code></pre>
+</div>
+</div>
+<p>The two features with similar high cardinality are <code>ModelID</code> and <code>fiModelDesc</code>. I’ll remove and see which one improves the model more.</p>
+<div class="cell" data-outputid="e52152ce-fe3e-40bb-8764-202aad512751">
+<div class="sourceCode cell-code" id="cb68"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb68-1"><a href="#cb68-1" aria-hidden="true" tabindex="-1"></a>xs_final_time2 <span class="op">=</span> xs_final_time.drop(<span class="st">'ModelID'</span>, axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb68-2"><a href="#cb68-2" aria-hidden="true" tabindex="-1"></a>valid_xs_time2 <span class="op">=</span> valid_xs_time.drop(<span class="st">'ModelID'</span>, axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb68-3"><a href="#cb68-3" aria-hidden="true" tabindex="-1"></a>m2 <span class="op">=</span> rf(xs_final_time2, y)</span>
+<span id="cb68-4"><a href="#cb68-4" aria-hidden="true" tabindex="-1"></a>m_rmse(m2, xs_final_time2, y), m_rmse(m2, valid_xs_time2, valid_y)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="49">
+<pre><code>(0.190922, 0.250589)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="98126ca3-d992-46fd-c994-da75ab7a347d">
+<div class="sourceCode cell-code" id="cb70"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb70-1"><a href="#cb70-1" aria-hidden="true" tabindex="-1"></a>xs_final_time2 <span class="op">=</span> xs_final_time.drop(<span class="st">'fiModelDesc'</span>, axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb70-2"><a href="#cb70-2" aria-hidden="true" tabindex="-1"></a>valid_xs_time2 <span class="op">=</span> valid_xs_time.drop(<span class="st">'fiModelDesc'</span>, axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb70-3"><a href="#cb70-3" aria-hidden="true" tabindex="-1"></a>m2 <span class="op">=</span> rf(xs_final_time2, y)</span>
+<span id="cb70-4"><a href="#cb70-4" aria-hidden="true" tabindex="-1"></a>m_rmse(m2, xs_final_time2, y), m_rmse(m2, valid_xs_time2, valid_y)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="50">
+<pre><code>(0.192338, 0.251594)</code></pre>
+</div>
+</div>
+<p>Removing <code>ModelID</code> gives a smaller error than removing <code>fiModelDesc</code>. Also, we want to predict future auction sales so I’ll move <code>saleYear</code> to <code>cont_nn</code> (as categorical values cannot be extrapolated beyond their existing levels).</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb72"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb72-1"><a href="#cb72-1" aria-hidden="true" tabindex="-1"></a>cat_nn.remove(<span class="st">'ModelID'</span>)</span>
+<span id="cb72-2"><a href="#cb72-2" aria-hidden="true" tabindex="-1"></a>cat_nn.remove(<span class="st">'saleYear'</span>)</span>
+<span id="cb72-3"><a href="#cb72-3" aria-hidden="true" tabindex="-1"></a>cont_nn.append(<span class="st">'saleYear'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="02656b15-66df-4e50-f150-c87117a0724f">
+<div class="sourceCode cell-code" id="cb73"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb73-1"><a href="#cb73-1" aria-hidden="true" tabindex="-1"></a>df_nn_final[cat_nn].nunique()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="53">
+<pre><code>YearMade                73
+ProductSize              6
+Coupler_System           2
+fiProductClassDesc      74
+Grouser_Tracks           2
+fiSecondaryDesc        177
+fiModelDesc           5059
+ProductGroup             6
+Enclosure                6
+fiModelDescriptor      140
+Hydraulics              12
+Drive_System             4
+Tire_Size               17
+Pad_Type                 4
+dtype: int64</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="19bb2ad0-f865-4cac-f3a4-ed67c5c34c5b">
+<div class="sourceCode cell-code" id="cb75"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb75-1"><a href="#cb75-1" aria-hidden="true" tabindex="-1"></a>cont_nn</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="54">
+<pre><code>['SalesID', 'MachineID', 'saleYear']</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb77"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb77-1"><a href="#cb77-1" aria-hidden="true" tabindex="-1"></a>procs_nn <span class="op">=</span> [Categorify, FillMissing, Normalize]</span>
+<span id="cb77-2"><a href="#cb77-2" aria-hidden="true" tabindex="-1"></a>to_nn <span class="op">=</span> TabularPandas(df_nn_final, procs_nn, cat_nn, cont_nn, splits<span class="op">=</span>splits, y_names<span class="op">=</span>dep_var)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb78"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb78-1"><a href="#cb78-1" aria-hidden="true" tabindex="-1"></a><span class="co"># save for later</span></span>
+<span id="cb78-2"><a href="#cb78-2" aria-hidden="true" tabindex="-1"></a>data <span class="op">=</span> (xs_final_time, y, valid_xs_time, valid_y)</span>
+<span id="cb78-3"><a href="#cb78-3" aria-hidden="true" tabindex="-1"></a>save_pickle(<span class="st">"to_nn.pkl"</span>, to_nn)</span>
+<span id="cb78-4"><a href="#cb78-4" aria-hidden="true" tabindex="-1"></a>save_pickle(<span class="st">"data.pkl"</span>, data)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb79"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb79-1"><a href="#cb79-1" aria-hidden="true" tabindex="-1"></a><span class="co"># load objects</span></span>
+<span id="cb79-2"><a href="#cb79-2" aria-hidden="true" tabindex="-1"></a>to_nn <span class="op">=</span> load_pickle(<span class="st">"to_nn.pkl"</span>)</span>
+<span id="cb79-3"><a href="#cb79-3" aria-hidden="true" tabindex="-1"></a>xs_final_time, y, valid_xs_time, valid_y <span class="op">=</span> load_pickle(<span class="st">"data.pkl"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="5">
+<div class="sourceCode cell-code" id="cb80"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb80-1"><a href="#cb80-1" aria-hidden="true" tabindex="-1"></a>dls <span class="op">=</span> to_nn.dataloaders(<span class="dv">1024</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="ce3522cf-3c47-46c3-a889-b72377b0d5b2" data-execution_count="6">
+<div class="sourceCode cell-code" id="cb81"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb81-1"><a href="#cb81-1" aria-hidden="true" tabindex="-1"></a><span class="co"># set y-range</span></span>
+<span id="cb81-2"><a href="#cb81-2" aria-hidden="true" tabindex="-1"></a>y <span class="op">=</span> to_nn.train.y</span>
+<span id="cb81-3"><a href="#cb81-3" aria-hidden="true" tabindex="-1"></a>y.<span class="bu">min</span>(), y.<span class="bu">max</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<pre><code>(8.465899, 11.863583)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="9a7bf911-f5b9-4d8e-8e31-1f994490421d" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb83"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb83-1"><a href="#cb83-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fastai.tabular.<span class="bu">all</span> <span class="im">import</span> <span class="op">*</span></span>
+<span id="cb83-2"><a href="#cb83-2" aria-hidden="true" tabindex="-1"></a>learn <span class="op">=</span> tabular_learner(dls, y_range<span class="op">=</span>(<span class="dv">8</span>,<span class="dv">12</span>), layers<span class="op">=</span>[<span class="dv">500</span>,<span class="dv">250</span>],</span>
+<span id="cb83-3"><a href="#cb83-3" aria-hidden="true" tabindex="-1"></a>                        n_out<span class="op">=</span><span class="dv">1</span>, loss_func<span class="op">=</span>F.mse_loss)</span>
+<span id="cb83-4"><a href="#cb83-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb83-5"><a href="#cb83-5" aria-hidden="true" tabindex="-1"></a>learn.lr_find()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+</div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<pre><code>SuggestedLRs(valley=0.00013182566908653826)</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<p><img src="index_files/figure-html/cell-59-output-4.png" class="img-fluid"></p>
+</div>
+</div>
+<div class="cell" data-outputid="c29eb9b1-42b7-4948-ce55-56e66b8426e9" data-execution_count="8">
+<div class="sourceCode cell-code" id="cb85"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb85-1"><a href="#cb85-1" aria-hidden="true" tabindex="-1"></a>learn.fit_one_cycle(<span class="dv">5</span>, <span class="fl">1e-2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>epoch</th>
+      <th>train_loss</th>
+      <th>valid_loss</th>
+      <th>time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>0.066889</td>
+      <td>0.173385</td>
+      <td>00:30</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>0.055220</td>
+      <td>0.071100</td>
+      <td>00:27</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>0.050529</td>
+      <td>0.059935</td>
+      <td>00:30</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>0.045348</td>
+      <td>0.058667</td>
+      <td>00:27</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>0.041716</td>
+      <td>0.058603</td>
+      <td>00:27</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+<div class="cell" data-outputid="c0e4e09b-002c-46b8-cde7-05496e6db494" data-execution_count="11">
+<div class="sourceCode cell-code" id="cb86"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb86-1"><a href="#cb86-1" aria-hidden="true" tabindex="-1"></a>preds, targs <span class="op">=</span> learn.get_preds()</span>
+<span id="cb86-2"><a href="#cb86-2" aria-hidden="true" tabindex="-1"></a>r_mse(preds, targs)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+</div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<pre><code>0.242081</code></pre>
+</div>
+</div>
+</section>
+<section id="neural-net-embeddings" class="level2">
+<h2 class="anchored" data-anchor-id="neural-net-embeddings">Neural Net Embeddings</h2>
+<p>Now that the model is trained, let’s take a look at the embeddings that it created. The first dimension of each embedding roughly corresponds to the number of unique values in the corresponding categorical column:</p>
+<div class="cell" data-outputid="18660b56-3ed8-4ab8-a436-aa69af4c900b" data-execution_count="12">
+<div class="sourceCode cell-code" id="cb88"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb88-1"><a href="#cb88-1" aria-hidden="true" tabindex="-1"></a>learn.model.embeds</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<pre><code>ModuleList(
+  (0): Embedding(72, 18)
+  (1): Embedding(7, 5)
+  (2): Embedding(3, 3)
+  (3): Embedding(75, 18)
+  (4): Embedding(3, 3)
+  (5): Embedding(178, 29)
+  (6): Embedding(5060, 190)
+  (7-8): 2 x Embedding(7, 5)
+  (9): Embedding(141, 26)
+  (10): Embedding(13, 7)
+  (11): Embedding(5, 4)
+  (12): Embedding(18, 8)
+  (13): Embedding(5, 4)
+)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="f079da4b-284c-4ba5-f491-863f6b9802e4">
+<div class="sourceCode cell-code" id="cb90"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb90-1"><a href="#cb90-1" aria-hidden="true" tabindex="-1"></a>to_nn.train.xs[to_nn.cat_names].nunique()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="18">
+<pre><code>YearMade                71
+ProductSize              7
+Coupler_System           3
+fiProductClassDesc      74
+Grouser_Tracks           3
+fiSecondaryDesc        176
+fiModelDesc           4965
+ProductGroup             6
+Enclosure                7
+fiModelDescriptor      140
+Hydraulics              13
+Drive_System             5
+Tire_Size               18
+Pad_Type                 5
+dtype: int64</code></pre>
+</div>
+</div>
+<p>In <a href="https://towardsdatascience.com/entity-embeddings-for-ml-2387eb68e49#:~:text=2.%20Replace%20each%20categorical%20value%20with%20its%20embedding%20vector">this medium blog post</a> Adam Mehdi uses the following code to replace categorical columns in the training set with embedding matrices:</p>
+<div class="sourceCode" id="cb92"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb92-1"><a href="#cb92-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> embed_features(learner, xs):</span>
+<span id="cb92-2"><a href="#cb92-2" aria-hidden="true" tabindex="-1"></a>  <span class="co">"""</span></span>
+<span id="cb92-3"><a href="#cb92-3" aria-hidden="true" tabindex="-1"></a><span class="co">  learner: fastai Learner used to train the neural net</span></span>
+<span id="cb92-4"><a href="#cb92-4" aria-hidden="true" tabindex="-1"></a><span class="co">  xs: DataFrame containing input variables. Categorical values are defined by their rank.</span></span>
+<span id="cb92-5"><a href="#cb92-5" aria-hidden="true" tabindex="-1"></a><span class="co"> ::return:: copy of `xs` with embeddings replacing each categorical variable</span></span>
+<span id="cb92-6"><a href="#cb92-6" aria-hidden="true" tabindex="-1"></a><span class="co">  """</span></span>
+<span id="cb92-7"><a href="#cb92-7" aria-hidden="true" tabindex="-1"></a>  xs <span class="op">=</span> xs.copy()</span>
+<span id="cb92-8"><a href="#cb92-8" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> i,col <span class="kw">in</span> <span class="bu">enumerate</span>(learn.dls.cat_names):</span>
+<span id="cb92-9"><a href="#cb92-9" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb92-10"><a href="#cb92-10" aria-hidden="true" tabindex="-1"></a>    <span class="co"># get matrix containing each row's embedding vector</span></span>
+<span id="cb92-11"><a href="#cb92-11" aria-hidden="true" tabindex="-1"></a>    emb <span class="op">=</span> learn.model.embeds[i]</span>
+<span id="cb92-12"><a href="#cb92-12" aria-hidden="true" tabindex="-1"></a>    emb_data <span class="op">=</span> emb(tensor(xs[col], dtype<span class="op">=</span>torch.int64))</span>
+<span id="cb92-13"><a href="#cb92-13" aria-hidden="true" tabindex="-1"></a>    emb_names <span class="op">=</span> [<span class="ss">f'</span><span class="sc">{</span>col<span class="sc">}</span><span class="ss">_</span><span class="sc">{</span>j<span class="sc">}</span><span class="ss">'</span> <span class="cf">for</span> j <span class="kw">in</span> <span class="bu">range</span>(emb_data.shape[<span class="dv">1</span>])]</span>
+<span id="cb92-14"><a href="#cb92-14" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb92-15"><a href="#cb92-15" aria-hidden="true" tabindex="-1"></a>    <span class="co"># join the embedded category and drop the old feature column</span></span>
+<span id="cb92-16"><a href="#cb92-16" aria-hidden="true" tabindex="-1"></a>    feat_df <span class="op">=</span> pd.DataFrame(data<span class="op">=</span>emb_data, index<span class="op">=</span>xs.index,               </span>
+<span id="cb92-17"><a href="#cb92-17" aria-hidden="true" tabindex="-1"></a>                           columns<span class="op">=</span>emb_names)</span>
+<span id="cb92-18"><a href="#cb92-18" aria-hidden="true" tabindex="-1"></a>    xs <span class="op">=</span> xs.drop(col, axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb92-19"><a href="#cb92-19" aria-hidden="true" tabindex="-1"></a>    xs <span class="op">=</span> xs.join(feat_df)</span>
+<span id="cb92-20"><a href="#cb92-20" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> xs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>I’ll work through the code line-by-line for one of the categorical columns, <code>ProductSize</code>. First we grab the column’s corresponding <code>Embedding</code> from the model:</p>
+<div class="cell" data-outputid="9d775a84-24ee-4a35-e964-a80553dfacec" data-execution_count="20">
+<div class="sourceCode cell-code" id="cb93"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb93-1"><a href="#cb93-1" aria-hidden="true" tabindex="-1"></a>emb <span class="op">=</span> learn.model.embeds[<span class="dv">1</span>]</span>
+<span id="cb93-2"><a href="#cb93-2" aria-hidden="true" tabindex="-1"></a>emb</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="20">
+<pre><code>Embedding(7, 5)</code></pre>
+</div>
+</div>
+<p>I then pass all <code>ProductSize</code> values to that <code>Embedding</code> as an integer tensor. The output is a matrix with one row for each training observation, and 5 columns (chosen by the model for <code>ProductSize</code>):</p>
+<div class="cell" data-outputid="720079a9-3a25-4f6d-fb85-e2e983400ca9" data-execution_count="22">
+<div class="sourceCode cell-code" id="cb95"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb95-1"><a href="#cb95-1" aria-hidden="true" tabindex="-1"></a>emb_data <span class="op">=</span> emb(tensor(xs_final_time[<span class="st">'ProductSize'</span>], dtype<span class="op">=</span>torch.int64))</span>
+<span id="cb95-2"><a href="#cb95-2" aria-hidden="true" tabindex="-1"></a>emb_data.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="22">
+<pre><code>torch.Size([395371, 5])</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="1b048e39-9527-483d-9866-c004ccd56d59" data-execution_count="23">
+<div class="sourceCode cell-code" id="cb97"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb97-1"><a href="#cb97-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(xs_final_time)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="23">
+<pre><code>395371</code></pre>
+</div>
+</div>
+<p>To appropriately name the columns in the updated dataset, I label the embedding layer names as done in the medium post:</p>
+<div class="cell" data-outputid="077bb8a4-0302-490f-a345-958430537e2b" data-execution_count="26">
+<div class="sourceCode cell-code" id="cb99"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb99-1"><a href="#cb99-1" aria-hidden="true" tabindex="-1"></a>emb_names <span class="op">=</span> [<span class="ss">f'ProductSize_</span><span class="sc">{</span>j<span class="sc">}</span><span class="ss">'</span> <span class="cf">for</span> j <span class="kw">in</span> <span class="bu">range</span>(emb_data.shape[<span class="dv">1</span>])]</span>
+<span id="cb99-2"><a href="#cb99-2" aria-hidden="true" tabindex="-1"></a>emb_names</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="26">
+<pre><code>['ProductSize_0',
+ 'ProductSize_1',
+ 'ProductSize_2',
+ 'ProductSize_3',
+ 'ProductSize_4']</code></pre>
+</div>
+</div>
+<p>I then convert the 2-D tensor to a <code>DataFrame</code>:</p>
+<div class="cell" data-outputid="e23af1a7-8d25-4ad1-de57-0a28e3fe2e74" data-execution_count="28">
+<div class="sourceCode cell-code" id="cb101"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb101-1"><a href="#cb101-1" aria-hidden="true" tabindex="-1"></a>feat_df <span class="op">=</span> pd.DataFrame(</span>
+<span id="cb101-2"><a href="#cb101-2" aria-hidden="true" tabindex="-1"></a>    data<span class="op">=</span>emb_data,</span>
+<span id="cb101-3"><a href="#cb101-3" aria-hidden="true" tabindex="-1"></a>    index<span class="op">=</span>xs_final_time.index,</span>
+<span id="cb101-4"><a href="#cb101-4" aria-hidden="true" tabindex="-1"></a>    columns<span class="op">=</span>emb_names)</span>
+<span id="cb101-5"><a href="#cb101-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb101-6"><a href="#cb101-6" aria-hidden="true" tabindex="-1"></a>feat_df.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="28">
+
+
+  <div id="df-f4506617-5d0f-4b1b-9a02-ce3b00744e7e" class="colab-df-container">
+    <div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>ProductSize_0</th>
+      <th>ProductSize_1</th>
+      <th>ProductSize_2</th>
+      <th>ProductSize_3</th>
+      <th>ProductSize_4</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>-0.003886</td>
+      <td>0.204614</td>
+      <td>-0.099826</td>
+      <td>0.152207</td>
+      <td>0.215685</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>-0.114329</td>
+      <td>-0.100198</td>
+      <td>-0.071906</td>
+      <td>-0.128801</td>
+      <td>-0.039516</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>-0.003886</td>
+      <td>0.204614</td>
+      <td>-0.099826</td>
+      <td>0.152207</td>
+      <td>0.215685</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>-0.005051</td>
+      <td>0.042276</td>
+      <td>-0.102471</td>
+      <td>0.016768</td>
+      <td>0.001030</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>-0.003886</td>
+      <td>0.204614</td>
+      <td>-0.099826</td>
+      <td>0.152207</td>
+      <td>0.215685</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+    <div class="colab-df-buttons">
+
+  <div class="colab-df-container">
+    <button class="colab-df-convert" onclick="convertToInteractive('df-f4506617-5d0f-4b1b-9a02-ce3b00744e7e')" title="Convert this dataframe to an interactive table." style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
+    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
+  </svg>
+    </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    .colab-df-buttons div {
+      margin-bottom: 4px;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+    <script>
+      const buttonEl =
+        document.querySelector('#df-f4506617-5d0f-4b1b-9a02-ce3b00744e7e button.colab-df-convert');
+      buttonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+      async function convertToInteractive(key) {
+        const element = document.querySelector('#df-f4506617-5d0f-4b1b-9a02-ce3b00744e7e');
+        const dataTable =
+          await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                    [key], {});
+        if (!dataTable) return;
+
+        const docLinkHtml = 'Like what you see? Visit the ' +
+          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+          + ' to learn more about interactive tables.';
+        element.innerHTML = '';
+        dataTable['output_type'] = 'display_data';
+        await google.colab.output.renderOutput(dataTable, element);
+        const docLink = document.createElement('div');
+        docLink.innerHTML = docLinkHtml;
+        element.appendChild(docLink);
+      }
+    </script>
+  </div>
+
+
+<div id="df-bde684f8-9a96-4a66-a1a0-b895f0f4185b">
+  <button class="colab-df-quickchart" onclick="quickchart('df-bde684f8-9a96-4a66-a1a0-b895f0f4185b')" title="Suggest charts." style="display:none;">
+
+<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
+    <g>
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
+    </g>
+</svg>
+  </button>
+
+<style>
+  .colab-df-quickchart {
+      --bg-color: #E8F0FE;
+      --fill-color: #1967D2;
+      --hover-bg-color: #E2EBFA;
+      --hover-fill-color: #174EA6;
+      --disabled-fill-color: #AAA;
+      --disabled-bg-color: #DDD;
+  }
+
+  [theme=dark] .colab-df-quickchart {
+      --bg-color: #3B4455;
+      --fill-color: #D2E3FC;
+      --hover-bg-color: #434B5C;
+      --hover-fill-color: #FFFFFF;
+      --disabled-bg-color: #3B4455;
+      --disabled-fill-color: #666;
+  }
+
+  .colab-df-quickchart {
+    background-color: var(--bg-color);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: none;
+    fill: var(--fill-color);
+    height: 32px;
+    padding: 0;
+    width: 32px;
+  }
+
+  .colab-df-quickchart:hover {
+    background-color: var(--hover-bg-color);
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    fill: var(--button-hover-fill-color);
+  }
+
+  .colab-df-quickchart-complete:disabled,
+  .colab-df-quickchart-complete:disabled:hover {
+    background-color: var(--disabled-bg-color);
+    fill: var(--disabled-fill-color);
+    box-shadow: none;
+  }
+
+  .colab-df-spinner {
+    border: 2px solid var(--fill-color);
+    border-color: transparent;
+    border-bottom-color: var(--fill-color);
+    animation:
+      spin 1s steps(1) infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+      border-left-color: var(--fill-color);
+    }
+    20% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    30% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+      border-right-color: var(--fill-color);
+    }
+    40% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    60% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+    }
+    80% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-bottom-color: var(--fill-color);
+    }
+    90% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+    }
+  }
+</style>
+
+  <script>
+    async function quickchart(key) {
+      const quickchartButtonEl =
+        document.querySelector('#' + key + ' button');
+      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
+      quickchartButtonEl.classList.add('colab-df-spinner');
+      try {
+        const charts = await google.colab.kernel.invokeFunction(
+            'suggestCharts', [key], {});
+      } catch (error) {
+        console.error('Error during call to suggestCharts:', error);
+      }
+      quickchartButtonEl.classList.remove('colab-df-spinner');
+      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
+    }
+    (() => {
+      let quickchartButtonEl =
+        document.querySelector('#df-bde684f8-9a96-4a66-a1a0-b895f0f4185b button');
+      quickchartButtonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+    })();
+  </script>
+</div>
+    </div>
+  </div>
+</div>
+</div>
+<p>Finally, I drop the <code>ProductSize</code> column from the dataset and replace it with my embedding <code>DataFrame</code>:</p>
+<div class="cell" data-outputid="aa341e07-7db5-4bbf-fc42-7e4d64a51d8c" data-execution_count="29">
+<div class="sourceCode cell-code" id="cb102"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb102-1"><a href="#cb102-1" aria-hidden="true" tabindex="-1"></a>xs_temp <span class="op">=</span> xs_final_time.drop(<span class="st">'ProductSize'</span>, axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb102-2"><a href="#cb102-2" aria-hidden="true" tabindex="-1"></a>xs_temp <span class="op">=</span> xs_temp.join(feat_df)</span>
+<span id="cb102-3"><a href="#cb102-3" aria-hidden="true" tabindex="-1"></a>xs_temp.columns</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="29">
+<pre><code>Index(['YearMade', 'Coupler_System', 'fiProductClassDesc', 'ModelID',
+       'Grouser_Tracks', 'fiSecondaryDesc', 'fiModelDesc', 'ProductGroup',
+       'SalesID', 'Enclosure', 'fiModelDescriptor', 'MachineID', 'Hydraulics',
+       'saleYear', 'Drive_System', 'Tire_Size', 'Pad_Type', 'ProductSize_0',
+       'ProductSize_1', 'ProductSize_2', 'ProductSize_3', 'ProductSize_4'],
+      dtype='object')</code></pre>
+</div>
+</div>
+<p>With a single iteration done successfully, now I can run the whole loop and get the updated dataset with embedding matrices:</p>
+<div class="cell" data-execution_count="53">
+<div class="sourceCode cell-code" id="cb104"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb104-1"><a href="#cb104-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> embed_features(learn, xs):</span>
+<span id="cb104-2"><a href="#cb104-2" aria-hidden="true" tabindex="-1"></a>  xs <span class="op">=</span> xs.copy()</span>
+<span id="cb104-3"><a href="#cb104-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb104-4"><a href="#cb104-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> i, col <span class="kw">in</span> <span class="bu">enumerate</span>(learn.dls.cat_names):</span>
+<span id="cb104-5"><a href="#cb104-5" aria-hidden="true" tabindex="-1"></a>    emb <span class="op">=</span> learn.model.embeds[i]</span>
+<span id="cb104-6"><a href="#cb104-6" aria-hidden="true" tabindex="-1"></a>    emb_data <span class="op">=</span> emb(tensor(xs[col], dtype<span class="op">=</span>torch.int64))</span>
+<span id="cb104-7"><a href="#cb104-7" aria-hidden="true" tabindex="-1"></a>    emb_names <span class="op">=</span> [<span class="ss">f'</span><span class="sc">{</span>col<span class="sc">}</span><span class="ss">_</span><span class="sc">{</span>j<span class="sc">}</span><span class="ss">'</span> <span class="cf">for</span> j <span class="kw">in</span> <span class="bu">range</span>(emb_data.shape[<span class="dv">1</span>])]</span>
+<span id="cb104-8"><a href="#cb104-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb104-9"><a href="#cb104-9" aria-hidden="true" tabindex="-1"></a>    feat_df <span class="op">=</span> pd.DataFrame(</span>
+<span id="cb104-10"><a href="#cb104-10" aria-hidden="true" tabindex="-1"></a>        data<span class="op">=</span>emb_data,</span>
+<span id="cb104-11"><a href="#cb104-11" aria-hidden="true" tabindex="-1"></a>        index<span class="op">=</span>xs.index,</span>
+<span id="cb104-12"><a href="#cb104-12" aria-hidden="true" tabindex="-1"></a>        columns<span class="op">=</span>emb_names</span>
+<span id="cb104-13"><a href="#cb104-13" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb104-14"><a href="#cb104-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb104-15"><a href="#cb104-15" aria-hidden="true" tabindex="-1"></a>    xs <span class="op">=</span> xs.drop(col, axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb104-16"><a href="#cb104-16" aria-hidden="true" tabindex="-1"></a>    xs <span class="op">=</span> xs.join(feat_df)</span>
+<span id="cb104-17"><a href="#cb104-17" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> xs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>One bit of preprocessing I’ll have to do is swap the categorical columns in <code>xs_final_time</code> with the ones in <code>to_nn.train.xs</code> since the latter has been “categorified” by the <code>Categorify</code> fastai processor into 0 to n integer values. To illustrate: the first value of the <code>YearMade</code> column in <code>xs_final_time</code> is <code>2004</code> whereas it’s converted to the integer <code>63</code> in the corresponding <code>to_nn.train.xs</code> column. The embedding corresponding to this column has a dimension of <code>72</code> so it can take a maximum value of <code>71</code> as the input, which is the maximum value in <code>to_nn.train.xs['YearMade']</code>.</p>
+<div class="cell" data-outputid="c221f77d-f658-4f04-e1b5-b8a2435d9f63" data-execution_count="48">
+<div class="sourceCode cell-code" id="cb105"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb105-1"><a href="#cb105-1" aria-hidden="true" tabindex="-1"></a>xs_final_time[<span class="st">'YearMade'</span>][<span class="dv">0</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="48">
+<pre><code>2004</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="a7c2cf4b-04c8-4e7a-a281-19650f29864c" data-execution_count="49">
+<div class="sourceCode cell-code" id="cb107"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb107-1"><a href="#cb107-1" aria-hidden="true" tabindex="-1"></a>to_nn.train.xs[<span class="st">'YearMade'</span>][<span class="dv">0</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="49">
+<pre><code>63</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="57e2c3ac-fecf-457b-df24-9022be878151" data-execution_count="52">
+<div class="sourceCode cell-code" id="cb109"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb109-1"><a href="#cb109-1" aria-hidden="true" tabindex="-1"></a>learn.model.embeds[<span class="dv">0</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="52">
+<pre><code>Embedding(72, 18)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="58dcb5c8-da1f-40d0-e0d5-4bd6558470f2" data-execution_count="51">
+<div class="sourceCode cell-code" id="cb111"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb111-1"><a href="#cb111-1" aria-hidden="true" tabindex="-1"></a>to_nn.train.xs[<span class="st">'YearMade'</span>].<span class="bu">max</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="51">
+<pre><code>71</code></pre>
+</div>
+</div>
+<p>Here’s a bit of code to swap the columns:</p>
+<div class="cell" data-execution_count="73">
+<div class="sourceCode cell-code" id="cb113"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb113-1"><a href="#cb113-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> prep_xs(to_nn, xs):</span>
+<span id="cb113-2"><a href="#cb113-2" aria-hidden="true" tabindex="-1"></a>  xs <span class="op">=</span> xs.copy()</span>
+<span id="cb113-3"><a href="#cb113-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> col <span class="kw">in</span> to_nn.train.xs.columns:</span>
+<span id="cb113-4"><a href="#cb113-4" aria-hidden="true" tabindex="-1"></a>    xs[col] <span class="op">=</span> to_nn[col]</span>
+<span id="cb113-5"><a href="#cb113-5" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> xs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="965ceaee-5831-4b32-c799-c39c001ad50f" data-execution_count="74">
+<div class="sourceCode cell-code" id="cb114"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb114-1"><a href="#cb114-1" aria-hidden="true" tabindex="-1"></a>xs_with_embs <span class="op">=</span> prep_xs(to_nn, xs_final_time)</span>
+<span id="cb114-2"><a href="#cb114-2" aria-hidden="true" tabindex="-1"></a>xs_with_embs[<span class="st">'YearMade'</span>].unique()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="74">
+<pre><code>array([63, 55, 60, 66, 52, 67,  1, 57, 58, 62, 50, 59, 64, 54, 65, 61, 43,
+       47, 39, 51, 46, 56, 30, 37, 48, 44, 38, 35, 53, 41, 49, 33, 27, 25,
+       42, 45, 40, 29, 36, 34, 32, 24, 26, 68, 69, 28, 31, 23, 16, 17, 22,
+        2,  3,  9,  7, 11,  5, 15, 13, 12, 14, 18, 19, 20, 21, 10,  4,  8,
+        6, 71, 70], dtype=int8)</code></pre>
+</div>
+</div>
+<p>Now that I have categorified the categorical columns the embeddings are trained on, I can process to swap them with embedding matrices:</p>
+<div class="cell" data-outputid="9db27d50-23ae-4b0b-951b-273e3d7c5784" data-execution_count="75">
+<div class="sourceCode cell-code" id="cb116"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb116-1"><a href="#cb116-1" aria-hidden="true" tabindex="-1"></a>xs_with_embs <span class="op">=</span> embed_features(learn, xs_with_embs)</span>
+<span id="cb116-2"><a href="#cb116-2" aria-hidden="true" tabindex="-1"></a>xs_with_embs.columns</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="75">
+<pre><code>Index(['ModelID', 'SalesID', 'MachineID', 'saleYear', 'YearMade_0',
+       'YearMade_1', 'YearMade_2', 'YearMade_3', 'YearMade_4', 'YearMade_5',
+       ...
+       'Tire_Size_2', 'Tire_Size_3', 'Tire_Size_4', 'Tire_Size_5',
+       'Tire_Size_6', 'Tire_Size_7', 'Pad_Type_0', 'Pad_Type_1', 'Pad_Type_2',
+       'Pad_Type_3'],
+      dtype='object', length=329)</code></pre>
+</div>
+</div>
+<p>I’ll check to see that the number of columns corresponding to the embedding matches the number of columns in the second dimension of the embedding matrix:</p>
+<div class="cell" data-outputid="011e6269-2bfd-4225-f6fb-8d7c2557b6a4" data-execution_count="76">
+<div class="sourceCode cell-code" id="cb118"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb118-1"><a href="#cb118-1" aria-hidden="true" tabindex="-1"></a>learn.model.embeds[<span class="dv">0</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="76">
+<pre><code>Embedding(72, 18)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="775b0679-c08a-46d5-ed88-b460c78354bc" data-execution_count="77">
+<div class="sourceCode cell-code" id="cb120"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb120-1"><a href="#cb120-1" aria-hidden="true" tabindex="-1"></a><span class="co">' '</span>.join(o <span class="cf">for</span> o <span class="kw">in</span> xs_with_embs.columns <span class="cf">if</span> o.startswith(<span class="st">'YearMade'</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="77">
+<pre><code>'YearMade_0 YearMade_1 YearMade_2 YearMade_3 YearMade_4 YearMade_5 YearMade_6 YearMade_7 YearMade_8 YearMade_9 YearMade_10 YearMade_11 YearMade_12 YearMade_13 YearMade_14 YearMade_15 YearMade_16 YearMade_17'</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="e35def1b-aa68-407d-fd7a-627df081d130" data-execution_count="78">
+<div class="sourceCode cell-code" id="cb122"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb122-1"><a href="#cb122-1" aria-hidden="true" tabindex="-1"></a>learn.model.embeds[<span class="dv">1</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="78">
+<pre><code>Embedding(7, 5)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="4d368bf7-d005-4d07-9fb7-fdefe3dfb6da" data-execution_count="79">
+<div class="sourceCode cell-code" id="cb124"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb124-1"><a href="#cb124-1" aria-hidden="true" tabindex="-1"></a><span class="co">' '</span>.join(o <span class="cf">for</span> o <span class="kw">in</span> xs_with_embs.columns <span class="cf">if</span> o.startswith(<span class="st">'ProductSize'</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="79">
+<pre><code>'ProductSize_0 ProductSize_1 ProductSize_2 ProductSize_3 ProductSize_4'</code></pre>
+</div>
+</div>
+<p>I’ll make the same changes to the validation set:</p>
+<div class="cell" data-outputid="aa9b09ad-bbff-4a60-fe3d-e142f7a2b554" data-execution_count="80">
+<div class="sourceCode cell-code" id="cb126"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb126-1"><a href="#cb126-1" aria-hidden="true" tabindex="-1"></a>valid_xs_with_embs <span class="op">=</span> prep_xs(to_nn, valid_xs_time)</span>
+<span id="cb126-2"><a href="#cb126-2" aria-hidden="true" tabindex="-1"></a>valid_xs_with_embs[<span class="st">'YearMade'</span>].unique()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="80">
+<pre><code>array([ 1, 63, 61, 66, 68, 64, 60, 57, 58, 65, 67, 59, 48, 62, 56, 40, 44,
+       49, 55, 34, 35, 39, 54, 42, 41, 23, 45, 38, 43, 52, 47, 51, 53, 50,
+       33, 37, 36, 46, 27, 30, 28, 32, 25, 31, 24, 15, 22, 29, 21, 26,  0,
+       70, 69, 17, 16, 12], dtype=int8)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="a897dca1-b139-43aa-8c34-abd5f9b783e3" data-execution_count="81">
+<div class="sourceCode cell-code" id="cb128"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb128-1"><a href="#cb128-1" aria-hidden="true" tabindex="-1"></a>valid_xs_with_embs <span class="op">=</span> embed_features(learn, valid_xs_with_embs)</span>
+<span id="cb128-2"><a href="#cb128-2" aria-hidden="true" tabindex="-1"></a>valid_xs_with_embs.columns</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="81">
+<pre><code>Index(['ModelID', 'SalesID', 'MachineID', 'saleYear', 'YearMade_0',
+       'YearMade_1', 'YearMade_2', 'YearMade_3', 'YearMade_4', 'YearMade_5',
+       ...
+       'Tire_Size_2', 'Tire_Size_3', 'Tire_Size_4', 'Tire_Size_5',
+       'Tire_Size_6', 'Tire_Size_7', 'Pad_Type_0', 'Pad_Type_1', 'Pad_Type_2',
+       'Pad_Type_3'],
+      dtype='object', length=329)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="c550b9d3-b4f1-40ab-b2a0-9cd7255ce10d" data-execution_count="82">
+<div class="sourceCode cell-code" id="cb130"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb130-1"><a href="#cb130-1" aria-hidden="true" tabindex="-1"></a><span class="co">' '</span>.join(o <span class="cf">for</span> o <span class="kw">in</span> valid_xs_with_embs.columns <span class="cf">if</span> o.startswith(<span class="st">'YearMade'</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="82">
+<pre><code>'YearMade_0 YearMade_1 YearMade_2 YearMade_3 YearMade_4 YearMade_5 YearMade_6 YearMade_7 YearMade_8 YearMade_9 YearMade_10 YearMade_11 YearMade_12 YearMade_13 YearMade_14 YearMade_15 YearMade_16 YearMade_17'</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="1c6668ad-e78d-4a0a-d8a5-45a28ae76eef" data-execution_count="83">
+<div class="sourceCode cell-code" id="cb132"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb132-1"><a href="#cb132-1" aria-hidden="true" tabindex="-1"></a><span class="co">' '</span>.join(o <span class="cf">for</span> o <span class="kw">in</span> valid_xs_with_embs.columns <span class="cf">if</span> o.startswith(<span class="st">'ProductSize'</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="83">
+<pre><code>'ProductSize_0 ProductSize_1 ProductSize_2 ProductSize_3 ProductSize_4'</code></pre>
+</div>
+</div>
+<p>Looks good! Now I can go on to fit a random forest on this embedding-filled dataset.</p>
+</section>
+<section id="fitting-a-random-forest" class="level2">
+<h2 class="anchored" data-anchor-id="fitting-a-random-forest">Fitting a Random Forest</h2>
+<div class="cell" data-outputid="97c32d3e-7991-4e61-906c-c6f1b4d2e140" data-execution_count="86">
+<div class="sourceCode cell-code" id="cb134"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb134-1"><a href="#cb134-1" aria-hidden="true" tabindex="-1"></a>m <span class="op">=</span> rf(xs_with_embs, y)<span class="op">;</span></span>
+<span id="cb134-2"><a href="#cb134-2" aria-hidden="true" tabindex="-1"></a>m_rmse(m, xs_with_embs, y), m_rmse(m, valid_xs_with_embs, valid_y)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="86">
+<pre><code>(0.178098, 0.238825)</code></pre>
+</div>
+</div>
+<p>The previous random forest, with low-importance, redundant and out-of-domain features removed had training and validation errors of <code>0.189063</code> and <code>0.247074</code>, respectively. This model has lower errors for both.</p>
+<section id="removing-features-1" class="level3">
+<h3 class="anchored" data-anchor-id="removing-features-1">Removing Features</h3>
+<p>Next, I’ll look into removing features from this updated dataset that has embedding matrices in it. Currently my training dataset has 300+ columns in it.</p>
+<div class="cell" data-outputid="55ce288d-78f6-4c41-ce24-9a348a78fca7" data-execution_count="88">
+<div class="sourceCode cell-code" id="cb136"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb136-1"><a href="#cb136-1" aria-hidden="true" tabindex="-1"></a>xs_with_embs.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="88">
+<pre><code>(395371, 329)</code></pre>
+</div>
+</div>
+<section id="low-importance-features-1" class="level4">
+<h4 class="anchored" data-anchor-id="low-importance-features-1">Low-Importance Features</h4>
+<p>Here are the top-10 features in my model—all except one of the top 10 features are outputs from the categorical embeddings.</p>
+<div class="cell" data-outputid="4769c094-8987-456f-e489-034d640e7e90" data-execution_count="89">
+<div class="sourceCode cell-code" id="cb138"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb138-1"><a href="#cb138-1" aria-hidden="true" tabindex="-1"></a>fi <span class="op">=</span> rf_feat_importance(m, xs_with_embs)</span>
+<span id="cb138-2"><a href="#cb138-2" aria-hidden="true" tabindex="-1"></a>fi[:<span class="dv">10</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="89">
+
+
+  <div id="df-5df2fd69-2801-45fe-85ef-2cbd3b224bcd" class="colab-df-container">
+    <div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>cols</th>
+      <th>imp</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>37</th>
+      <td>fiProductClassDesc_7</td>
+      <td>0.117214</td>
+    </tr>
+    <tr>
+      <th>263</th>
+      <td>fiModelDesc_183</td>
+      <td>0.099233</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>saleYear</td>
+      <td>0.063399</td>
+    </tr>
+    <tr>
+      <th>36</th>
+      <td>fiProductClassDesc_6</td>
+      <td>0.062105</td>
+    </tr>
+    <tr>
+      <th>209</th>
+      <td>fiModelDesc_129</td>
+      <td>0.050837</td>
+    </tr>
+    <tr>
+      <th>208</th>
+      <td>fiModelDesc_128</td>
+      <td>0.037791</td>
+    </tr>
+    <tr>
+      <th>43</th>
+      <td>fiProductClassDesc_13</td>
+      <td>0.033951</td>
+    </tr>
+    <tr>
+      <th>181</th>
+      <td>fiModelDesc_101</td>
+      <td>0.027102</td>
+    </tr>
+    <tr>
+      <th>152</th>
+      <td>fiModelDesc_72</td>
+      <td>0.017599</td>
+    </tr>
+    <tr>
+      <th>100</th>
+      <td>fiModelDesc_20</td>
+      <td>0.017077</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+    <div class="colab-df-buttons">
+
+  <div class="colab-df-container">
+    <button class="colab-df-convert" onclick="convertToInteractive('df-5df2fd69-2801-45fe-85ef-2cbd3b224bcd')" title="Convert this dataframe to an interactive table." style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
+    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
+  </svg>
+    </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    .colab-df-buttons div {
+      margin-bottom: 4px;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+    <script>
+      const buttonEl =
+        document.querySelector('#df-5df2fd69-2801-45fe-85ef-2cbd3b224bcd button.colab-df-convert');
+      buttonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+      async function convertToInteractive(key) {
+        const element = document.querySelector('#df-5df2fd69-2801-45fe-85ef-2cbd3b224bcd');
+        const dataTable =
+          await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                    [key], {});
+        if (!dataTable) return;
+
+        const docLinkHtml = 'Like what you see? Visit the ' +
+          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+          + ' to learn more about interactive tables.';
+        element.innerHTML = '';
+        dataTable['output_type'] = 'display_data';
+        await google.colab.output.renderOutput(dataTable, element);
+        const docLink = document.createElement('div');
+        docLink.innerHTML = docLinkHtml;
+        element.appendChild(docLink);
+      }
+    </script>
+  </div>
+
+
+<div id="df-83c6b45e-6685-446a-9db4-f207d5397f76">
+  <button class="colab-df-quickchart" onclick="quickchart('df-83c6b45e-6685-446a-9db4-f207d5397f76')" title="Suggest charts." style="display:none;">
+
+<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
+    <g>
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
+    </g>
+</svg>
+  </button>
+
+<style>
+  .colab-df-quickchart {
+      --bg-color: #E8F0FE;
+      --fill-color: #1967D2;
+      --hover-bg-color: #E2EBFA;
+      --hover-fill-color: #174EA6;
+      --disabled-fill-color: #AAA;
+      --disabled-bg-color: #DDD;
+  }
+
+  [theme=dark] .colab-df-quickchart {
+      --bg-color: #3B4455;
+      --fill-color: #D2E3FC;
+      --hover-bg-color: #434B5C;
+      --hover-fill-color: #FFFFFF;
+      --disabled-bg-color: #3B4455;
+      --disabled-fill-color: #666;
+  }
+
+  .colab-df-quickchart {
+    background-color: var(--bg-color);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: none;
+    fill: var(--fill-color);
+    height: 32px;
+    padding: 0;
+    width: 32px;
+  }
+
+  .colab-df-quickchart:hover {
+    background-color: var(--hover-bg-color);
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    fill: var(--button-hover-fill-color);
+  }
+
+  .colab-df-quickchart-complete:disabled,
+  .colab-df-quickchart-complete:disabled:hover {
+    background-color: var(--disabled-bg-color);
+    fill: var(--disabled-fill-color);
+    box-shadow: none;
+  }
+
+  .colab-df-spinner {
+    border: 2px solid var(--fill-color);
+    border-color: transparent;
+    border-bottom-color: var(--fill-color);
+    animation:
+      spin 1s steps(1) infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+      border-left-color: var(--fill-color);
+    }
+    20% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    30% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+      border-right-color: var(--fill-color);
+    }
+    40% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    60% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+    }
+    80% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-bottom-color: var(--fill-color);
+    }
+    90% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+    }
+  }
+</style>
+
+  <script>
+    async function quickchart(key) {
+      const quickchartButtonEl =
+        document.querySelector('#' + key + ' button');
+      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
+      quickchartButtonEl.classList.add('colab-df-spinner');
+      try {
+        const charts = await google.colab.kernel.invokeFunction(
+            'suggestCharts', [key], {});
+      } catch (error) {
+        console.error('Error during call to suggestCharts:', error);
+      }
+      quickchartButtonEl.classList.remove('colab-df-spinner');
+      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
+    }
+    (() => {
+      let quickchartButtonEl =
+        document.querySelector('#df-83c6b45e-6685-446a-9db4-f207d5397f76 button');
+      quickchartButtonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+    })();
+  </script>
+</div>
+    </div>
+  </div>
+</div>
+</div>
+<p>And here’s a plot of the top 30 most important features:</p>
+<div class="cell" data-outputid="dcfe0b27-6f10-4055-cb70-a26c179d96ca" data-execution_count="90">
+<div class="sourceCode cell-code" id="cb139"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb139-1"><a href="#cb139-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_fi(fi):</span>
+<span id="cb139-2"><a href="#cb139-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> fi.plot(<span class="st">'cols'</span>, <span class="st">'imp'</span>, <span class="st">'barh'</span>, figsize<span class="op">=</span>(<span class="dv">12</span>,<span class="dv">7</span>), legend<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb139-3"><a href="#cb139-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb139-4"><a href="#cb139-4" aria-hidden="true" tabindex="-1"></a>plot_fi(fi[:<span class="dv">30</span>])<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<p><img src="index_files/figure-html/cell-89-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+<p>Like last time, I’ll only keep features that have an importance of 0.005 or greater—which results in keeping only about 10% of the columns:</p>
+<div class="cell" data-outputid="1155e67f-7c98-4b0b-ba34-6f0826e09956" data-execution_count="91">
+<div class="sourceCode cell-code" id="cb140"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb140-1"><a href="#cb140-1" aria-hidden="true" tabindex="-1"></a>to_keep <span class="op">=</span> fi[fi.imp<span class="op">&gt;</span><span class="fl">0.005</span>].cols</span>
+<span id="cb140-2"><a href="#cb140-2" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(to_keep)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="91">
+<pre><code>36</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="94">
+<div class="sourceCode cell-code" id="cb142"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb142-1"><a href="#cb142-1" aria-hidden="true" tabindex="-1"></a>xs_imp_embs <span class="op">=</span> xs_with_embs[to_keep]</span>
+<span id="cb142-2"><a href="#cb142-2" aria-hidden="true" tabindex="-1"></a>valid_xs_imp_embs <span class="op">=</span> valid_xs_with_embs[to_keep]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="a61ebe02-9be5-4914-f9e3-6de5e0e80b5b" data-execution_count="95">
+<div class="sourceCode cell-code" id="cb143"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb143-1"><a href="#cb143-1" aria-hidden="true" tabindex="-1"></a>xs_imp_embs.shape, valid_xs_imp_embs.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="95">
+<pre><code>((395371, 36), (17327, 36))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="ceb93e1d-fdd3-4acc-b50a-e83c502323f6" data-execution_count="96">
+<div class="sourceCode cell-code" id="cb145"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb145-1"><a href="#cb145-1" aria-hidden="true" tabindex="-1"></a>m <span class="op">=</span> rf(xs_imp_embs, y)<span class="op">;</span></span>
+<span id="cb145-2"><a href="#cb145-2" aria-hidden="true" tabindex="-1"></a>m_rmse(m, xs_imp_embs, y), m_rmse(m, valid_xs_imp_embs, valid_y)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="96">
+<pre><code>(0.184552, 0.242728)</code></pre>
+</div>
+</div>
+<p>The errors are higher than when all columns were included, but lower than when the original categorical columns were included.</p>
+</section>
+<section id="redundant-features-1" class="level4">
+<h4 class="anchored" data-anchor-id="redundant-features-1">Redundant Features</h4>
+<p>Similar to before, I’ll see if I can remove any redundant features from the dataset to continue simplifying the model.</p>
+<div class="cell" data-outputid="c12efa70-d420-42b0-961b-90432a5ea920" data-execution_count="100">
+<div class="sourceCode cell-code" id="cb147"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb147-1"><a href="#cb147-1" aria-hidden="true" tabindex="-1"></a>cluster_columns(xs_imp_embs)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<p><img src="index_files/figure-html/cell-94-output-1.png" class="img-fluid"></p>
+</div>
+</div>
+<p>I was expecting more columns to be redundant, since the columns in a categorical embedding matrix are related to the same column. However, it’s interesting to note that different embedding matrix columns for a categorical variable represent different aspects of that feature.</p>
+<p>As before, I’ll calculate a baseline OOB score, and then use it to compare with scores after redundant features are removed:</p>
+<div class="cell" data-outputid="18d63ae2-e398-4a99-82ba-de987e78171b" data-execution_count="102">
+<div class="sourceCode cell-code" id="cb148"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb148-1"><a href="#cb148-1" aria-hidden="true" tabindex="-1"></a>get_oob(xs_imp_embs)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="102">
+<pre><code>0.8892042378420308</code></pre>
+</div>
+</div>
+<p>Here are the OOB scores if I drop each individual redundant feature from the dataset:</p>
+<div class="cell" data-outputid="772eec37-e993-4c5f-8818-3842ed0ad80c" data-execution_count="103">
+<div class="sourceCode cell-code" id="cb150"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb150-1"><a href="#cb150-1" aria-hidden="true" tabindex="-1"></a>{c: get_oob(xs_imp_embs.drop(c, axis<span class="op">=</span><span class="dv">1</span>)) <span class="cf">for</span> c <span class="kw">in</span> (</span>
+<span id="cb150-2"><a href="#cb150-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'ProductSize_1'</span>, <span class="st">'ProductSize_4'</span>,</span>
+<span id="cb150-3"><a href="#cb150-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">'YearMade_8'</span>, <span class="st">'YearMade_5'</span>,</span>
+<span id="cb150-4"><a href="#cb150-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">'ProductGroup_4'</span>, <span class="st">'ProductGroup_3'</span>)}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="103">
+<pre><code>{'ProductSize_1': 0.8885392743641873,
+ 'ProductSize_4': 0.8890680891755572,
+ 'YearMade_8': 0.8885895030231491,
+ 'YearMade_5': 0.8884153739148248,
+ 'ProductGroup_4': 0.8890909768453596,
+ 'ProductGroup_3': 0.8890208894539288}</code></pre>
+</div>
+</div>
+<p>I’ll remove the three columns, the removal of which keeps the first three decimal places of the OOB score the same.</p>
+<div class="cell" data-outputid="3b214470-ebb6-441a-8c57-5dbad06d56f8" data-execution_count="104">
+<div class="sourceCode cell-code" id="cb152"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb152-1"><a href="#cb152-1" aria-hidden="true" tabindex="-1"></a>to_drop <span class="op">=</span> [<span class="st">'ProductSize_4'</span>, <span class="st">'ProductGroup_4'</span>, <span class="st">'ProductGroup_3'</span>]</span>
+<span id="cb152-2"><a href="#cb152-2" aria-hidden="true" tabindex="-1"></a>get_oob(xs_imp_embs.drop(to_drop, axis<span class="op">=</span><span class="dv">1</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="104">
+<pre><code>0.8890859448391993</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="105">
+<div class="sourceCode cell-code" id="cb154"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb154-1"><a href="#cb154-1" aria-hidden="true" tabindex="-1"></a>xs_embs_final <span class="op">=</span> xs_imp_embs.drop(to_drop, axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb154-2"><a href="#cb154-2" aria-hidden="true" tabindex="-1"></a>valid_xs_embs_final <span class="op">=</span> valid_xs_imp_embs.drop(to_drop, axis<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="dd52ff12-ca3b-46e8-8a04-5ec76e8b915e" data-execution_count="106">
+<div class="sourceCode cell-code" id="cb155"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb155-1"><a href="#cb155-1" aria-hidden="true" tabindex="-1"></a>m <span class="op">=</span> rf(xs_embs_final, y)</span>
+<span id="cb155-2"><a href="#cb155-2" aria-hidden="true" tabindex="-1"></a>m_rmse(m, xs_embs_final, y), m_rmse(m, valid_xs_embs_final, valid_y)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="106">
+<pre><code>(0.184845, 0.244098)</code></pre>
+</div>
+</div>
+<p>The errors have slightly increased but are still lower than the model fitted to the original dataset.</p>
+</section>
+<section id="out-of-domain-features-1" class="level4">
+<h4 class="anchored" data-anchor-id="out-of-domain-features-1">Out-of-Domain Features</h4>
+<p>The final set of features I’ll look to remove are those that have significantly different values between the training and validation sets. As I did before, I’ll fit a random forest to predict whether a row is from the training or validation set, and then look at the most important features for this distinction:</p>
+<div class="cell" data-outputid="0369c870-7088-4807-ca9a-24300d66b40a" data-execution_count="107">
+<div class="sourceCode cell-code" id="cb157"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb157-1"><a href="#cb157-1" aria-hidden="true" tabindex="-1"></a>df_dom <span class="op">=</span> pd.concat([xs_embs_final, valid_xs_embs_final])</span>
+<span id="cb157-2"><a href="#cb157-2" aria-hidden="true" tabindex="-1"></a>is_valid <span class="op">=</span> np.array([<span class="dv">0</span>]<span class="op">*</span><span class="bu">len</span>(xs_embs_final) <span class="op">+</span> [<span class="dv">1</span>]<span class="op">*</span><span class="bu">len</span>(valid_xs_embs_final))</span>
+<span id="cb157-3"><a href="#cb157-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb157-4"><a href="#cb157-4" aria-hidden="true" tabindex="-1"></a>m <span class="op">=</span> rf(df_dom, is_valid)</span>
+<span id="cb157-5"><a href="#cb157-5" aria-hidden="true" tabindex="-1"></a>rf_feat_importance(m, df_dom)[:<span class="dv">6</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="107">
+
+
+  <div id="df-757b3791-6296-4217-9ab5-d840a65220c7" class="colab-df-container">
+    <div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>cols</th>
+      <th>imp</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>2</th>
+      <td>saleYear</td>
+      <td>0.567392</td>
+    </tr>
+    <tr>
+      <th>12</th>
+      <td>SalesID</td>
+      <td>0.266997</td>
+    </tr>
+    <tr>
+      <th>22</th>
+      <td>MachineID</td>
+      <td>0.072159</td>
+    </tr>
+    <tr>
+      <th>26</th>
+      <td>YearMade_12</td>
+      <td>0.006785</td>
+    </tr>
+    <tr>
+      <th>15</th>
+      <td>YearMade_5</td>
+      <td>0.004990</td>
+    </tr>
+    <tr>
+      <th>24</th>
+      <td>YearMade_8</td>
+      <td>0.004247</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+    <div class="colab-df-buttons">
+
+  <div class="colab-df-container">
+    <button class="colab-df-convert" onclick="convertToInteractive('df-757b3791-6296-4217-9ab5-d840a65220c7')" title="Convert this dataframe to an interactive table." style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
+    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
+  </svg>
+    </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    .colab-df-buttons div {
+      margin-bottom: 4px;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+    <script>
+      const buttonEl =
+        document.querySelector('#df-757b3791-6296-4217-9ab5-d840a65220c7 button.colab-df-convert');
+      buttonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+      async function convertToInteractive(key) {
+        const element = document.querySelector('#df-757b3791-6296-4217-9ab5-d840a65220c7');
+        const dataTable =
+          await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                    [key], {});
+        if (!dataTable) return;
+
+        const docLinkHtml = 'Like what you see? Visit the ' +
+          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+          + ' to learn more about interactive tables.';
+        element.innerHTML = '';
+        dataTable['output_type'] = 'display_data';
+        await google.colab.output.renderOutput(dataTable, element);
+        const docLink = document.createElement('div');
+        docLink.innerHTML = docLinkHtml;
+        element.appendChild(docLink);
+      }
+    </script>
+  </div>
+
+
+<div id="df-f9030ab4-0347-4ae2-b841-2f979cb89859">
+  <button class="colab-df-quickchart" onclick="quickchart('df-f9030ab4-0347-4ae2-b841-2f979cb89859')" title="Suggest charts." style="display:none;">
+
+<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
+    <g>
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
+    </g>
+</svg>
+  </button>
+
+<style>
+  .colab-df-quickchart {
+      --bg-color: #E8F0FE;
+      --fill-color: #1967D2;
+      --hover-bg-color: #E2EBFA;
+      --hover-fill-color: #174EA6;
+      --disabled-fill-color: #AAA;
+      --disabled-bg-color: #DDD;
+  }
+
+  [theme=dark] .colab-df-quickchart {
+      --bg-color: #3B4455;
+      --fill-color: #D2E3FC;
+      --hover-bg-color: #434B5C;
+      --hover-fill-color: #FFFFFF;
+      --disabled-bg-color: #3B4455;
+      --disabled-fill-color: #666;
+  }
+
+  .colab-df-quickchart {
+    background-color: var(--bg-color);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: none;
+    fill: var(--fill-color);
+    height: 32px;
+    padding: 0;
+    width: 32px;
+  }
+
+  .colab-df-quickchart:hover {
+    background-color: var(--hover-bg-color);
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    fill: var(--button-hover-fill-color);
+  }
+
+  .colab-df-quickchart-complete:disabled,
+  .colab-df-quickchart-complete:disabled:hover {
+    background-color: var(--disabled-bg-color);
+    fill: var(--disabled-fill-color);
+    box-shadow: none;
+  }
+
+  .colab-df-spinner {
+    border: 2px solid var(--fill-color);
+    border-color: transparent;
+    border-bottom-color: var(--fill-color);
+    animation:
+      spin 1s steps(1) infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+      border-left-color: var(--fill-color);
+    }
+    20% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    30% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+      border-right-color: var(--fill-color);
+    }
+    40% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    60% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+    }
+    80% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-bottom-color: var(--fill-color);
+    }
+    90% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+    }
+  }
+</style>
+
+  <script>
+    async function quickchart(key) {
+      const quickchartButtonEl =
+        document.querySelector('#' + key + ' button');
+      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
+      quickchartButtonEl.classList.add('colab-df-spinner');
+      try {
+        const charts = await google.colab.kernel.invokeFunction(
+            'suggestCharts', [key], {});
+      } catch (error) {
+        console.error('Error during call to suggestCharts:', error);
+      }
+      quickchartButtonEl.classList.remove('colab-df-spinner');
+      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
+    }
+    (() => {
+      let quickchartButtonEl =
+        document.querySelector('#df-f9030ab4-0347-4ae2-b841-2f979cb89859 button');
+      quickchartButtonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+    })();
+  </script>
+</div>
+    </div>
+  </div>
+</div>
+</div>
+<p>The three most important features in distinguishing a training set row from a validation set row are <code>saleYear</code>, <code>SalesID</code>, and <code>MachineID</code>. This is similar to what we experienced before—these are all time-influenced features and the training and validation set is split based on the sale date. I’ll remove each one and see if it decreases the error of the model:</p>
+<div class="cell" data-outputid="bc758b59-34e0-4d15-d6ba-322ef390ddeb" data-execution_count="108">
+<div class="sourceCode cell-code" id="cb158"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb158-1"><a href="#cb158-1" aria-hidden="true" tabindex="-1"></a><span class="co"># baseline</span></span>
+<span id="cb158-2"><a href="#cb158-2" aria-hidden="true" tabindex="-1"></a>m <span class="op">=</span> rf(xs_embs_final, y)</span>
+<span id="cb158-3"><a href="#cb158-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">'orig'</span>, m_rmse(m, valid_xs_embs_final, valid_y))</span>
+<span id="cb158-4"><a href="#cb158-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb158-5"><a href="#cb158-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> c <span class="kw">in</span> (<span class="st">'saleYear'</span>, <span class="st">'SalesID'</span>, <span class="st">'MachineID'</span>):</span>
+<span id="cb158-6"><a href="#cb158-6" aria-hidden="true" tabindex="-1"></a>  m <span class="op">=</span> rf(xs_embs_final.drop(c, axis<span class="op">=</span><span class="dv">1</span>), y)</span>
+<span id="cb158-7"><a href="#cb158-7" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(c, m_rmse(m, valid_xs_embs_final.drop(c,axis<span class="op">=</span><span class="dv">1</span>), valid_y))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>orig 0.243168
+saleYear 0.248063
+SalesID 0.243861
+MachineID 0.243165</code></pre>
+</div>
+</div>
+<p>It looks like I can remove <code>MachineID</code> with only a tiny increase in the error.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb160"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb160-1"><a href="#cb160-1" aria-hidden="true" tabindex="-1"></a>time_vars <span class="op">=</span> [<span class="st">'MachineID'</span>]</span>
+<span id="cb160-2"><a href="#cb160-2" aria-hidden="true" tabindex="-1"></a>xs_embs_final_time <span class="op">=</span> xs_embs_final.drop(time_vars, axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb160-3"><a href="#cb160-3" aria-hidden="true" tabindex="-1"></a>valid_xs_embs_time <span class="op">=</span> valid_xs_embs_final.drop(time_vars, axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb160-4"><a href="#cb160-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb160-5"><a href="#cb160-5" aria-hidden="true" tabindex="-1"></a>m <span class="op">=</span> rf(xs_embs_final_time, y)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="dcadd3bf-9130-4418-d278-24f4f6e6d7d2" data-execution_count="111">
+<div class="sourceCode cell-code" id="cb161"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb161-1"><a href="#cb161-1" aria-hidden="true" tabindex="-1"></a>m_rmse(m, xs_embs_final_time, y), m_rmse(m, valid_xs_embs_time, valid_y)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="111">
+<pre><code>(0.189369, 0.243094)</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="117">
+<div class="sourceCode cell-code" id="cb163"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb163-1"><a href="#cb163-1" aria-hidden="true" tabindex="-1"></a><span class="co"># save for later</span></span>
+<span id="cb163-2"><a href="#cb163-2" aria-hidden="true" tabindex="-1"></a>embs_xs <span class="op">=</span> xs_embs_final_time, valid_xs_embs_time</span>
+<span id="cb163-3"><a href="#cb163-3" aria-hidden="true" tabindex="-1"></a>save_pickle(<span class="st">'embs_xs.pkl'</span>, embs_xs)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>After removing features, the errors on the training and validation sets are a tiny bit smaller than the errors on the original datasets.</p>
+</section>
+</section>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>Here is a summary of error values for models fit on the original and embedding-filled datasets:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Model</th>
+<th style="text-align: center;">Validation Error</th>
+<th style="text-align: center;">Reduction in Error</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">RF (no embedding columns)</td>
+<td style="text-align: center;">0.247074</td>
+<td style="text-align: center;">–</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">RF (329 embedding columns)</td>
+<td style="text-align: center;">0.238825</td>
+<td style="text-align: center;">3.33%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">RF (30 embedding columns)</td>
+<td style="text-align: center;">0.243094</td>
+<td style="text-align: center;">1.6%</td>
+</tr>
+</tbody>
+</table>
+<p>To be honest I’m surprised that swapping categorical variables with neural net embeddings only reduced the validation MSE by 3.3%. I’m not sure what explains this small reduction. Maybe there’s something about this dataset that doesn’t benefit from converting categorical variables to embeddings? There’s always a chance that my implementation is incorrect, or not the best way to achieve benefits in the model. As I practice working with more tabular datasets, I’ll continue to implement neural net embeddings and observe if it makes a difference in how the model performs.</p>
+<p>I hope you enjoyed this blog post!</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>
