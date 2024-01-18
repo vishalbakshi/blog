@@ -6,7 +6,6 @@ categories:
 - data analysis
 - SQL
 date: '2021-09-21'
-date-modified: '2023-02-20'
 description: An explanation of my development process for a census data shiny app
 layout: post
 title: R Shiny Census App
