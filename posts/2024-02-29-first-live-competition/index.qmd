@@ -1,0 +1,123 @@
+---
+title: "Recap: My First Live Kaggle Competition"
+date: "2024-02-29"
+author: Vishal Bakshi
+description: A recap of what and how I did on the Multi-Class Prediction of Obesity Risk Kaggle Competition.
+categories:
+    - fastai
+    - kaggle competition
+    - machine learning
+---
+
+## Background
+
+After submitting predictions for a couple of closed Kaggle competitions as part of the fastai course, I participated in my first live Kaggle competition, Multi-Class Prediction of Obesity Risk. I ended up in the bottom 17% of the Private Leaderboard, ranking 2960 out of 3587. My Private ranking was 281 spots lower than my Public ranking (yikes!).
+
+You can see my live competition notebook [here](https://www.kaggle.com/code/vishalbakshi/multi-class-prediction-of-obesity-risk-fastai) and my post-competition notebook [here](https://www.kaggle.com/code/vishalbakshi/post-competition-hyperparameter-sweep).
+
+In this blog post, I'll recap my experience in this competition, and what I took away from it. 
+
+My main goal right now is learning, learning, learning. That being said, getting 10+ upvotes and 200+ views (probably 50 of them were mine) on my **first bronze notebook** felt _AWESOME_. I am already excited to try to get another bronze notebook. I also would like to get into the top 50% on the final Private Leaderboard for any live competition (including the playground series) this year.
+
+## Live Competition Approach
+
+I decided to strictly follow the fastai textbook's [Chapter 9 approach](https://github.com/fastai/fastbook/blob/master/09_tabular.ipynb) to tabular data prediction using a Random Forest, Neural Net, and ensemble of both. I wanted to understand how each step affected the Public score. 
+
+In the end, I did 10 versions or iterations of my notebook that are summarized in the table below:
+
+|Version|Description|Private Score|Public Score|
+|:-|:-|:-|:-|
+|1|quick and dirty RF|0.89378|0.89585|
+|2|ordered ordinal columns|0.89495|0.89559|
+|3|high importance cols only|0.89342|0.8945|
+|4*|--|--|--|
+|5|rf with id col removed|0.89116|0.88728|
+|6|neural net|0.8675|0.86452|
+|7^^|rf nn ensemble|0.8861|0.88656|
+|8**|increase number of trees|--|--|
+|9^^|embedding-rf nn ensemble|0.88538|0.89053|
+
+*In version 4, I was planning to remove redundant features, but none of them were redundant so I didn't re-train my Random Forest and didn't submit predictions.
+
+**In version 8, I was planning on increasing the number of trees in my Random Forest but that didn't improve the validation set accuracy so I didn't submit any predictions.
+
+^^Selected for final leaderboard score (0.88610)
+
+## Why Did I Score So Low?
+
+It's interesting to note that the highest Private scores were my Random Forest with ordinal columns set (0.89495) and my quick and dirty Random Forest (0.89378).
+
+I think the reason that the chapter's strategies did not improve my score is because those strategies were not solely meant to improve accuracy---they were also meant to simplify the model and dataset for better interpretability. However, this dataset was small to begin with (17 independent variables) and removing low importance variables and the `id` column brought that down to 12 columns. Contrast that with the textbook where we went from about 70 columns to 20.
+
+Jeremy has also mentioned throughout the course that getting that final 1% or 2% of accuracy for a Kaggle score is generally when you have to start fussing with the details. Simplifying and understanding a model (how different columns and rows of the dataset are used/affected by it) is a different problem to solve than getting 2% more to win a Kaggle competition.
+
+I was surprised that the neural nets performed so poorly, even in the public score. I was banking on the ensemble being more flexible than the Random Forest, and expected it to result in a higher final Private score.
+
+I haven't looked at anyone else's notebooks yet, I plan on doing that next, but I did see quite a few XGBoost-related notebook titles, and my understanding is that model performs better than Random Forests. Something I'll practice modeling in the next tabular competition I join.
+
+
+## Post-Competition Analysis
+
+After the competition was over, I decided to dig deeper into Random Forests, exploring differences in validation accuracy due to changes in parameters like `n_jobs` and `n_estimators`. 
+
+I ended up modeling and analyzing 960 Random Forests. You can see my whole process detailed in [this notebook](https://www.kaggle.com/code/vishalbakshi/post-competition-hyperparameter-sweep). 
+
+I chose 15 models out of 960 to submit to Kaggle post-competition in order to see their Private score, answering the question---should I have focused on tuning Random Forests instead of tuning an ensemble with a neural net?
+
+The following table lists out my results. Here is a definition of the parameters I experimented with:
+
+- `n_jobs` = the number of processors used (`None` = 1 and `-1` = All)
+- `n_estimators` = the number of trees included in the Random Forest
+- `max_samples` = the number of randomly selected rows included for a tree
+- `max_features` = the number of randomly selected columns included for a tree
+- `min_samples_leaf` = the minimum samples allowed on a tree node
+- `oob_score` = whether or not to use OOB score to evaluate a tree  
+
+|n_jobs|n_estimators|max_samples|max_features|min_samples_leaf|oob_score|Private score|
+|:-|:-|:-|:-|:-|:-|:-|
+|`None`|100|10000|0.5|2|`False`|0.89875*|
+|`None`|100|15000|0.5|2|`True`|0.89839|
+|`None`|60|10000|0.5|2|`True`|0.89803|
+|`None`|80|15000|0.5|2|`True`|0.89748|
+|`None`|100|15000|0.5|5|`False`|0.8973|
+|`None`|60|5000|`None`|5|`True`|0.89297|
+|-1|40|10000|0.5|10|`False`|0.89207|
+|-1|80|10000|0.5|10|`False`|0.89197|
+|`None`|20|15000|`None`|10|`True`|0.89143|
+|`None`|80|10000|`None`|10|`False`|0.89143|
+|`None`|60|1000|`None`|10|`False`|0.87165|
+|`None`|20|1000|`None`|10|`False`|0.87039|
+|-1|40|1000|`None`|10|`False`|0.86994|
+|-1|60|1000|`None`|10|`True`|0.86768|
+|`None`|20|1000|`None`|10|`True`|0.86109|
+
+*Top 65% in final leaderboard
+
+---
+
+The best post-competition result with a single Random Forest I was able to get was a Private score of 0.89875 which would have landed me in the top 65% of the final leaderboard. Not the top 50% result I'm looking for this year, but significantly better than the top 83% result I got.
+
+It's tough to tell which parameters contributed to better Private scores, I would need a larger sample to work with, but it's interesting to note that a `max_samples` value of 1000 did not crack the top 10 of the 15 models listed here. Similarly, an `n_estimators` value of 20 or a `min_samples_leaf` value of 10 did not get into the top 5. I had expected that setting `max_samples` "too high" or setting `min_samples_leaf` "too low" would overfit the Random Forest. But it seems like that is not the case. At least not for this competition with this test set. 
+
+ I'll also note that all of my submissions with a Private score of 0.89 or greater (live and post-competition) were single Random Forests, and all of them also had a Public score greater than 0.89. 
+
+ I certainly don't feel like I can make any solid claims with this analysis about Random Forests in general, but I can say that tuning Random Forest parameters is worth exploring in a Kaggle tabular competition.
+
+
+## Final Thoughts
+
+Almost every time I code something, I keep at the forefront of my mind the saying "make it work, make it right, make it fast" by Kent Beck. After this competition, I feel I landed somewhere between making it work and making it right. What is "right" when it comes to a competition? Well, at this stage of my machine learning journey, I would like to rank in the top 50% in the final Leaderboard. I was in the top 87% during the live competition, and in the top 65% post-competition, so I'm moving in the right direction. 
+
+I also want to take all of my learnings with a grain of salt. This was one (relatively small) dataset that certainly had its own problems (as I detailed in my [live competition notebook](https://www.kaggle.com/code/vishalbakshi/multi-class-prediction-of-obesity-risk-fastai#Understand-the-Data-Better)) with one (relatively small) test set. Just because my neural net didn't perform very well doesn't indict all neural nets. Similarly, just because my single Random Forests performed well, doesn't mean they always will. Also, just because the textbook's Chapter 9 approach to tabular prediction didn't result in a top Kaggle competition Private score, doesn't mean it's not immensibly valuable to data science in production.
+
+At the end of this year, after hopefully competing in at least a couple more live competitions, I will look back at this experience as a necessary but insufficient step towards having good intuition about machine learning.
+
+As always, I hope you enjoyed this blog post!
+
+
+
+
+
+
+
+
