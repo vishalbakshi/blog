@@ -1,0 +1,2780 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2024-08-04">
+<meta name="description" content="In this blog post I’ll walk through my experiments of using sqlite full text search to retrieve context relevant to answering chapter review questions. This is part of a larger fastbookRAG proejct I’m work on.">
+
+<title>vishal bakshi - Using Full Text Search to Answer the fastbook Chapter 1 Questionnaire</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">vishal bakshi</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#chunking-the-chapter-1-jupyter-notebook-by-paragraph" id="toc-chunking-the-chapter-1-jupyter-notebook-by-paragraph" class="nav-link" data-scroll-target="#chunking-the-chapter-1-jupyter-notebook-by-paragraph">Chunking the Chapter 1 Jupyter Notebook by Paragraph</a>
+  <ul class="collapse">
+  <li><a href="#this-is-a-header" id="toc-this-is-a-header" class="nav-link" data-scroll-target="#this-is-a-header">This is a Header</a></li>
+  </ul></li>
+  <li><a href="#load-the-chunks-into-sqlite-database" id="toc-load-the-chunks-into-sqlite-database" class="nav-link" data-scroll-target="#load-the-chunks-into-sqlite-database">Load the Chunks into SQLite Database</a></li>
+  <li><a href="#retrieving-context-for-an-llm-with-keyword-search" id="toc-retrieving-context-for-an-llm-with-keyword-search" class="nav-link" data-scroll-target="#retrieving-context-for-an-llm-with-keyword-search">Retrieving Context for an LLM with Keyword Search</a></li>
+  <li><a href="#evaluating-retrieved-context" id="toc-evaluating-retrieved-context" class="nav-link" data-scroll-target="#evaluating-retrieved-context">Evaluating Retrieved Context</a></li>
+  <li><a href="#including-more-chunks-during-retrieval" id="toc-including-more-chunks-during-retrieval" class="nav-link" data-scroll-target="#including-more-chunks-during-retrieval">Including More Chunks During Retrieval</a></li>
+  <li><a href="#increasing-chunk-size" id="toc-increasing-chunk-size" class="nav-link" data-scroll-target="#increasing-chunk-size">Increasing Chunk Size</a></li>
+  <li><a href="#including-more-large-chunks-during-retrieval" id="toc-including-more-large-chunks-during-retrieval" class="nav-link" data-scroll-target="#including-more-large-chunks-during-retrieval">Including More Large Chunks During Retrieval</a></li>
+  <li><a href="#final-thoughts" id="toc-final-thoughts" class="nav-link" data-scroll-target="#final-thoughts">Final Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Using Full Text Search to Answer the fastbook Chapter 1 Questionnaire</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">python</div>
+    <div class="quarto-category">RAG</div>
+    <div class="quarto-category">information retrieval</div>
+    <div class="quarto-category">fastbookRAG</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    In this blog post I’ll walk through my experiments of using sqlite full text search to retrieve context relevant to answering chapter review questions. This is part of a larger fastbookRAG proejct I’m work on.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">August 4, 2024</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In this notebook I’ll use BM25 (full text search in sqlite) to answer questions about <a href="https://github.com/fastai/fastbook/blob/master/01_intro.ipynb">Chapter 1 of the freely available fastai textbook</a>.</p>
+<p>This is part of a larger “fastbookRAG” project that I’m working on, where I’ll use BM25, cosine similarity and an LLM (probably phi-3) to answer questions from each of the book chapters’ “Questionnaire” section (from Part 1 of the fastai course).</p>
+<div class="cell" data-execution_count="53">
+<details>
+<summary>Show imports</summary>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> sqlite3</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> json</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> re</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd, numpy <span class="im">as</span> np</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> textwrap</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>wrapper <span class="op">=</span> textwrap.TextWrapper(</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    width<span class="op">=</span><span class="dv">50</span>,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    replace_whitespace<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    drop_whitespace<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> print_wrap_text(text):</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(<span class="st">"</span><span class="ch">\n</span><span class="st">"</span>.join(wrapper.fill(line) <span class="cf">for</span> line <span class="kw">in</span> text.splitlines()))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>Here is a summary of the results of this notebook’s experiments:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Top BM25 Ranked Chunks Retrieved</th>
+<th style="text-align: center;">Chunk Size</th>
+<th style="text-align: center;">Retrieved Context Relevancy*</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">top-3</td>
+<td style="text-align: center;">Large</td>
+<td style="text-align: center;">72%</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">top-1</td>
+<td style="text-align: center;">Large</td>
+<td style="text-align: center;">54%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">top-3</td>
+<td style="text-align: center;">Small</td>
+<td style="text-align: center;">54%</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">top-1</td>
+<td style="text-align: center;">Small</td>
+<td style="text-align: center;">40%</td>
+</tr>
+</tbody>
+</table>
+<p>*<em>Retrieved Context Relevancy</em>:The percentage of questions for which the retrieved context was relevant and sufficient for me to answer the question.</p>
+</section>
+<section id="chunking-the-chapter-1-jupyter-notebook-by-paragraph" class="level2">
+<h2 class="anchored" data-anchor-id="chunking-the-chapter-1-jupyter-notebook-by-paragraph">Chunking the Chapter 1 Jupyter Notebook by Paragraph</h2>
+<p>The first task at hand is to load the Chapter 1 Jupyter Notebook into a sqlite database (so that I can perform full text search on it). There are a few different ways to do this:</p>
+<ul>
+<li>Load in the entire chapter as a single string of text</li>
+<li>Chunk the chapter text based on headers</li>
+<li>Chunk the chapter text based on paragraphs (text between line breaks)</li>
+</ul>
+<p>To start, I’ll combine the second and third options and chunk the text based on paragraphs plus include the header at the start of the string. So for example the following text:</p>
+<hr>
+<section id="this-is-a-header" class="level3">
+<h3 class="anchored" data-anchor-id="this-is-a-header">This is a Header</h3>
+<p>This is pargraph one. It has two sentences.</p>
+<p>This is paragraph two. It has two sentences as well.</p>
+<hr>
+<p>will get chunked into the following strings:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># string 1</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="co">"""### This is a Header</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co">This is pargraph one. It has two sentences.</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="co">"""</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co"># string 2</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="co">"""### This is a Header</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="co">This is paragraph two. It has two sentences as well.</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="co">"""</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>In this way I am capturing the granular information (the paragraph text) along with the big picture theme (the header). I suppose this is one way of capturing metadata about the text.</p>
+<p>After a few iterations of feedback, I got the following code from Claude Sonnet-3.5 to chunk a <code>.ipynb</code> file into a list of strings.</p>
+<div class="cell" data-execution_count="2">
+<details>
+<summary>Show the chunking code</summary>
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_chunks(notebook_path):</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> <span class="bu">open</span>(notebook_path, <span class="st">'r'</span>, encoding<span class="op">=</span><span class="st">'utf-8'</span>) <span class="im">as</span> <span class="bu">file</span>:</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>        notebook <span class="op">=</span> json.load(<span class="bu">file</span>)</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    chunks <span class="op">=</span> []</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    current_header <span class="op">=</span> <span class="st">""</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> add_chunk(content):</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> content.strip():</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>            chunks.append(<span class="ss">f"</span><span class="sc">{</span>current_header<span class="sc">}</span><span class="ch">\n\n</span><span class="sc">{</span>content<span class="sc">.</span>strip()<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> cell <span class="kw">in</span> notebook[<span class="st">'cells'</span>]:</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> cell[<span class="st">'cell_type'</span>] <span class="op">==</span> <span class="st">'markdown'</span>:</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>            content <span class="op">=</span> <span class="st">''</span>.join(cell[<span class="st">'source'</span>])</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>            header_match <span class="op">=</span> re.match(<span class="vs">r'^(#+\s+.*?)$'</span>, content, re.MULTILINE)</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> header_match:  <span class="co"># Check if the cell starts with a header</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>                current_header <span class="op">=</span> header_match.group(<span class="dv">1</span>)</span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>                <span class="co"># Add any content after the header in the same cell</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>                remaining_content <span class="op">=</span> content[<span class="bu">len</span>(current_header):].strip()</span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>                <span class="cf">if</span> remaining_content:</span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>                    paragraphs <span class="op">=</span> re.split(<span class="vs">r'\n\s*\n'</span>, remaining_content)</span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">for</span> paragraph <span class="kw">in</span> paragraphs:</span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a>                        add_chunk(paragraph)</span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a>            <span class="cf">else</span>:</span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a>                paragraphs <span class="op">=</span> re.split(<span class="vs">r'\n\s*\n'</span>, content)</span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a>                <span class="cf">for</span> paragraph <span class="kw">in</span> paragraphs:</span>
+<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a>                    add_chunk(paragraph)</span>
+<span id="cb3-28"><a href="#cb3-28" aria-hidden="true" tabindex="-1"></a>        <span class="cf">elif</span> cell[<span class="st">'cell_type'</span>] <span class="op">==</span> <span class="st">'code'</span>:</span>
+<span id="cb3-29"><a href="#cb3-29" aria-hidden="true" tabindex="-1"></a>            code_content <span class="op">=</span> <span class="st">'```python</span><span class="ch">\n</span><span class="st">'</span> <span class="op">+</span> <span class="st">''</span>.join(cell[<span class="st">'source'</span>]) <span class="op">+</span> <span class="st">'</span><span class="ch">\n</span><span class="st">```'</span></span>
+<span id="cb3-30"><a href="#cb3-30" aria-hidden="true" tabindex="-1"></a>            add_chunk(code_content)</span>
+<span id="cb3-31"><a href="#cb3-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-32"><a href="#cb3-32" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> chunks</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>Using this chunking strategy, Chapter 1 has 315 chunks of text. For reference, this chapter has 24 headers (of different levels) across 52 pages. That’s about 13 chunks per header and 6 chunks per page.</p>
+<div class="cell" data-outputid="4b97cb32-4f88-4a3a-cf4f-924a36dc2c76" data-execution_count="6">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>notebook_path <span class="op">=</span> <span class="st">'01_intro.ipynb'</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>chunks <span class="op">=</span> get_chunks(notebook_path)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(chunks)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<pre><code>315</code></pre>
+</div>
+</div>
+<p>Here’s an example of one of the chunks:</p>
+<div class="cell" data-outputid="ceb42195-83ce-4d29-c7d0-421fb74db2b7" data-execution_count="18">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>print_wrap_text(chunks[<span class="dv">30</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>## Who We Are
+
+Sylvain, on the other hand, knows a lot about 
+formal technical education. In fact, he has 
+written 10 math textbooks, covering the entire 
+advanced French maths curriculum!</code></pre>
+</div>
+</div>
+</section>
+</section>
+<section id="load-the-chunks-into-sqlite-database" class="level2">
+<h2 class="anchored" data-anchor-id="load-the-chunks-into-sqlite-database">Load the Chunks into SQLite Database</h2>
+<p>I’ll load the list of <code>chunks</code> into a sqlite database virtual table with a single column <code>text</code> that has sqlite’s full text search (FTS5) enabled.</p>
+<p>I’ll filter out the two sections that I don’t want to show up in the results: the “Questionnaire” section (as the keyword search will match the questions closely) and the “Further Research” sections (as it comes after the “Questionnaire” section and is not part of the main body of the chapter).</p>
+<div class="cell" data-execution_count="33">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> filter_chunks(chunks, exclude_headers):</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    filtered_chunks <span class="op">=</span> []</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> chunk <span class="kw">in</span> chunks:</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>        lines <span class="op">=</span> chunk.split(<span class="st">'</span><span class="ch">\n</span><span class="st">'</span>)</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Check if the first line (header) is in the exclude list</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="kw">not</span> <span class="bu">any</span>(header <span class="kw">in</span> lines[<span class="dv">0</span>] <span class="cf">for</span> header <span class="kw">in</span> exclude_headers):</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>            filtered_chunks.append(chunk)</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> filtered_chunks</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>exclude_headers <span class="op">=</span> [<span class="st">"Questionnaire"</span>, <span class="st">"Further Research"</span>]</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>filtered_chunks <span class="op">=</span> filter_chunks(chunks, exclude_headers)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="9c28100a-30f6-40f4-e8ef-d076d955a93b" data-execution_count="34">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>[chunk <span class="cf">for</span> chunk <span class="kw">in</span> filtered_chunks <span class="cf">if</span> <span class="st">'Questionnaire'</span> <span class="kw">in</span> chunk]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="34">
+<pre><code>[]</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="fb201e31-2c6f-44a3-8e6f-76aefffeeabd" data-execution_count="35">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>[chunk <span class="cf">for</span> chunk <span class="kw">in</span> filtered_chunks <span class="cf">if</span> <span class="st">'Further Research'</span> <span class="kw">in</span> chunk]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="35">
+<pre><code>[]</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="156">
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>conn <span class="op">=</span> sqlite3.<span class="ex">connect</span>(<span class="st">'fastbook.db'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="157">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>cur <span class="op">=</span> conn.cursor()</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>res <span class="op">=</span> cur.execute(<span class="st">"""</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="st">CREATE VIRTUAL TABLE fastbook_text</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="st">USING FTS5(text);</span></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="st">"""</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="158">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> string <span class="kw">in</span> filtered_chunks:</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  cur.execute(<span class="ss">f"INSERT INTO fastbook_text(text) VALUES (?)"</span>, (string,))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="9a4bc242-4fd4-49c9-a2d2-f68597f26340" data-execution_count="159">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>res <span class="op">=</span> cur.execute(<span class="st">"SELECT * from fastbook_text LIMIT 40"</span>)</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>print_wrap_text(res.fetchall()[<span class="dv">30</span>][<span class="dv">0</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>## Who We Are
+
+Sylvain, on the other hand, knows a lot about 
+formal technical education. In fact, he has 
+written 10 math textbooks, covering the entire 
+advanced French maths curriculum!</code></pre>
+</div>
+</div>
+</section>
+<section id="retrieving-context-for-an-llm-with-keyword-search" class="level2">
+<h2 class="anchored" data-anchor-id="retrieving-context-for-an-llm-with-keyword-search">Retrieving Context for an LLM with Keyword Search</h2>
+<p>In the fastai textbook, each chapter ends with a “Questionnaire” section. It’s like a review quiz for the chapter content. While the answers to these questions are not always fixed, I’ll use <a href="https://forums.fast.ai/t/fastbook-chapter-1-questionnaire-solutions-wiki/65647">official solutions</a> provided on the fastai forums as the “gold standard” for my evals. I have saved a CSV with the questionnaire question text, gold standard answer and a list of keywords I wrote for each question <a href="https://gist.github.com/vishalbakshi/309fb3abb222d32446b2c4e29db753fe">in this gist</a>. Here’s a sample:</p>
+<div class="cell" data-outputid="98943145-cb55-47c5-dda6-47329d63ddab" data-execution_count="94">
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pd.read_csv(<span class="st">"https://gist.githubusercontent.com/vishalbakshi/309fb3abb222d32446b2c4e29db753fe/raw/bc6cd2ab15b64a92ec23796c61702f413fdd2b40/fastbookRAG_evals.csv"</span>)</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>df.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="94">
+
+
+  <div id="df-0ef7da91-e8f4-44d7-be05-e32c4a4d2a84" class="colab-df-container">
+    <div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>chapter</th>
+      <th>question_number</th>
+      <th>question_text</th>
+      <th>answer</th>
+      <th>keywords</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>1</td>
+      <td>1</td>
+      <td>Do you need these for deep learning?\\n\\n- Lo...</td>
+      <td>Lots of math - False\\nLots of data - False\\n...</td>
+      <td>math, data, expensive computers, PhD</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>1</td>
+      <td>2</td>
+      <td>Name five areas where deep learning is now the...</td>
+      <td>Any five of the following:\\nNatural Language ...</td>
+      <td>deep learning, state of the art, best, world</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>1</td>
+      <td>3</td>
+      <td>What was the name of the first device that was...</td>
+      <td>Mark I perceptron built by Frank Rosenblatt</td>
+      <td>first, device, artificial, neuron</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>1</td>
+      <td>4</td>
+      <td>Based on the book of the same name, what are t...</td>
+      <td>A set of processing units\\nA state of activat...</td>
+      <td>parallel, distributed, processing, requirement...</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>1</td>
+      <td>5</td>
+      <td>What were the two theoretical misunderstanding...</td>
+      <td>In 1969, Marvin Minsky and Seymour Papert demo...</td>
+      <td>theoretical, misunderstandings, held, back, fi...</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+    <div class="colab-df-buttons">
+
+  <div class="colab-df-container">
+    <button class="colab-df-convert" onclick="convertToInteractive('df-0ef7da91-e8f4-44d7-be05-e32c4a4d2a84')" title="Convert this dataframe to an interactive table." style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
+    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
+  </svg>
+    </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    .colab-df-buttons div {
+      margin-bottom: 4px;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+    <script>
+      const buttonEl =
+        document.querySelector('#df-0ef7da91-e8f4-44d7-be05-e32c4a4d2a84 button.colab-df-convert');
+      buttonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+      async function convertToInteractive(key) {
+        const element = document.querySelector('#df-0ef7da91-e8f4-44d7-be05-e32c4a4d2a84');
+        const dataTable =
+          await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                    [key], {});
+        if (!dataTable) return;
+
+        const docLinkHtml = 'Like what you see? Visit the ' +
+          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+          + ' to learn more about interactive tables.';
+        element.innerHTML = '';
+        dataTable['output_type'] = 'display_data';
+        await google.colab.output.renderOutput(dataTable, element);
+        const docLink = document.createElement('div');
+        docLink.innerHTML = docLinkHtml;
+        element.appendChild(docLink);
+      }
+    </script>
+  </div>
+
+
+<div id="df-f60539a1-ef1b-4a79-b420-3bc2cc04ecf4">
+  <button class="colab-df-quickchart" onclick="quickchart('df-f60539a1-ef1b-4a79-b420-3bc2cc04ecf4')" title="Suggest charts" style="display:none;">
+
+<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
+    <g>
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
+    </g>
+</svg>
+  </button>
+
+<style>
+  .colab-df-quickchart {
+      --bg-color: #E8F0FE;
+      --fill-color: #1967D2;
+      --hover-bg-color: #E2EBFA;
+      --hover-fill-color: #174EA6;
+      --disabled-fill-color: #AAA;
+      --disabled-bg-color: #DDD;
+  }
+
+  [theme=dark] .colab-df-quickchart {
+      --bg-color: #3B4455;
+      --fill-color: #D2E3FC;
+      --hover-bg-color: #434B5C;
+      --hover-fill-color: #FFFFFF;
+      --disabled-bg-color: #3B4455;
+      --disabled-fill-color: #666;
+  }
+
+  .colab-df-quickchart {
+    background-color: var(--bg-color);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: none;
+    fill: var(--fill-color);
+    height: 32px;
+    padding: 0;
+    width: 32px;
+  }
+
+  .colab-df-quickchart:hover {
+    background-color: var(--hover-bg-color);
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    fill: var(--button-hover-fill-color);
+  }
+
+  .colab-df-quickchart-complete:disabled,
+  .colab-df-quickchart-complete:disabled:hover {
+    background-color: var(--disabled-bg-color);
+    fill: var(--disabled-fill-color);
+    box-shadow: none;
+  }
+
+  .colab-df-spinner {
+    border: 2px solid var(--fill-color);
+    border-color: transparent;
+    border-bottom-color: var(--fill-color);
+    animation:
+      spin 1s steps(1) infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+      border-left-color: var(--fill-color);
+    }
+    20% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    30% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+      border-right-color: var(--fill-color);
+    }
+    40% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    60% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+    }
+    80% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-bottom-color: var(--fill-color);
+    }
+    90% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+    }
+  }
+</style>
+
+  <script>
+    async function quickchart(key) {
+      const quickchartButtonEl =
+        document.querySelector('#' + key + ' button');
+      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
+      quickchartButtonEl.classList.add('colab-df-spinner');
+      try {
+        const charts = await google.colab.kernel.invokeFunction(
+            'suggestCharts', [key], {});
+      } catch (error) {
+        console.error('Error during call to suggestCharts:', error);
+      }
+      quickchartButtonEl.classList.remove('colab-df-spinner');
+      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
+    }
+    (() => {
+      let quickchartButtonEl =
+        document.querySelector('#df-f60539a1-ef1b-4a79-b420-3bc2cc04ecf4 button');
+      quickchartButtonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+    })();
+  </script>
+</div>
+
+    </div>
+  </div>
+</div>
+</div>
+<p>Here’s the first question/answer pair:</p>
+<p><em>Question</em>:</p>
+<p>Do you need these for deep learning?</p>
+<ul>
+<li>Lots of math T / F</li>
+<li>Lots of data T / F</li>
+<li>Lots of expensive computers T / F</li>
+<li>A PhD T / F</li>
+</ul>
+<p><em>Gold Standard Answer</em>:</p>
+<ul>
+<li>Lots of math - False</li>
+<li>Lots of data - False</li>
+<li>Lots of expensive computers - False</li>
+<li>A PhD - False</li>
+</ul>
+<p>Here’s the keyword search for the first question using the keywords I came up with (“math, data, expensive computers, PhD”):</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>res <span class="op">=</span> cur.execute(<span class="st">"""</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="st">SELECT *, rank</span></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a><span class="st">  from fastbook_text</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a><span class="st">WHERE fastbook_text MATCH '"math" OR "data" OR "expensive computers" OR "PhD"'</span></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a><span class="st">ORDER BY rank</span></span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a><span class="st">LIMIT 5</span></span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a><span class="st">"""</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<pre><code>## Deep Learning Is for Everyone
+
+asciidoc
+[[myths]]
+.What you don't need to do deep learning
+[options="header"]
+|======
+| Myth (don't need) | Truth
+| Lots of math | Just high school math is 
+sufficient
+| Lots of data | We've seen record-breaking 
+results with &lt;50 items of data
+| Lots of expensive computers | You can get what 
+you need for state of the art work for free
+|======</code></pre>
+<p>I would imagine that given the question and this corresponding chunk of context from the textbook, an LLM could answer the question correctly.</p>
+<p>And that’s the metric that I’ll use to evaluate keyword search for the fastai textbook: can a reasonably capable LLM be able to answer the question given this context?</p>
+<p>I’ll iterate through the column of keywords (one set for each question) and store the top BM25-ranked result as the “retrieved context” from my database:</p>
+<div class="cell" data-execution_count="78">
+<details>
+<summary>Show the for-loop code</summary>
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> []</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> keywords <span class="kw">in</span> df[<span class="st">'keywords'</span>]:</span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> keywords <span class="op">!=</span> <span class="st">'No answer'</span>:</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>    words <span class="op">=</span> <span class="st">' OR '</span>.join([<span class="ss">f'"</span><span class="sc">{</span>word<span class="sc">.</span>strip(<span class="st">","</span>)<span class="sc">}</span><span class="ss">"'</span> <span class="cf">for</span> word <span class="kw">in</span> keywords.split()])</span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>    q <span class="op">=</span> <span class="ss">f"""</span></span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a><span class="ss">    SELECT *, rank</span></span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a><span class="ss">      from fastbook_text</span></span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a><span class="ss">    WHERE fastbook_text MATCH '</span><span class="sc">{</span>words<span class="sc">}</span><span class="ss">'</span></span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a><span class="ss">    ORDER BY rank</span></span>
+<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a><span class="ss">    LIMIT 5</span></span>
+<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-14"><a href="#cb21-14" aria-hidden="true" tabindex="-1"></a><span class="ss">    """</span></span>
+<span id="cb21-15"><a href="#cb21-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-16"><a href="#cb21-16" aria-hidden="true" tabindex="-1"></a>    res <span class="op">=</span> cur.execute(q)</span>
+<span id="cb21-17"><a href="#cb21-17" aria-hidden="true" tabindex="-1"></a>    results.append(res.fetchall()[<span class="dv">0</span>][<span class="dv">0</span>])</span>
+<span id="cb21-18"><a href="#cb21-18" aria-hidden="true" tabindex="-1"></a>  <span class="cf">else</span>:</span>
+<span id="cb21-19"><a href="#cb21-19" aria-hidden="true" tabindex="-1"></a>    <span class="co"># if keywords == "No Answer"</span></span>
+<span id="cb21-20"><a href="#cb21-20" aria-hidden="true" tabindex="-1"></a>    res <span class="op">=</span> <span class="st">"No answer"</span></span>
+<span id="cb21-21"><a href="#cb21-21" aria-hidden="true" tabindex="-1"></a>    results.append(res)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution_count="79">
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> pd.Series(results)</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>df[<span class="st">'fts5_result'</span>] <span class="op">=</span> results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="55ad5aee-cc8e-444c-a470-bef56cce2769" data-execution_count="80">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>df.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="80">
+
+
+  <div id="df-e80c2a36-604c-472c-823c-cd27cf87c73d" class="colab-df-container">
+    <div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>chapter</th>
+      <th>question_number</th>
+      <th>question_text</th>
+      <th>answer</th>
+      <th>keywords</th>
+      <th>fts5_result</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>1</td>
+      <td>1</td>
+      <td>Do you need these for deep learning?\\n\\n- Lo...</td>
+      <td>Lots of math - False\\nLots of data - False\\n...</td>
+      <td>math, data, expensive computers, PhD</td>
+      <td>## Deep Learning Is for Everyone\n\n```asciido...</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>1</td>
+      <td>2</td>
+      <td>Name five areas where deep learning is now the...</td>
+      <td>Any five of the following:\\nNatural Language ...</td>
+      <td>deep learning, state of the art, best, world</td>
+      <td>## Deep Learning Is for Everyone\n\nHere's a l...</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>1</td>
+      <td>3</td>
+      <td>What was the name of the first device that was...</td>
+      <td>Mark I perceptron built by Frank Rosenblatt</td>
+      <td>first, device, artificial, neuron</td>
+      <td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>1</td>
+      <td>4</td>
+      <td>Based on the book of the same name, what are t...</td>
+      <td>A set of processing units\\nA state of activat...</td>
+      <td>parallel, distributed, processing, requirement...</td>
+      <td>## Neural Networks: A Brief History\n\nIn fact...</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>1</td>
+      <td>5</td>
+      <td>What were the two theoretical misunderstanding...</td>
+      <td>In 1969, Marvin Minsky and Seymour Papert demo...</td>
+      <td>theoretical, misunderstandings, held, back, fi...</td>
+      <td>## Neural Networks: A Brief History\n\nIn the ...</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+    <div class="colab-df-buttons">
+
+  <div class="colab-df-container">
+    <button class="colab-df-convert" onclick="convertToInteractive('df-e80c2a36-604c-472c-823c-cd27cf87c73d')" title="Convert this dataframe to an interactive table." style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
+    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
+  </svg>
+    </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    .colab-df-buttons div {
+      margin-bottom: 4px;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+    <script>
+      const buttonEl =
+        document.querySelector('#df-e80c2a36-604c-472c-823c-cd27cf87c73d button.colab-df-convert');
+      buttonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+      async function convertToInteractive(key) {
+        const element = document.querySelector('#df-e80c2a36-604c-472c-823c-cd27cf87c73d');
+        const dataTable =
+          await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                    [key], {});
+        if (!dataTable) return;
+
+        const docLinkHtml = 'Like what you see? Visit the ' +
+          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+          + ' to learn more about interactive tables.';
+        element.innerHTML = '';
+        dataTable['output_type'] = 'display_data';
+        await google.colab.output.renderOutput(dataTable, element);
+        const docLink = document.createElement('div');
+        docLink.innerHTML = docLinkHtml;
+        element.appendChild(docLink);
+      }
+    </script>
+  </div>
+
+
+<div id="df-85ada512-ac60-42b1-811d-b2674be1d46f">
+  <button class="colab-df-quickchart" onclick="quickchart('df-85ada512-ac60-42b1-811d-b2674be1d46f')" title="Suggest charts" style="display:none;">
+
+<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
+    <g>
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
+    </g>
+</svg>
+  </button>
+
+<style>
+  .colab-df-quickchart {
+      --bg-color: #E8F0FE;
+      --fill-color: #1967D2;
+      --hover-bg-color: #E2EBFA;
+      --hover-fill-color: #174EA6;
+      --disabled-fill-color: #AAA;
+      --disabled-bg-color: #DDD;
+  }
+
+  [theme=dark] .colab-df-quickchart {
+      --bg-color: #3B4455;
+      --fill-color: #D2E3FC;
+      --hover-bg-color: #434B5C;
+      --hover-fill-color: #FFFFFF;
+      --disabled-bg-color: #3B4455;
+      --disabled-fill-color: #666;
+  }
+
+  .colab-df-quickchart {
+    background-color: var(--bg-color);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: none;
+    fill: var(--fill-color);
+    height: 32px;
+    padding: 0;
+    width: 32px;
+  }
+
+  .colab-df-quickchart:hover {
+    background-color: var(--hover-bg-color);
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    fill: var(--button-hover-fill-color);
+  }
+
+  .colab-df-quickchart-complete:disabled,
+  .colab-df-quickchart-complete:disabled:hover {
+    background-color: var(--disabled-bg-color);
+    fill: var(--disabled-fill-color);
+    box-shadow: none;
+  }
+
+  .colab-df-spinner {
+    border: 2px solid var(--fill-color);
+    border-color: transparent;
+    border-bottom-color: var(--fill-color);
+    animation:
+      spin 1s steps(1) infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+      border-left-color: var(--fill-color);
+    }
+    20% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    30% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+      border-right-color: var(--fill-color);
+    }
+    40% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    60% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+    }
+    80% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-bottom-color: var(--fill-color);
+    }
+    90% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+    }
+  }
+</style>
+
+  <script>
+    async function quickchart(key) {
+      const quickchartButtonEl =
+        document.querySelector('#' + key + ' button');
+      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
+      quickchartButtonEl.classList.add('colab-df-spinner');
+      try {
+        const charts = await google.colab.kernel.invokeFunction(
+            'suggestCharts', [key], {});
+      } catch (error) {
+        console.error('Error during call to suggestCharts:', error);
+      }
+      quickchartButtonEl.classList.remove('colab-df-spinner');
+      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
+    }
+    (() => {
+      let quickchartButtonEl =
+        document.querySelector('#df-85ada512-ac60-42b1-811d-b2674be1d46f button');
+      quickchartButtonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+    })();
+  </script>
+</div>
+
+    </div>
+  </div>
+</div>
+</div>
+</section>
+<section id="evaluating-retrieved-context" class="level2">
+<h2 class="anchored" data-anchor-id="evaluating-retrieved-context">Evaluating Retrieved Context</h2>
+<p>Using the top-ranked BM25 result for the given keyword search, I was able to retrieve the context necessary to answer the question 13 out of 33 times, or <strong>40%</strong> of the time.</p>
+<p>Looking through these 33 question/context pairs, I saw some patterns noted by the following examples.</p>
+<p>In some cases, like for question #5, the retrieved context answered half of the problem.</p>
+<div class="cell" data-outputid="835d95f8-3090-404d-b488-e4c4cef7064b" data-execution_count="83">
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>df.iloc[<span class="dv">4</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="83">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>4</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>chapter</th>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>question_number</th>
+      <td>5</td>
+    </tr>
+    <tr>
+      <th>question_text</th>
+      <td>What were the two theoretical misunderstandings that held back the field of neural networks?</td>
+    </tr>
+    <tr>
+      <th>answer</th>
+      <td>In 1969, Marvin Minsky and Seymour Papert demonstrated in their book, “Perceptrons”, that a single layer of artificial neurons cannot learn simple, critical mathematical functions like XOR logic gate. While they subsequently demonstrated in the same book that additional layers can solve this problem, only the first insight was recognized, leading to the start of the first AI winter.\\n\\nIn the 1980’s, models with two layers were being explored. Theoretically, it is possible to approximate any mathematical function using two layers of artificial neurons. However, in practices, these networks were too big and too slow. While it was demonstrated that adding additional layers improved performance, this insight was not acknowledged, and the second AI winter began. In this past decade, with increased data availability, and improvements in computer hardware (both in CPU performance but more importantly in GPU performance), neural networks are finally living up to its potential.</td>
+    </tr>
+    <tr>
+      <th>keywords</th>
+      <td>theoretical, misunderstandings, held, back, field, neural network</td>
+    </tr>
+    <tr>
+      <th>fts5_result</th>
+      <td>## Neural Networks: A Brief History\n\nIn the 1980's most models were built with a second layer of neurons, thus avoiding the problem that had been identified by Minsky and Papert (this was their ""pattern of connectivity among units,"" to use the framework above). And indeed, neural networks were widely used during the '80s and '90s for real, practical projects. However, again a misunderstanding of the theoretical issues held back the field. In theory, adding just one extra layer of neurons was enough to allow any mathematical function to be approximated with these neural networks, but in practice such networks were often too big and too slow to be useful.</td>
+    </tr>
+  </tbody>
+</table><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<p><br></p>
+<p>The retrieved context for question #16 was not <em>wrong</em> per se, but it didn’t answer the question in the same way as the gold standard answer. The “correct” answer to “What do you need in order to train a model?” is from the perspective of the model builder, whereas the retrieved context answers the same question but from the perspective of a business or organization.</p>
+<div class="cell" data-outputid="a5f95c62-ab73-4c85-de57-063e9e5c67ca" data-execution_count="84">
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>df.iloc[<span class="dv">15</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="84">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>15</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>chapter</th>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>question_number</th>
+      <td>16</td>
+    </tr>
+    <tr>
+      <th>question_text</th>
+      <td>What do you need in order to train a model?</td>
+    </tr>
+    <tr>
+      <th>answer</th>
+      <td>You will need an architecture for the given problem. You will need data to input to your model. For most use-cases of deep learning, you will need labels for your data to compare your model predictions to. You will need a loss function that will quantitatively measure the performance of your model. And you need a way to update the parameters of the model in order to improve its performance (this is known as an optimizer).</td>
+    </tr>
+    <tr>
+      <th>keywords</th>
+      <td>train, model, need</td>
+    </tr>
+    <tr>
+      <th>fts5_result</th>
+      <td>### Limitations Inherent To Machine Learning\n\n- A model cannot be created without data.\n- A model can only learn to operate on the patterns seen in the input data used to train it.\n- This learning approach only creates *predictions*, not recommended *actions*.\n- It's not enough to just have examples of input data; we need *labels* for that data too (e.g., pictures of dogs and cats aren't enough to train a model; we need a label for each one, saying which ones are dogs, and which are cats).</td>
+    </tr>
+  </tbody>
+</table><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<p><br></p>
+<p>In some cases, I was on the fence about the relevancy or accuracy of the retrieved context. I erred on the side of caution and considered the following question/answer/context triple as insufficient context:</p>
+<div class="cell" data-outputid="e7d081d8-13ab-4500-f94d-f11e454f9714" data-execution_count="85">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>df.iloc[<span class="dv">24</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="85">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>24</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>chapter</th>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>question_number</th>
+      <td>25</td>
+    </tr>
+    <tr>
+      <th>question_text</th>
+      <td>How can pretrained models help?</td>
+    </tr>
+    <tr>
+      <th>answer</th>
+      <td>Pretrained models have been trained on other problems that may be quite similar to the current task. For example, pretrained image recognition models were often trained on the ImageNet dataset, which has 1000 classes focused on a lot of different types of visual objects. Pretrained models are useful because they have already learned how to handle a lot of simple features like edge and color detection. However, since the model was trained for a different task than already used, this model cannot be used as is.</td>
+    </tr>
+    <tr>
+      <th>keywords</th>
+      <td>pretrained, model, help</td>
+    </tr>
+    <tr>
+      <th>fts5_result</th>
+      <td>### What Our Image Recognizer Learned\n\nWhen we fine-tuned our pretrained model earlier, we adapted what those last layers focus on (flowers, humans, animals) to specialize on the cats versus dogs problem. More generally, we could specialize such a pretrained model on many different tasks. Let's have a look at some examples.</td>
+    </tr>
+  </tbody>
+</table><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<p><br></p>
+<p>For a number of questions, the keyword search resulted in an HTML <code>img</code> tag or code snippet since it contained the necessary keywords:</p>
+<div class="cell" data-outputid="3d2abaaa-4ce4-4b00-8b82-af07fc814f3b" data-execution_count="87">
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>df.iloc[<span class="dv">2</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="87">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>2</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>chapter</th>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>question_number</th>
+      <td>3</td>
+    </tr>
+    <tr>
+      <th>question_text</th>
+      <td>What was the name of the first device that was based on the principle of the artificial neuron?</td>
+    </tr>
+    <tr>
+      <th>answer</th>
+      <td>Mark I perceptron built by Frank Rosenblatt</td>
+    </tr>
+    <tr>
+      <th>keywords</th>
+      <td>first, device, artificial, neuron</td>
+    </tr>
+    <tr>
+      <th>fts5_result</th>
+      <td>## Neural Networks: A Brief History\n\n&lt;img alt=""Natural and artificial neurons"" width=""500"" caption=""Natural and artificial neurons"" src=""images/chapter7_neuron.png"" id=""neuron""/&gt;</td>
+    </tr>
+  </tbody>
+</table><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<div class="cell" data-outputid="244af098-6072-4d54-a858-1a67a57c3a67" data-execution_count="89">
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>df.iloc[<span class="dv">17</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="89">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>17</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>chapter</th>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>question_number</th>
+      <td>18</td>
+    </tr>
+    <tr>
+      <th>question_text</th>
+      <td>Do we always have to use 224×224-pixel images with the cat recognition model?</td>
+    </tr>
+    <tr>
+      <th>answer</th>
+      <td>No we do not. 224x224 is commonly used for historical reasons. You can increase the size and get better performance, but at the price of speed and memory consumption.</td>
+    </tr>
+    <tr>
+      <th>keywords</th>
+      <td>224, pixel, image, cat, recognition, model</td>
+    </tr>
+    <tr>
+      <th>fts5_result</th>
+      <td>### How Our Image Recognizer Works\n\n```python\ndls = ImageDataLoaders.from_name_func(\n    path, get_image_files(path), valid_pct=0.2, seed=42,\n    label_func=is_cat, item_tfms=Resize(224))\n```</td>
+    </tr>
+  </tbody>
+</table><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<p><br></p>
+<p>In some cases, the retrieved context seemed to be the chunk right before the chunk that would describe the solution in the text. This makes me wonder if my chunk sizes are too small?</p>
+<div class="cell" data-outputid="97acd98a-de6c-4c0d-ccb1-3101cc6cd10a" data-execution_count="90">
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>df.iloc[<span class="dv">9</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="90">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>9</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>chapter</th>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>question_number</th>
+      <td>10</td>
+    </tr>
+    <tr>
+      <th>question_text</th>
+      <td>Why is it hard to use a traditional computer program to recognize images in a photo?</td>
+    </tr>
+    <tr>
+      <th>answer</th>
+      <td>For us humans, it is easy to identify images in a photos, such as identifying cats vs dogs in a photo. This is because, subconsciously our brains have learned which features define a cat or a dog for example. But it is hard to define set rules for a traditional computer program to recognize a cat or a dog. Can you think of a universal rule to determine if a photo contains a cat or dog? How would you encode that as a computer program? This is very difficult because cats, dogs, or other objects, have a wide variety of shapes, textures, colors, and other features, and it is close to impossible to manually encode this in a traditional computer program.</td>
+    </tr>
+    <tr>
+      <th>keywords</th>
+      <td>image, recognize, recognition, traditional, computer, program</td>
+    </tr>
+    <tr>
+      <th>fts5_result</th>
+      <td>### What Is Machine Learning?\n\n```python\n#hide_input\n#caption A traditional program\n#id basic_program\n#alt Pipeline inputs, program, results\ngv('''program[shape=box3d width=1 height=0.7]\ninputs-&gt;program-&gt;results''')\n```</td>
+    </tr>
+  </tbody>
+</table><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<div class="cell" data-outputid="a8b117a6-abfa-4906-f3ae-6d216c755a57" data-execution_count="91">
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>df.iloc[<span class="dv">10</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="91">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>10</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>chapter</th>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>question_number</th>
+      <td>11</td>
+    </tr>
+    <tr>
+      <th>question_text</th>
+      <td>What did Samuel mean by """"""""weight assignment""""""""?</td>
+    </tr>
+    <tr>
+      <th>answer</th>
+      <td>“weight assignment” refers to the current values of the model parameters. Arthur Samuel further mentions an “ automatic means of testing the effectiveness of any current weight assignment ” and a “ mechanism for altering the weight assignment so as to maximize the performance ”. This refers to the evaluation and training of the model in order to obtain a set of parameter values that maximizes model performance.</td>
+    </tr>
+    <tr>
+      <th>keywords</th>
+      <td>Samuel, weight, assignment</td>
+    </tr>
+    <tr>
+      <th>fts5_result</th>
+      <td>### What Is Machine Learning?\n\nLet us take these concepts one by one, in order to understand how they fit together in practice. First, we need to understand what Samuel means by a *weight assignment*.</td>
+    </tr>
+  </tbody>
+</table><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+</section>
+<section id="including-more-chunks-during-retrieval" class="level2">
+<h2 class="anchored" data-anchor-id="including-more-chunks-during-retrieval">Including More Chunks During Retrieval</h2>
+<p>Based on the initial keyword search results, some of the retrieved chunks of context either partially answer the question, or only begin to setup the answer to the question. I see two routes of remediating this:</p>
+<ul>
+<li>Increase the chunk size (i.e.&nbsp;choose a different chunking strategy)</li>
+<li>Increase the number of chunks selected during keyword search</li>
+</ul>
+<p>The second approachs seems easier to implement. I like the idea of retrieving more than 1 small chunks than a single large chunk. I can imagine a couple of trade-offs:</p>
+<ul>
+<li>A few small chunks may not capture information that is spread across a long paragraph/section needed for the LLM to answer the question sufficiently.</li>
+<li>Single large chunk may include information irrelevant to the question and thus introduce noise into the answer, confusing the LLM.</li>
+</ul>
+<p>I’ll retrieve the top 3 BM25-ranked results and then evaluate them.</p>
+<div class="cell" data-execution_count="95">
+<details>
+<summary>Show the for-loop code</summary>
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> []</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> keywords <span class="kw">in</span> df[<span class="st">'keywords'</span>]:</span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> keywords <span class="op">!=</span> <span class="st">'No answer'</span>:</span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>    words <span class="op">=</span> <span class="st">' OR '</span>.join([<span class="ss">f'"</span><span class="sc">{</span>word<span class="sc">.</span>strip(<span class="st">","</span>)<span class="sc">}</span><span class="ss">"'</span> <span class="cf">for</span> word <span class="kw">in</span> keywords.split()])</span>
+<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a>    q <span class="op">=</span> <span class="ss">f"""</span></span>
+<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a><span class="ss">    SELECT *, rank</span></span>
+<span id="cb31-9"><a href="#cb31-9" aria-hidden="true" tabindex="-1"></a><span class="ss">      from fastbook_text</span></span>
+<span id="cb31-10"><a href="#cb31-10" aria-hidden="true" tabindex="-1"></a><span class="ss">    WHERE fastbook_text MATCH '</span><span class="sc">{</span>words<span class="sc">}</span><span class="ss">'</span></span>
+<span id="cb31-11"><a href="#cb31-11" aria-hidden="true" tabindex="-1"></a><span class="ss">    ORDER BY rank</span></span>
+<span id="cb31-12"><a href="#cb31-12" aria-hidden="true" tabindex="-1"></a><span class="ss">    LIMIT 3</span></span>
+<span id="cb31-13"><a href="#cb31-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-14"><a href="#cb31-14" aria-hidden="true" tabindex="-1"></a><span class="ss">    """</span></span>
+<span id="cb31-15"><a href="#cb31-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-16"><a href="#cb31-16" aria-hidden="true" tabindex="-1"></a>    res <span class="op">=</span> cur.execute(q)</span>
+<span id="cb31-17"><a href="#cb31-17" aria-hidden="true" tabindex="-1"></a>    results.append(res.fetchall())</span>
+<span id="cb31-18"><a href="#cb31-18" aria-hidden="true" tabindex="-1"></a>  <span class="cf">else</span>:</span>
+<span id="cb31-19"><a href="#cb31-19" aria-hidden="true" tabindex="-1"></a>    <span class="co"># if keywords == "No Answer"</span></span>
+<span id="cb31-20"><a href="#cb31-20" aria-hidden="true" tabindex="-1"></a>    res <span class="op">=</span> (<span class="st">"No answer"</span>)</span>
+<span id="cb31-21"><a href="#cb31-21" aria-hidden="true" tabindex="-1"></a>    results.append(res)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution_count="101">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>df[<span class="st">'fts5_result2'</span>] <span class="op">=</span> results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="00e446c8-1eca-41c2-da92-39ac6c31c62a" data-execution_count="102">
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>df.head(<span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="102">
+
+
+  <div id="df-cd6b54ad-10d3-4f54-bd20-9c3ab3abcaaa" class="colab-df-container">
+    <div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>chapter</th>
+      <th>question_number</th>
+      <th>question_text</th>
+      <th>answer</th>
+      <th>keywords</th>
+      <th>fts5_result2</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>1</td>
+      <td>1</td>
+      <td>Do you need these for deep learning?\\n\\n- Lo...</td>
+      <td>Lots of math - False\\nLots of data - False\\n...</td>
+      <td>math, data, expensive computers, PhD</td>
+      <td>[(## Deep Learning Is for Everyone\n\n```ascii...</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>1</td>
+      <td>2</td>
+      <td>Name five areas where deep learning is now the...</td>
+      <td>Any five of the following:\\nNatural Language ...</td>
+      <td>deep learning, state of the art, best, world</td>
+      <td>[(## Deep Learning Is for Everyone\n\nHere's a...</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>1</td>
+      <td>3</td>
+      <td>What was the name of the first device that was...</td>
+      <td>Mark I perceptron built by Frank Rosenblatt</td>
+      <td>first, device, artificial, neuron</td>
+      <td>[(## Neural Networks: A Brief History\n\n&lt;img ...</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+    <div class="colab-df-buttons">
+
+  <div class="colab-df-container">
+    <button class="colab-df-convert" onclick="convertToInteractive('df-cd6b54ad-10d3-4f54-bd20-9c3ab3abcaaa')" title="Convert this dataframe to an interactive table." style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
+    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
+  </svg>
+    </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    .colab-df-buttons div {
+      margin-bottom: 4px;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+    <script>
+      const buttonEl =
+        document.querySelector('#df-cd6b54ad-10d3-4f54-bd20-9c3ab3abcaaa button.colab-df-convert');
+      buttonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+      async function convertToInteractive(key) {
+        const element = document.querySelector('#df-cd6b54ad-10d3-4f54-bd20-9c3ab3abcaaa');
+        const dataTable =
+          await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                    [key], {});
+        if (!dataTable) return;
+
+        const docLinkHtml = 'Like what you see? Visit the ' +
+          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+          + ' to learn more about interactive tables.';
+        element.innerHTML = '';
+        dataTable['output_type'] = 'display_data';
+        await google.colab.output.renderOutput(dataTable, element);
+        const docLink = document.createElement('div');
+        docLink.innerHTML = docLinkHtml;
+        element.appendChild(docLink);
+      }
+    </script>
+  </div>
+
+
+<div id="df-d2230cda-9289-456b-b252-e2afd0aeaa7f">
+  <button class="colab-df-quickchart" onclick="quickchart('df-d2230cda-9289-456b-b252-e2afd0aeaa7f')" title="Suggest charts" style="display:none;">
+
+<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
+    <g>
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
+    </g>
+</svg>
+  </button>
+
+<style>
+  .colab-df-quickchart {
+      --bg-color: #E8F0FE;
+      --fill-color: #1967D2;
+      --hover-bg-color: #E2EBFA;
+      --hover-fill-color: #174EA6;
+      --disabled-fill-color: #AAA;
+      --disabled-bg-color: #DDD;
+  }
+
+  [theme=dark] .colab-df-quickchart {
+      --bg-color: #3B4455;
+      --fill-color: #D2E3FC;
+      --hover-bg-color: #434B5C;
+      --hover-fill-color: #FFFFFF;
+      --disabled-bg-color: #3B4455;
+      --disabled-fill-color: #666;
+  }
+
+  .colab-df-quickchart {
+    background-color: var(--bg-color);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: none;
+    fill: var(--fill-color);
+    height: 32px;
+    padding: 0;
+    width: 32px;
+  }
+
+  .colab-df-quickchart:hover {
+    background-color: var(--hover-bg-color);
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    fill: var(--button-hover-fill-color);
+  }
+
+  .colab-df-quickchart-complete:disabled,
+  .colab-df-quickchart-complete:disabled:hover {
+    background-color: var(--disabled-bg-color);
+    fill: var(--disabled-fill-color);
+    box-shadow: none;
+  }
+
+  .colab-df-spinner {
+    border: 2px solid var(--fill-color);
+    border-color: transparent;
+    border-bottom-color: var(--fill-color);
+    animation:
+      spin 1s steps(1) infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+      border-left-color: var(--fill-color);
+    }
+    20% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    30% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+      border-right-color: var(--fill-color);
+    }
+    40% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    60% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+    }
+    80% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-bottom-color: var(--fill-color);
+    }
+    90% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+    }
+  }
+</style>
+
+  <script>
+    async function quickchart(key) {
+      const quickchartButtonEl =
+        document.querySelector('#' + key + ' button');
+      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
+      quickchartButtonEl.classList.add('colab-df-spinner');
+      try {
+        const charts = await google.colab.kernel.invokeFunction(
+            'suggestCharts', [key], {});
+      } catch (error) {
+        console.error('Error during call to suggestCharts:', error);
+      }
+      quickchartButtonEl.classList.remove('colab-df-spinner');
+      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
+    }
+    (() => {
+      let quickchartButtonEl =
+        document.querySelector('#df-d2230cda-9289-456b-b252-e2afd0aeaa7f button');
+      quickchartButtonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+    })();
+  </script>
+</div>
+
+    </div>
+  </div>
+</div>
+</div>
+<div class="cell" data-execution_count="138">
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>top_3_results <span class="op">=</span> df[<span class="st">'fts5_result2'</span>].<span class="bu">apply</span>(pd.Series)</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>top_3_results.columns <span class="op">=</span> [<span class="ss">f'fts5_result2_</span><span class="sc">{</span>i<span class="op">+</span><span class="dv">1</span><span class="sc">}</span><span class="ss">'</span> <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(top_3_results.shape[<span class="dv">1</span>])]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="139">
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> col <span class="kw">in</span> [<span class="st">'fts5_result2_1'</span>, <span class="st">'fts5_result2_2'</span>, <span class="st">'fts5_result2_3'</span>]:</span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>    top_3_results[col] <span class="op">=</span> top_3_results[col].<span class="bu">apply</span>(<span class="kw">lambda</span> x: x[<span class="dv">0</span>] <span class="cf">if</span> <span class="bu">isinstance</span>(x, <span class="bu">tuple</span>) <span class="cf">else</span> x)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="76a2c075-db6b-40e5-ee67-727823af3276" data-execution_count="141">
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>top_3_results.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="141">
+
+
+  <div id="df-99d8412d-7d1d-4bf8-b685-bedb0e4d01d6" class="colab-df-container">
+    <div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>fts5_result2_1</th>
+      <th>fts5_result2_2</th>
+      <th>fts5_result2_3</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>## Deep Learning Is for Everyone\n\n```asciido...</td>
+      <td>## How to Learn Deep Learning\n\nPaul Lockhart...</td>
+      <td>## Who We Are\n\nAll this means that between u...</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>## Deep Learning Is for Everyone\n\nHere's a l...</td>
+      <td>## How to Learn Deep Learning\n\n- Teaching th...</td>
+      <td>## Deep Learning Is for Everyone\n\n```asciido...</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
+      <td>## Neural Networks: A Brief History\n\nRosenbl...</td>
+      <td>## Neural Networks: A Brief History\n\nIn 1943...</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>## Neural Networks: A Brief History\n\nIn fact...</td>
+      <td>## Neural Networks: A Brief History\n\nPerhaps...</td>
+      <td>## Neural Networks: A Brief History\n\nWe will...</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>## Neural Networks: A Brief History\n\nIn the ...</td>
+      <td>### What Is a Neural Network?\n\nHaving zoomed...</td>
+      <td>## Deep Learning Is for Everyone\n\nBut neural...</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+    <div class="colab-df-buttons">
+
+  <div class="colab-df-container">
+    <button class="colab-df-convert" onclick="convertToInteractive('df-99d8412d-7d1d-4bf8-b685-bedb0e4d01d6')" title="Convert this dataframe to an interactive table." style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
+    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
+  </svg>
+    </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    .colab-df-buttons div {
+      margin-bottom: 4px;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+    <script>
+      const buttonEl =
+        document.querySelector('#df-99d8412d-7d1d-4bf8-b685-bedb0e4d01d6 button.colab-df-convert');
+      buttonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+      async function convertToInteractive(key) {
+        const element = document.querySelector('#df-99d8412d-7d1d-4bf8-b685-bedb0e4d01d6');
+        const dataTable =
+          await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                    [key], {});
+        if (!dataTable) return;
+
+        const docLinkHtml = 'Like what you see? Visit the ' +
+          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+          + ' to learn more about interactive tables.';
+        element.innerHTML = '';
+        dataTable['output_type'] = 'display_data';
+        await google.colab.output.renderOutput(dataTable, element);
+        const docLink = document.createElement('div');
+        docLink.innerHTML = docLinkHtml;
+        element.appendChild(docLink);
+      }
+    </script>
+  </div>
+
+
+<div id="df-49173938-d69b-485b-bbe6-21d06591bf8a">
+  <button class="colab-df-quickchart" onclick="quickchart('df-49173938-d69b-485b-bbe6-21d06591bf8a')" title="Suggest charts" style="display:none;">
+
+<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
+    <g>
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
+    </g>
+</svg>
+  </button>
+
+<style>
+  .colab-df-quickchart {
+      --bg-color: #E8F0FE;
+      --fill-color: #1967D2;
+      --hover-bg-color: #E2EBFA;
+      --hover-fill-color: #174EA6;
+      --disabled-fill-color: #AAA;
+      --disabled-bg-color: #DDD;
+  }
+
+  [theme=dark] .colab-df-quickchart {
+      --bg-color: #3B4455;
+      --fill-color: #D2E3FC;
+      --hover-bg-color: #434B5C;
+      --hover-fill-color: #FFFFFF;
+      --disabled-bg-color: #3B4455;
+      --disabled-fill-color: #666;
+  }
+
+  .colab-df-quickchart {
+    background-color: var(--bg-color);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: none;
+    fill: var(--fill-color);
+    height: 32px;
+    padding: 0;
+    width: 32px;
+  }
+
+  .colab-df-quickchart:hover {
+    background-color: var(--hover-bg-color);
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    fill: var(--button-hover-fill-color);
+  }
+
+  .colab-df-quickchart-complete:disabled,
+  .colab-df-quickchart-complete:disabled:hover {
+    background-color: var(--disabled-bg-color);
+    fill: var(--disabled-fill-color);
+    box-shadow: none;
+  }
+
+  .colab-df-spinner {
+    border: 2px solid var(--fill-color);
+    border-color: transparent;
+    border-bottom-color: var(--fill-color);
+    animation:
+      spin 1s steps(1) infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+      border-left-color: var(--fill-color);
+    }
+    20% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    30% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+      border-right-color: var(--fill-color);
+    }
+    40% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    60% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+    }
+    80% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-bottom-color: var(--fill-color);
+    }
+    90% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+    }
+  }
+</style>
+
+  <script>
+    async function quickchart(key) {
+      const quickchartButtonEl =
+        document.querySelector('#' + key + ' button');
+      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
+      quickchartButtonEl.classList.add('colab-df-spinner');
+      try {
+        const charts = await google.colab.kernel.invokeFunction(
+            'suggestCharts', [key], {});
+      } catch (error) {
+        console.error('Error during call to suggestCharts:', error);
+      }
+      quickchartButtonEl.classList.remove('colab-df-spinner');
+      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
+    }
+    (() => {
+      let quickchartButtonEl =
+        document.querySelector('#df-49173938-d69b-485b-bbe6-21d06591bf8a button');
+      quickchartButtonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+    })();
+  </script>
+</div>
+
+    </div>
+  </div>
+</div>
+</div>
+<div class="cell" data-execution_count="142">
+<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pd.concat([df, top_3_results], axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>df.to_csv(<span class="st">'top-3-retrieval-results.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Using the top 3 BM25 ranked chunks improved the results! 18 out of the 33 questions, or <strong>54%</strong>, are now answerable with the given retrieved context.</p>
+<p>Here’s an example of a question that I couldn’t answer with the top-1 result but I can answer with the second-ranked result (<code>fts5_result2_2</code>):</p>
+<div class="cell" data-outputid="f7549655-c03d-4be8-af41-bff145f0e89d" data-execution_count="144">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>df.iloc[<span class="dv">19</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="144">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>19</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>chapter</th>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>question_number</th>
+      <td>20</td>
+    </tr>
+    <tr>
+      <th>question_text</th>
+      <td>What is a validation set? What is a test set? Why do we need them?</td>
+    </tr>
+    <tr>
+      <th>answer</th>
+      <td>The validation set is the portion of the dataset that is not used for training the model, but for evaluating the model during training, in order to prevent overfitting. This ensures that the model performance is not due to “cheating” or memorization of the dataset, but rather because it learns the appropriate features to use for prediction. However, it is possible that we overfit the validation data as well. This is because the human modeler is also part of the training process, adjusting hyperparameters (see question 32 for definition) and training procedures according to the validation performance. Therefore, another unseen portion of the dataset, the test set, is used for final evaluation of the model. This splitting of the dataset is necessary to ensure that the model generalizes to unseen data.</td>
+    </tr>
+    <tr>
+      <th>keywords</th>
+      <td>validation, set, test</td>
+    </tr>
+    <tr>
+      <th>fts5_result2</th>
+      <td>[(## Validation Sets and Test Sets\n\nTo avoid this, our first step was to split our dataset into two sets: the *training set* (which our model sees in training) and the *validation set*, also known as the *development set* (which is used only for evaluation). This lets us test that the model learns lessons from the training data that generalize to new data, the validation data., -9.62686734459166), (## Validation Sets and Test Sets\n\nHaving two levels of "reserved data"—a validation set and a test set, with one level representing data that you are virtually hiding from yourself—may seem a bit extreme. But the reason it is often necessary is because models tend to gravitate toward the simplest way to do good predictions (memorization), and we as fallible humans tend to gravitate toward fooling ourselves about how well our models are performing. The discipline of the test set helps us keep ourselves intellectually honest. That doesn't mean we *always* need a separate test set—if you have very little data, you may need to just have a validation set—but generally it's best to use one if at all possible., -9.21394932308204), (### Use Judgment in Defining Test Sets\n\nInstead, use the earlier data as your training set (and the later data for the validation set), as shown in &lt;&lt;timeseries3&gt;&gt;., -9.06398171911968)]</td>
+    </tr>
+    <tr>
+      <th>fts5_result2_1</th>
+      <td>## Validation Sets and Test Sets\n\nTo avoid this, our first step was to split our dataset into two sets: the *training set* (which our model sees in training) and the *validation set*, also known as the *development set* (which is used only for evaluation). This lets us test that the model learns lessons from the training data that generalize to new data, the validation data.</td>
+    </tr>
+    <tr>
+      <th>fts5_result2_2</th>
+      <td>## Validation Sets and Test Sets\n\nHaving two levels of "reserved data"—a validation set and a test set, with one level representing data that you are virtually hiding from yourself—may seem a bit extreme. But the reason it is often necessary is because models tend to gravitate toward the simplest way to do good predictions (memorization), and we as fallible humans tend to gravitate toward fooling ourselves about how well our models are performing. The discipline of the test set helps us keep ourselves intellectually honest. That doesn't mean we *always* need a separate test set—if you have very little data, you may need to just have a validation set—but generally it's best to use one if at all possible.</td>
+    </tr>
+    <tr>
+      <th>fts5_result2_3</th>
+      <td>### Use Judgment in Defining Test Sets\n\nInstead, use the earlier data as your training set (and the later data for the validation set), as shown in &lt;&lt;timeseries3&gt;&gt;.</td>
+    </tr>
+  </tbody>
+</table><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+</section>
+<section id="increasing-chunk-size" class="level2">
+<h2 class="anchored" data-anchor-id="increasing-chunk-size">Increasing Chunk Size</h2>
+<p>Using 3 chunks of context instead of 1 increased the performance of retrieval from 40% to 54%, meaning that I would be able to answer the Chapter 1 questions with the retrieved context 54% of the time. I’ll call this metric “retrieved context relevancy”.</p>
+<p>I’ll now increase the chunk size and see how that affects performance:</p>
+<div class="cell" data-execution_count="147">
+<div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>larger_chunks <span class="op">=</span> [<span class="st">"</span><span class="ch">\n</span><span class="st">"</span>.join(filtered_chunks[i:i<span class="op">+</span><span class="dv">3</span>]) <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">0</span>, <span class="bu">len</span>(filtered_chunks), <span class="dv">3</span>)]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Now I’ll create a separate table, <code>fastbook_text_large</code> in my database to hold these chunks:</p>
+<div class="cell" data-execution_count="160">
+<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>cur <span class="op">=</span> conn.cursor()</span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>res <span class="op">=</span> cur.execute(<span class="st">"""</span></span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a><span class="st">CREATE VIRTUAL TABLE fastbook_text_large</span></span>
+<span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a><span class="st">USING FTS5(text);</span></span>
+<span id="cb40-6"><a href="#cb40-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb40-7"><a href="#cb40-7" aria-hidden="true" tabindex="-1"></a><span class="st">"""</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> string <span class="kw">in</span> larger_chunks:</span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>  cur.execute(<span class="ss">f"INSERT INTO fastbook_text_large(text) VALUES (?)"</span>, (string,))</span>
+<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a>res <span class="op">=</span> cur.execute(<span class="st">"SELECT * from fastbook_text_large LIMIT 2"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The outputs (which include Markdown) were messing up my quarto blog rendering so I’ve excluded it.</p>
+<p>I’ll now iterate through my list of questions, passing the corresponding keywords to the query to conduct a full text search:</p>
+<div class="cell" data-execution_count="165">
+<details>
+<summary>Show the for-loop code</summary>
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> []</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> keywords <span class="kw">in</span> df[<span class="st">'keywords'</span>]:</span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> keywords <span class="op">!=</span> <span class="st">'No answer'</span>:</span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>    words <span class="op">=</span> <span class="st">' OR '</span>.join([<span class="ss">f'"</span><span class="sc">{</span>word<span class="sc">.</span>strip(<span class="st">","</span>)<span class="sc">}</span><span class="ss">"'</span> <span class="cf">for</span> word <span class="kw">in</span> keywords.split()])</span>
+<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a>    q <span class="op">=</span> <span class="ss">f"""</span></span>
+<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-8"><a href="#cb42-8" aria-hidden="true" tabindex="-1"></a><span class="ss">    SELECT *, rank</span></span>
+<span id="cb42-9"><a href="#cb42-9" aria-hidden="true" tabindex="-1"></a><span class="ss">      from fastbook_text_large</span></span>
+<span id="cb42-10"><a href="#cb42-10" aria-hidden="true" tabindex="-1"></a><span class="ss">    WHERE fastbook_text_large MATCH '</span><span class="sc">{</span>words<span class="sc">}</span><span class="ss">'</span></span>
+<span id="cb42-11"><a href="#cb42-11" aria-hidden="true" tabindex="-1"></a><span class="ss">    ORDER BY rank</span></span>
+<span id="cb42-12"><a href="#cb42-12" aria-hidden="true" tabindex="-1"></a><span class="ss">    LIMIT 1</span></span>
+<span id="cb42-13"><a href="#cb42-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-14"><a href="#cb42-14" aria-hidden="true" tabindex="-1"></a><span class="ss">    """</span></span>
+<span id="cb42-15"><a href="#cb42-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-16"><a href="#cb42-16" aria-hidden="true" tabindex="-1"></a>    res <span class="op">=</span> cur.execute(q)</span>
+<span id="cb42-17"><a href="#cb42-17" aria-hidden="true" tabindex="-1"></a>    results.append(res.fetchall()[<span class="dv">0</span>][<span class="dv">0</span>])</span>
+<span id="cb42-18"><a href="#cb42-18" aria-hidden="true" tabindex="-1"></a>  <span class="cf">else</span>:</span>
+<span id="cb42-19"><a href="#cb42-19" aria-hidden="true" tabindex="-1"></a>    <span class="co"># if keywords == "No Answer"</span></span>
+<span id="cb42-20"><a href="#cb42-20" aria-hidden="true" tabindex="-1"></a>    res <span class="op">=</span> (<span class="st">"No answer"</span>)</span>
+<span id="cb42-21"><a href="#cb42-21" aria-hidden="true" tabindex="-1"></a>    results.append(res)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-outputid="4788fb23-f3c7-4f5b-d185-62fb6f43b661" data-execution_count="171">
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a>large_df <span class="op">=</span> df.drop([<span class="st">'fts5_result2'</span>, <span class="st">'fts5_result2_1'</span>, <span class="st">'fts5_result2_2'</span>, <span class="st">'fts5_result2_3'</span>], axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>large_df[<span class="st">'large_chunk_result'</span>] <span class="op">=</span> results</span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>large_df.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="171">
+
+
+  <div id="df-30958c00-8173-4f75-9331-80bad51d5671" class="colab-df-container">
+    <div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>chapter</th>
+      <th>question_number</th>
+      <th>question_text</th>
+      <th>answer</th>
+      <th>keywords</th>
+      <th>large_chunk_result</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>1</td>
+      <td>1</td>
+      <td>Do you need these for deep learning?\\n\\n- Lo...</td>
+      <td>Lots of math - False\\nLots of data - False\\n...</td>
+      <td>math, data, expensive computers, PhD</td>
+      <td>## Deep Learning Is for Everyone\n\nA lot of p...</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>1</td>
+      <td>2</td>
+      <td>Name five areas where deep learning is now the...</td>
+      <td>Any five of the following:\\nNatural Language ...</td>
+      <td>deep learning, state of the art, best, world</td>
+      <td>## Deep Learning Is for Everyone\n\nA lot of p...</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>1</td>
+      <td>3</td>
+      <td>What was the name of the first device that was...</td>
+      <td>Mark I perceptron built by Frank Rosenblatt</td>
+      <td>first, device, artificial, neuron</td>
+      <td>## Neural Networks: A Brief History\n\nRosenbl...</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>1</td>
+      <td>4</td>
+      <td>Based on the book of the same name, what are t...</td>
+      <td>A set of processing units\\nA state of activat...</td>
+      <td>parallel, distributed, processing, requirement...</td>
+      <td>## Neural Networks: A Brief History\n\n&gt; : Peo...</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>1</td>
+      <td>5</td>
+      <td>What were the two theoretical misunderstanding...</td>
+      <td>In 1969, Marvin Minsky and Seymour Papert demo...</td>
+      <td>theoretical, misunderstandings, held, back, fi...</td>
+      <td>## Neural Networks: A Brief History\n\n1. A se...</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+    <div class="colab-df-buttons">
+
+  <div class="colab-df-container">
+    <button class="colab-df-convert" onclick="convertToInteractive('df-30958c00-8173-4f75-9331-80bad51d5671')" title="Convert this dataframe to an interactive table." style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
+    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
+  </svg>
+    </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    .colab-df-buttons div {
+      margin-bottom: 4px;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+    <script>
+      const buttonEl =
+        document.querySelector('#df-30958c00-8173-4f75-9331-80bad51d5671 button.colab-df-convert');
+      buttonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+      async function convertToInteractive(key) {
+        const element = document.querySelector('#df-30958c00-8173-4f75-9331-80bad51d5671');
+        const dataTable =
+          await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                    [key], {});
+        if (!dataTable) return;
+
+        const docLinkHtml = 'Like what you see? Visit the ' +
+          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+          + ' to learn more about interactive tables.';
+        element.innerHTML = '';
+        dataTable['output_type'] = 'display_data';
+        await google.colab.output.renderOutput(dataTable, element);
+        const docLink = document.createElement('div');
+        docLink.innerHTML = docLinkHtml;
+        element.appendChild(docLink);
+      }
+    </script>
+  </div>
+
+
+<div id="df-325d2198-a0bc-4a79-9c9f-dc45c725c1e9">
+  <button class="colab-df-quickchart" onclick="quickchart('df-325d2198-a0bc-4a79-9c9f-dc45c725c1e9')" title="Suggest charts" style="display:none;">
+
+<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
+    <g>
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
+    </g>
+</svg>
+  </button>
+
+<style>
+  .colab-df-quickchart {
+      --bg-color: #E8F0FE;
+      --fill-color: #1967D2;
+      --hover-bg-color: #E2EBFA;
+      --hover-fill-color: #174EA6;
+      --disabled-fill-color: #AAA;
+      --disabled-bg-color: #DDD;
+  }
+
+  [theme=dark] .colab-df-quickchart {
+      --bg-color: #3B4455;
+      --fill-color: #D2E3FC;
+      --hover-bg-color: #434B5C;
+      --hover-fill-color: #FFFFFF;
+      --disabled-bg-color: #3B4455;
+      --disabled-fill-color: #666;
+  }
+
+  .colab-df-quickchart {
+    background-color: var(--bg-color);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: none;
+    fill: var(--fill-color);
+    height: 32px;
+    padding: 0;
+    width: 32px;
+  }
+
+  .colab-df-quickchart:hover {
+    background-color: var(--hover-bg-color);
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    fill: var(--button-hover-fill-color);
+  }
+
+  .colab-df-quickchart-complete:disabled,
+  .colab-df-quickchart-complete:disabled:hover {
+    background-color: var(--disabled-bg-color);
+    fill: var(--disabled-fill-color);
+    box-shadow: none;
+  }
+
+  .colab-df-spinner {
+    border: 2px solid var(--fill-color);
+    border-color: transparent;
+    border-bottom-color: var(--fill-color);
+    animation:
+      spin 1s steps(1) infinite;
+  }
+
+  @keyframes spin {
+    0% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+      border-left-color: var(--fill-color);
+    }
+    20% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    30% {
+      border-color: transparent;
+      border-left-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+      border-right-color: var(--fill-color);
+    }
+    40% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-top-color: var(--fill-color);
+    }
+    60% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+    }
+    80% {
+      border-color: transparent;
+      border-right-color: var(--fill-color);
+      border-bottom-color: var(--fill-color);
+    }
+    90% {
+      border-color: transparent;
+      border-bottom-color: var(--fill-color);
+    }
+  }
+</style>
+
+  <script>
+    async function quickchart(key) {
+      const quickchartButtonEl =
+        document.querySelector('#' + key + ' button');
+      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
+      quickchartButtonEl.classList.add('colab-df-spinner');
+      try {
+        const charts = await google.colab.kernel.invokeFunction(
+            'suggestCharts', [key], {});
+      } catch (error) {
+        console.error('Error during call to suggestCharts:', error);
+      }
+      quickchartButtonEl.classList.remove('colab-df-spinner');
+      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
+    }
+    (() => {
+      let quickchartButtonEl =
+        document.querySelector('#df-325d2198-a0bc-4a79-9c9f-dc45c725c1e9 button');
+      quickchartButtonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+    })();
+  </script>
+</div>
+
+    </div>
+  </div>
+</div>
+</div>
+<div class="cell" data-execution_count="172">
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>large_df.to_csv(<span class="st">'large_chunk_results.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Using larger chunks resulted in a retrieved context relevancy of <strong>54%</strong> (18/33). However, these were not the same 18 results as before.</p>
+<p>For example, here’s a question for which using larger chunks retrieved the right context (whereas retrieving three smaller chunks did not):</p>
+<div class="cell" data-outputid="14e31574-fd92-4bf5-b5dd-50bb1c09cdc7" data-execution_count="175">
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>large_df.iloc[<span class="dv">10</span>][[<span class="st">'question_text'</span>, <span class="st">'answer'</span>, <span class="st">'large_chunk_result'</span>]]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="175">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>10</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>question_text</th>
+      <td>What did Samuel mean by ""weight assignment""?</td>
+    </tr>
+    <tr>
+      <th>answer</th>
+      <td>“weight assignment” refers to the current values of the model parameters. Arthur Samuel further mentions an “ automatic means of testing the effectiveness of any current weight assignment ” and a “ mechanism for altering the weight assignment so as to maximize the performance ”. This refers to the evaluation and training of the model in order to obtain a set of parameter values that maximizes model performance.</td>
+    </tr>
+    <tr>
+      <th>large_chunk_result</th>
+      <td>### What Is Machine Learning?\n\n- The idea of a "weight assignment" \n- The fact that every weight assignment has some "actual performance"\n- The requirement that there be an "automatic means" of testing that performance,  \n- The need for a "mechanism" (i.e., another automatic process) for improving the performance by changing the weight assignments\n### What Is Machine Learning?\n\nLet us take these concepts one by one, in order to understand how they fit together in practice. First, we need to understand what Samuel means by a *weight assignment*.\n### What Is Machine Learning?\n\nWeights are just variables, and a weight assignment is a particular choice of values for those variables. The program's inputs are values that it processes in order to produce its results—for instance, taking image pixels as inputs, and returning the classification "dog" as a result. The program's weight assignments are other values that define how the program will operate.</td>
+    </tr>
+  </tbody>
+</table><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<div class="cell" data-outputid="ed56d6d5-00fe-4aa1-aa0a-2134eeab2634" data-execution_count="176">
+<div class="sourceCode cell-code" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a>df.iloc[<span class="dv">10</span>][[<span class="st">'question_text'</span>, <span class="st">'answer'</span>, <span class="st">'fts5_result2_1'</span>, <span class="st">'fts5_result2_2'</span>, <span class="st">'fts5_result2_3'</span>]]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="176">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>10</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>question_text</th>
+      <td>What did Samuel mean by ""weight assignment""?</td>
+    </tr>
+    <tr>
+      <th>answer</th>
+      <td>“weight assignment” refers to the current values of the model parameters. Arthur Samuel further mentions an “ automatic means of testing the effectiveness of any current weight assignment ” and a “ mechanism for altering the weight assignment so as to maximize the performance ”. This refers to the evaluation and training of the model in order to obtain a set of parameter values that maximizes model performance.</td>
+    </tr>
+    <tr>
+      <th>fts5_result2_1</th>
+      <td>### What Is Machine Learning?\n\nLet us take these concepts one by one, in order to understand how they fit together in practice. First, we need to understand what Samuel means by a *weight assignment*.</td>
+    </tr>
+    <tr>
+      <th>fts5_result2_2</th>
+      <td>### What Is Machine Learning?\n\n```python\n#hide_input\n#caption A program using weight assignment\n#id weight_assignment\ngv('''model[shape=box3d width=1 height=0.7]\ninputs-&gt;model-&gt;results; weights-&gt;model''')\n```</td>
+    </tr>
+    <tr>
+      <th>fts5_result2_3</th>
+      <td>### What Is Machine Learning?\n\n- The idea of a "weight assignment" \n- The fact that every weight assignment has some "actual performance"\n- The requirement that there be an "automatic means" of testing that performance,  \n- The need for a "mechanism" (i.e., another automatic process) for improving the performance by changing the weight assignments</td>
+    </tr>
+  </tbody>
+</table><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<p><br></p>
+<p>Here’s another question where larger chunks resulted in the correct retrieval (whereas 3 smaller chunks did not):</p>
+<div class="cell" data-outputid="9749618e-9f3e-4a7a-e956-7f61f01bab97" data-execution_count="177">
+<div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>large_df.iloc[<span class="dv">17</span>][[<span class="st">'question_text'</span>, <span class="st">'answer'</span>, <span class="st">'large_chunk_result'</span>]]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="177">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>17</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>question_text</th>
+      <td>Do we always have to use 224×224-pixel images with the cat recognition model?</td>
+    </tr>
+    <tr>
+      <th>answer</th>
+      <td>No we do not. 224x224 is commonly used for historical reasons. You can increase the size and get better performance, but at the price of speed and memory consumption.</td>
+    </tr>
+    <tr>
+      <th>large_chunk_result</th>
+      <td>### How Our Image Recognizer Works\n\nFinally, we define the `Transform`s that we need. A `Transform` contains code that is applied automatically during training; fastai includes many predefined `Transform`s, and adding new ones is as simple as creating a Python function. There are two kinds: `item_tfms` are applied to each item (in this case, each item is resized to a 224-pixel square), while `batch_tfms` are applied to a *batch* of items at a time using the GPU, so they're particularly fast (we'll see many examples of these throughout this book).\n### How Our Image Recognizer Works\n\nWhy 224 pixels? This is the standard size for historical reasons (old pretrained models require this size exactly), but you can pass pretty much anything. If you increase the size, you'll often get a model with better results (since it will be able to focus on more details), but at the price of speed and memory consumption; the opposite is true if you decrease the size.\n### How Our Image Recognizer Works\n\n&gt; Note: Classification and Regression: _classification_ and _regression_ have very specific meanings in machine learning. These are the two main types of model that we will be investigating in this book. A classification model is one which attempts to predict a class, or category. That is, it's predicting from a number of discrete possibilities, such as "dog" or "cat." A regression model is one which attempts to predict one or more numeric quantities, such as a temperature or a location. Sometimes people use the word _regression_ to refer to a particular kind of model called a _linear regression model_; this is a bad practice, and we won't be using that terminology in this book!</td>
+    </tr>
+  </tbody>
+</table><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<div class="cell" data-outputid="1ed828d7-84df-458d-c07d-0b06535d1232" data-execution_count="179">
+<div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a>df.iloc[<span class="dv">17</span>][[<span class="st">'question_text'</span>, <span class="st">'answer'</span>, <span class="st">'fts5_result2_1'</span>, <span class="st">'fts5_result2_2'</span>, <span class="st">'fts5_result2_3'</span>]]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="179">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>17</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>question_text</th>
+      <td>Do we always have to use 224×224-pixel images with the cat recognition model?</td>
+    </tr>
+    <tr>
+      <th>answer</th>
+      <td>No we do not. 224x224 is commonly used for historical reasons. You can increase the size and get better performance, but at the price of speed and memory consumption.</td>
+    </tr>
+    <tr>
+      <th>fts5_result2_1</th>
+      <td>### How Our Image Recognizer Works\n\n```python\ndls = ImageDataLoaders.from_name_func(\n    path, get_image_files(path), valid_pct=0.2, seed=42,\n    label_func=is_cat, item_tfms=Resize(224))\n```</td>
+    </tr>
+    <tr>
+      <th>fts5_result2_2</th>
+      <td>### Running Your First Notebook\n\n```python\n#id first_training\n#caption Results from the first training\n# CLICK ME\nfrom fastai.vision.all import *\npath = untar_data(URLs.PETS)/'images'\n\ndef is_cat(x): return x[0].isupper()\ndls = ImageDataLoaders.from_name_func(\n    path, get_image_files(path), valid_pct=0.2, seed=42,\n    label_func=is_cat, item_tfms=Resize(224))\n\nlearn = vision_learner(dls, resnet34, metrics=error_rate)\nlearn.fine_tune(1)\n```</td>
+    </tr>
+    <tr>
+      <th>fts5_result2_3</th>
+      <td>### How Our Image Recognizer Works\n\nFinally, we define the `Transform`s that we need. A `Transform` contains code that is applied automatically during training; fastai includes many predefined `Transform`s, and adding new ones is as simple as creating a Python function. There are two kinds: `item_tfms` are applied to each item (in this case, each item is resized to a 224-pixel square), while `batch_tfms` are applied to a *batch* of items at a time using the GPU, so they're particularly fast (we'll see many examples of these throughout this book).</td>
+    </tr>
+  </tbody>
+</table><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<p><br></p>
+<p>Even after reviewing each of the question/answer/context triplets for three approaches I’m still not getting a strong sense of intuition of what works best. I’m hoping that after I have done this exercise for eight chapters, I’ll have built some of that intuition.</p>
+</section>
+<section id="including-more-large-chunks-during-retrieval" class="level2">
+<h2 class="anchored" data-anchor-id="including-more-large-chunks-during-retrieval">Including More Large Chunks During Retrieval</h2>
+<p>The final experiment I’ll run is retrieving the top 3 BM25 ranked large chunks for each question. Using 3 small chunks and using 1 large chunk both resulted in a retrieved context relevancy of 54%. However they answered a different set of 18 questions. Perhaps if I combine both approaches (use larger chunk size AND use the top 3 BM25-ranked results for evaluation) I’ll obtain a higher retrieved context relevancy.</p>
+<div class="cell" data-execution_count="180">
+<details>
+<summary>Show the for-loop code</summary>
+<div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> []</span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> keywords <span class="kw">in</span> df[<span class="st">'keywords'</span>]:</span>
+<span id="cb49-4"><a href="#cb49-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> keywords <span class="op">!=</span> <span class="st">'No answer'</span>:</span>
+<span id="cb49-5"><a href="#cb49-5" aria-hidden="true" tabindex="-1"></a>    words <span class="op">=</span> <span class="st">' OR '</span>.join([<span class="ss">f'"</span><span class="sc">{</span>word<span class="sc">.</span>strip(<span class="st">","</span>)<span class="sc">}</span><span class="ss">"'</span> <span class="cf">for</span> word <span class="kw">in</span> keywords.split()])</span>
+<span id="cb49-6"><a href="#cb49-6" aria-hidden="true" tabindex="-1"></a>    q <span class="op">=</span> <span class="ss">f"""</span></span>
+<span id="cb49-7"><a href="#cb49-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb49-8"><a href="#cb49-8" aria-hidden="true" tabindex="-1"></a><span class="ss">    SELECT *, rank</span></span>
+<span id="cb49-9"><a href="#cb49-9" aria-hidden="true" tabindex="-1"></a><span class="ss">      from fastbook_text_large</span></span>
+<span id="cb49-10"><a href="#cb49-10" aria-hidden="true" tabindex="-1"></a><span class="ss">    WHERE fastbook_text_large MATCH '</span><span class="sc">{</span>words<span class="sc">}</span><span class="ss">'</span></span>
+<span id="cb49-11"><a href="#cb49-11" aria-hidden="true" tabindex="-1"></a><span class="ss">    ORDER BY rank</span></span>
+<span id="cb49-12"><a href="#cb49-12" aria-hidden="true" tabindex="-1"></a><span class="ss">    LIMIT 3</span></span>
+<span id="cb49-13"><a href="#cb49-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb49-14"><a href="#cb49-14" aria-hidden="true" tabindex="-1"></a><span class="ss">    """</span></span>
+<span id="cb49-15"><a href="#cb49-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb49-16"><a href="#cb49-16" aria-hidden="true" tabindex="-1"></a>    res <span class="op">=</span> cur.execute(q)</span>
+<span id="cb49-17"><a href="#cb49-17" aria-hidden="true" tabindex="-1"></a>    results.append(res.fetchall())</span>
+<span id="cb49-18"><a href="#cb49-18" aria-hidden="true" tabindex="-1"></a>  <span class="cf">else</span>:</span>
+<span id="cb49-19"><a href="#cb49-19" aria-hidden="true" tabindex="-1"></a>    <span class="co"># if keywords == "No Answer"</span></span>
+<span id="cb49-20"><a href="#cb49-20" aria-hidden="true" tabindex="-1"></a>    res <span class="op">=</span> (<span class="st">"No answer"</span>)</span>
+<span id="cb49-21"><a href="#cb49-21" aria-hidden="true" tabindex="-1"></a>    results.append(res)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution_count="182">
+<div class="sourceCode cell-code" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a>top_3_large <span class="op">=</span> large_df[[<span class="st">'chapter'</span>, <span class="st">'question_number'</span>, <span class="st">'question_text'</span>, <span class="st">'answer'</span>]].copy()</span>
+<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb50-3"><a href="#cb50-3" aria-hidden="true" tabindex="-1"></a>top_3_large[<span class="st">'result'</span>] <span class="op">=</span> results</span>
+<span id="cb50-4"><a href="#cb50-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb50-5"><a href="#cb50-5" aria-hidden="true" tabindex="-1"></a>top_3 <span class="op">=</span> top_3_large[<span class="st">'result'</span>].<span class="bu">apply</span>(pd.Series)</span>
+<span id="cb50-6"><a href="#cb50-6" aria-hidden="true" tabindex="-1"></a>top_3.columns <span class="op">=</span> [<span class="ss">f'result_</span><span class="sc">{</span>i<span class="op">+</span><span class="dv">1</span><span class="sc">}</span><span class="ss">'</span> <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(top_3.shape[<span class="dv">1</span>])]</span>
+<span id="cb50-7"><a href="#cb50-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb50-8"><a href="#cb50-8" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> col <span class="kw">in</span> [<span class="st">'result_1'</span>, <span class="st">'result_2'</span>, <span class="st">'result_3'</span>]:</span>
+<span id="cb50-9"><a href="#cb50-9" aria-hidden="true" tabindex="-1"></a>    top_3[col] <span class="op">=</span> top_3[col].<span class="bu">apply</span>(<span class="kw">lambda</span> x: x[<span class="dv">0</span>] <span class="cf">if</span> <span class="bu">isinstance</span>(x, <span class="bu">tuple</span>) <span class="cf">else</span> x)</span>
+<span id="cb50-10"><a href="#cb50-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb50-11"><a href="#cb50-11" aria-hidden="true" tabindex="-1"></a>top_3_large <span class="op">=</span> pd.concat([top_3_large, top_3], axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb50-12"><a href="#cb50-12" aria-hidden="true" tabindex="-1"></a>top_3_large.to_csv(<span class="st">'top-3-large-retrieval-results.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The combined approach (more, larger chunks retrieved) resulted in a retrieved context relevancy of <strong>72%</strong>!! This is an increase of 18% from the previous two approaches (retrieving 3 small chunks, retrieving 1 large chunk). However, I’m concerned that the large amount of irrelevant text also included may distract the model from answering the question correctly and concisely—something I’ll have to rigorously experiment with once I add an LLM to the pipeline.</p>
+<p>Here are is an example question for which the combined approach provided relevant context (whereas the previous two methods did not):</p>
+<p>For the question:</p>
+<blockquote class="blockquote">
+<p>Based on the book of the same name, what are the requirements for parallel distributed processing (PDP)?</p>
+</blockquote>
+<p>Using the top 3 highest BM25-ranked small chunks did not provide enough context to answer the question:</p>
+<div class="cell" data-execution_count="191">
+<div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a>top_3_small <span class="op">=</span> pd.read_csv(<span class="st">"/content/top-3-retrieval-results.csv"</span>)</span>
+<span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>top_1_large <span class="op">=</span> pd.read_csv(<span class="st">"/content/large_chunk_results.csv"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="fc60586e-557e-4d97-c8c4-e43e3f6ec685" data-execution_count="195">
+<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="co"># not relevant</span></span>
+<span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a>top_3_small.iloc[<span class="dv">3</span>][[<span class="st">'question_text'</span>, <span class="st">'fts5_result2_1'</span>, <span class="st">'fts5_result2_2'</span>, <span class="st">'fts5_result2_3'</span>]]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="195">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>3</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>question_text</th>
+      <td>Based on the book of the same name, what are the requirements for parallel distributed processing (PDP)?</td>
+    </tr>
+    <tr>
+      <th>fts5_result2_1</th>
+      <td>## Neural Networks: A Brief History\n\nIn fact, the approach laid out in PDP is very similar to the approach used in today's neural networks. The book defined parallel distributed processing as requiring:</td>
+    </tr>
+    <tr>
+      <th>fts5_result2_2</th>
+      <td>## Neural Networks: A Brief History\n\nPerhaps the most pivotal work in neural networks in the last 50 years was the multi-volume *Parallel Distributed Processing* (PDP) by David Rumelhart, James McClellan, and the PDP Research Group, released in 1986 by MIT Press. Chapter 1 lays out a similar hope to that shown by Rosenblatt:</td>
+    </tr>
+    <tr>
+      <th>fts5_result2_3</th>
+      <td>## Neural Networks: A Brief History\n\nWe will see in this book that modern neural networks handle each of these requirements.</td>
+    </tr>
+  </tbody>
+</table><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<p><br></p>
+<p>Neither did using the top-1 larger chunk:</p>
+<div class="cell" data-outputid="f25a7c16-f09f-4f5f-a320-7e4348df576e" data-execution_count="198">
+<div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a><span class="co"># not relevant</span></span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>top_1_large.iloc[<span class="dv">3</span>][[<span class="st">'question_text'</span>, <span class="st">'large_chunk_result'</span>]]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="198">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>3</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>question_text</th>
+      <td>Based on the book of the same name, what are the requirements for parallel distributed processing (PDP)?</td>
+    </tr>
+    <tr>
+      <th>large_chunk_result</th>
+      <td>## Neural Networks: A Brief History\n\n&gt; : People are smarter than today's computers because the brain employs a basic computational architecture that is more suited to deal with a central aspect of the natural information processing tasks that people are so good at. ...We will introduce a computational framework for modeling cognitive processes that seems… closer than other frameworks to the style of computation as it might be done by the brain.\n## Neural Networks: A Brief History\n\nThe premise that PDP is using here is that traditional computer programs work very differently to brains, and that might be why computer programs had been (at that point) so bad at doing things that brains find easy (such as recognizing objects in pictures). The authors claimed that the PDP approach was "closer \nthan other frameworks" to how the brain works, and therefore it might be better able to handle these kinds of tasks.\n## Neural Networks: A Brief History\n\nIn fact, the approach laid out in PDP is very similar to the approach used in today's neural networks. The book defined parallel distributed processing as requiring:</td>
+    </tr>
+  </tbody>
+</table><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<p><br></p>
+<p>However, using the top-3 larger chunks included the necessary context across the first and second-highest ranked chunks:</p>
+<div class="cell" data-outputid="641fd162-5bb0-41bb-c22e-11274d854462" data-execution_count="197">
+<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a>top_3_large.iloc[<span class="dv">3</span>][[<span class="st">'question_text'</span>, <span class="st">'result_1'</span>, <span class="st">'result_2'</span>]]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="197">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>3</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>question_text</th>
+      <td>Based on the book of the same name, what are the requirements for parallel distributed processing (PDP)?</td>
+    </tr>
+    <tr>
+      <th>result_1</th>
+      <td>## Neural Networks: A Brief History\n\n&gt; : People are smarter than today's computers because the brain employs a basic computational architecture that is more suited to deal with a central aspect of the natural information processing tasks that people are so good at. ...We will introduce a computational framework for modeling cognitive processes that seems… closer than other frameworks to the style of computation as it might be done by the brain.\n## Neural Networks: A Brief History\n\nThe premise that PDP is using here is that traditional computer programs work very differently to brains, and that might be why computer programs had been (at that point) so bad at doing things that brains find easy (such as recognizing objects in pictures). The authors claimed that the PDP approach was "closer \nthan other frameworks" to how the brain works, and therefore it might be better able to handle these kinds of tasks.\n## Neural Networks: A Brief History\n\nIn fact, the approach laid out in PDP is very similar to the approach used in today's neural networks. The book defined parallel distributed processing as requiring:</td>
+    </tr>
+    <tr>
+      <th>result_2</th>
+      <td>## Neural Networks: A Brief History\n\nRosenblatt further developed the artificial neuron to give it the ability to learn. Even more importantly, he worked on building the first device that actually used these principles, the Mark I Perceptron. In "The Design of an Intelligent Automaton" Rosenblatt wrote about this work: "We are now about to witness the birth of such a machine–-a machine capable of perceiving, recognizing and identifying its surroundings without any human training or control." The perceptron was built, and was able to successfully recognize simple shapes.\n## Neural Networks: A Brief History\n\nAn MIT professor named Marvin Minsky (who was a grade behind Rosenblatt at the same high school!), along with Seymour Papert, wrote a book called _Perceptrons_ (MIT Press), about Rosenblatt's invention. They showed that a single layer of these devices was unable to learn some simple but critical mathematical functions (such as XOR). In the same book, they also showed that using multiple layers of the devices would allow these limitations to be addressed. Unfortunately, only the first of these insights was widely recognized. As a result, the global academic community nearly entirely gave up on neural networks for the next two decades.\n## Neural Networks: A Brief History\n\nPerhaps the most pivotal work in neural networks in the last 50 years was the multi-volume *Parallel Distributed Processing* (PDP) by David Rumelhart, James McClellan, and the PDP Research Group, released in 1986 by MIT Press. Chapter 1 lays out a similar hope to that shown by Rosenblatt:</td>
+    </tr>
+  </tbody>
+</table><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<p><br></p>
+<p>Here is a summary of the results of this notebook’s experiments:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Top BM25 Ranked Chunks Retrieved</th>
+<th style="text-align: center;">Chunk Size</th>
+<th style="text-align: center;">Retrieved Context Relevancy*</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">top-3</td>
+<td style="text-align: center;">Large</td>
+<td style="text-align: center;">72%</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">top-1</td>
+<td style="text-align: center;">Large</td>
+<td style="text-align: center;">54%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">top-3</td>
+<td style="text-align: center;">Small</td>
+<td style="text-align: center;">54%</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">top-1</td>
+<td style="text-align: center;">Small</td>
+<td style="text-align: center;">40%</td>
+</tr>
+</tbody>
+</table>
+<p>*<em>Retrieved Context Relevancy</em>:The percentage of questions for which the retrieved context was relevant and sufficient for me to answer the question.</p>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>The experiments in this notebook are promising: using BM25 to retrieve the context necessary to answer Chapter 1 Questionnaire questions works 72% of the time. Of course, I still had to interpret the retrieved chunks to extract the answer, but that’s something that can be easily done with an LLM down the road. In my next notebook, I’ll use cosine similarity, between the embeddings of the question text and the embeddings of the chunks, and see how that compares to BM25. In the notebook after that, I’ll combine both and see how a hybrid approach performs.</p>
+<p>Something else I will also experiment with is the list of keywords that I came up with, as they are critical to the performance of full text search.</p>
+<p>Once I’ve established a baseline that I’m confident in, I’ll start introducing an LLM into the pipeline—first to generate keywords from the question for use in full text key search, and then to extract the answer from the retrieved context.</p>
+<p>I hope you enjoyed this blog post! Follow me on Twitter <a href="https://twitter.com/vishal_learner"><span class="citation" data-cites="vishal_learner">@vishal_learner</span></a>.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>
