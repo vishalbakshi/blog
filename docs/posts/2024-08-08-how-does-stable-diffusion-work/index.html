@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2024-08-08">
+<meta name="description" content="In this blog post I review the material taught in Lesson 9 of the fastai course (Part 2: Deep Learning Foundations to Stable Diffusion).">
+
+<title>vishal bakshi - How Does Stable Diffusion Work?</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">vishal bakshi</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#the-magic-api" id="toc-the-magic-api" class="nav-link" data-scroll-target="#the-magic-api">The Magic API</a></li>
+  <li><a href="#varying-the-inputs-fo-f" id="toc-varying-the-inputs-fo-f" class="nav-link" data-scroll-target="#varying-the-inputs-fo-f">Varying the Inputs fo <span class="math inline">\(f\)</span></a></li>
+  <li><a href="#the-gradient-of-the-loss-with-respect-to-the-pixels" id="toc-the-gradient-of-the-loss-with-respect-to-the-pixels" class="nav-link" data-scroll-target="#the-gradient-of-the-loss-with-respect-to-the-pixels">The Gradient of the Loss With Respect to the Pixels</a></li>
+  <li><a href="#creating-the-magic-function-f-the-u-net" id="toc-creating-the-magic-function-f-the-u-net" class="nav-link" data-scroll-target="#creating-the-magic-function-f-the-u-net">Creating the Magic Function <span class="math inline">\(f\)</span> (the U-Net)</a></li>
+  <li><a href="#when-you-dont-have-a-room-full-of-tpus-the-autoencoder" id="toc-when-you-dont-have-a-room-full-of-tpus-the-autoencoder" class="nav-link" data-scroll-target="#when-you-dont-have-a-room-full-of-tpus-the-autoencoder">When You Don’t Have a Room Full of TPUs: The Autoencoder</a></li>
+  <li><a href="#encoding-a-cute-teddy-clip-contrastive-language-image-pre-training" id="toc-encoding-a-cute-teddy-clip-contrastive-language-image-pre-training" class="nav-link" data-scroll-target="#encoding-a-cute-teddy-clip-contrastive-language-image-pre-training">Encoding “A cute teddy”: CLIP (Contrastive Language-Image Pre-Training)</a></li>
+  <li><a href="#weird-and-confusing-time-steps-the-inference-process" id="toc-weird-and-confusing-time-steps-the-inference-process" class="nav-link" data-scroll-target="#weird-and-confusing-time-steps-the-inference-process">Weird and Confusing “Time Steps”: The Inference Process</a></li>
+  <li><a href="#final-thoughts" id="toc-final-thoughts" class="nav-link" data-scroll-target="#final-thoughts">Final Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">How Does Stable Diffusion Work?</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">deep learning</div>
+    <div class="quarto-category">machine learning</div>
+    <div class="quarto-category">fastai</div>
+    <div class="quarto-category">stable diffusion</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    In this blog post I review the material taught in Lesson 9 of the fastai course (Part 2: Deep Learning Foundations to Stable Diffusion).
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">August 8, 2024</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In this blog post, I’ll review the concepts introduced in the second half of <a href="https://www.youtube.com/watch?v=_7rMfsA24Ls">the Lesson 9 video</a> from the fastai course (Part 2: Deep Learning Foundations to Stable Diffusion). Note that I will not be covering any of the math of Stable Diffusion in this blog post. As Jeremy says in the video:</p>
+<blockquote class="blockquote">
+<p>the way Stable Diffusion is normally explained is focused very much on a particular mathematical derivation. We’ve been developing a totally new way of thinking about Stable Diffusion and I’m going to be teaching you that. It’s mathematically equivalent [to other approaches] but it’s actually conceptually much simpler [and it can take you in really innovative directions].</p>
+</blockquote>
+<p>I’ll start with the main takeaway from this lesson, which is this table that shows the three types of models involved in stable diffusion, the inputs they take and the outputs they produce:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Model</th>
+<th style="text-align: center;">Inputs</th>
+<th style="text-align: center;">Outputs</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">U-Net</td>
+<td style="text-align: center;">Somewhat Noisy Latents</td>
+<td style="text-align: center;">Noise</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">VAE’s Decoder</td>
+<td style="text-align: center;">Small Latents Tensor</td>
+<td style="text-align: center;">Large Image</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">CLIP Text Encoder</td>
+<td style="text-align: center;">Text</td>
+<td style="text-align: center;">Embedding</td>
+</tr>
+</tbody>
+</table>
+<p><br></p>
+<p>The noise predicted by the U-Net (which receives as input somewhat noisy latents, text embeddings generated by the CLIP Text Encoder and a time step) is (iteratively) scaled and subtracted from the somewhat noisy latents to create denoised latents which are input to the VAE’s Decoder, which reconstructs from them larger images.</p>
+</section>
+<section id="the-magic-api" class="level2">
+<h2 class="anchored" data-anchor-id="the-magic-api">The Magic API</h2>
+<p>We start by considering some blackbox web API (some “magic API”) that takes as inputs images of handwritten digits and outputs the probability that the inputs are handwritten digits. In other words, this magic API answers the question: what’s the probability that this is an image of a handwritten digit?</p>
+<p>Let’s consider this API to be some function <span class="math inline">\(f\)</span>.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="img"><img src="1.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">img</figcaption><p></p>
+</figure>
+</div>
+</section>
+<section id="varying-the-inputs-fo-f" class="level2">
+<h2 class="anchored" data-anchor-id="varying-the-inputs-fo-f">Varying the Inputs fo <span class="math inline">\(f\)</span></h2>
+<p>In the case of MNIST we have 28x28 = 784 pixels (or variables) in our input. Changing the value of each of these pixels will change the probability of it being a handwritten digit.</p>
+<p>For example, digits usually don’t have dark pixels near the bottom corners. If we lighten such a pixel (highlighted in red below) and pass it through the function <span class="math inline">\(f\)</span>, the probability of it being a handwritten digit will slightly improve (e.g.&nbsp;from 0.7 to 0.707).</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2" title="img"><img src="2.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">img</figcaption><p></p>
+</figure>
+</div>
+<p>We can do this for each pixel: determine whether making it lighter make it more like a handwritten digit.</p>
+</section>
+<section id="the-gradient-of-the-loss-with-respect-to-the-pixels" class="level2">
+<h2 class="anchored" data-anchor-id="the-gradient-of-the-loss-with-respect-to-the-pixels">The Gradient of the Loss With Respect to the Pixels</h2>
+<p>There exists a loss function that is a function of the weights of a neural net (in our case, our “magic API” or function <span class="math inline">\(f\)</span>) and the pixel values <span class="math inline">\(X\)</span>:</p>
+<p><span class="math display">\[\text{loss} = g(w,X)\]</span></p>
+<p>This loss function could be the MSE (Mean Squared Error) between our targets and predictions but for now just assume it’s some function <span class="math inline">\(g\)</span>.</p>
+<p>What happens to the loss as we change <span class="math inline">\(X\)</span>? Our <span class="math inline">\(X\)</span> consists of 28x28=784 pixels, and our loss function can change with respect to each one of those pixels (also known as <em>partial derivatives</em>):</p>
+<p><br></p>
+<p><span class="math display">\[\frac{\partial{\text{loss}}}{\partial{X_{(1,1)}}}, \frac{\partial{\text{loss}}}{\partial{X_{(1,2)}}}, \frac{\partial{\text{loss}}}{\partial{X_{(1,3)}}}, ..., \frac{\partial{\text{loss}}}{\partial{X_{(28,28)}}}\]</span></p>
+<p><br></p>
+<p>We can rewrite this compactly as:</p>
+<p><span class="math display">\[\nabla_X \text{loss}\]</span></p>
+<p>Which we read as: <em>the gradient of the loss with respect to <span class="math inline">\(X\)</span></em>.</p>
+<p>We can change the pixel values according to this gradient to get our image looking closer to a handwritten digit. In practice, we subtract the gradient (multiplied by some constant <span class="math inline">\(c\)</span>) from the image pixel data, and do this iteratively (as illustrated below), calculating a new gradient each time:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3" title="img"><img src="3.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">img</figcaption><p></p>
+</figure>
+</div>
+<p>If we have access to our magic function <span class="math inline">\(f\)</span>, we can generate images that look like handwritten digits. And assuming that magic API is using python, we don’t even need access to <span class="math inline">\(f\)</span>, we just need access to <code>f.backward</code> and <code>X.grad</code>.</p>
+</section>
+<section id="creating-the-magic-function-f-the-u-net" class="level2">
+<h2 class="anchored" data-anchor-id="creating-the-magic-function-f-the-u-net">Creating the Magic Function <span class="math inline">\(f\)</span> (the U-Net)</h2>
+<blockquote class="blockquote">
+<p>Generally, in this course, when there’s some magic blackbox that we want to exist and it doesn’t exist, we create a Neural Net and we train it. We want to train a Neural Net that tells us which pixels to change to a make an image look more like a handwritten digit.</p>
+</blockquote>
+<p>The training data (noisy images of digits) and targets (the amount of noise added) for this Neural Net I’ve illustrated as the following:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="4.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4" title="img"><img src="4.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">img</figcaption><p></p>
+</figure>
+</div>
+<p>The loss function is the MSE between the predicted noise <span class="math inline">\(\hat{n}\)</span> and actual noise <span class="math inline">\({n}\)</span> (<span class="math inline">\(N\)</span> is the number of images) which is used then to update the weights of the neural net.</p>
+<p>How much do we have the change an image (noisy digit) by to make it more digit-like? We have to subtract the noise!</p>
+<p>We end up with a neural net that can take as an input pure noise and predict the amount of noise that needs to be removed so that what is left behind looks the most like a handwritten digit. To illustrate:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="5.png" class="lightbox" data-gallery="quarto-lightbox-gallery-5" title="img"><img src="5.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">img</figcaption><p></p>
+</figure>
+</div>
+<p>This process of predicting and subtracting the noise (multiplied by a constant) that needs to be removed occurs multiple times, each time getting closer to leaving behind the pixels for a digit.</p>
+<p>The neural net that we use for this is the <strong>U-Net</strong>.</p>
+</section>
+<section id="when-you-dont-have-a-room-full-of-tpus-the-autoencoder" class="level2">
+<h2 class="anchored" data-anchor-id="when-you-dont-have-a-room-full-of-tpus-the-autoencoder">When You Don’t Have a Room Full of TPUs: The Autoencoder</h2>
+<p>In practice, we want to generate more than just 28x28=784 pixels of handwritten digits. We want to generate 512x512x3=786432 pixels of full color, high resolution images. Training a model on millions of these images will take a lot of time and compute. How do we do this more efficiently?</p>
+<p>We already know that lossy compression can take place with images, like JPEGs, where the size of the image file (in bytes) is much smaller than the bytes of actual pixels (height pixels x width pixels x number of channels).</p>
+<p>We can compress large images into small <strong>latents</strong> using a neural network (with convolutions and ResNet blocks), and then reconstruct the images from these small latents (using inverse convolutions):</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="7.png" class="lightbox" data-gallery="quarto-lightbox-gallery-6" title="img"><img src="7.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">img</figcaption><p></p>
+</figure>
+</div>
+<p>This neural net compresses 786,432 pixels into 16,384 pixels, a 48x compression!</p>
+<p>During training, we input 512x512x3 images and the neural net will initially output 512x512x3 random noise (as the weights are randomly instantiated). The loss function is the MSE between the input images and the output images. As the loss decreases, the output images look closer to the inputs. This model, something that gives back what you give it, is called an <strong>autoencoder</strong>.</p>
+<p>The beauty of this model is when you split it in “half” into an <strong>encoder</strong> (green) and a <strong>decoder</strong> (red):</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="8.png" class="lightbox" data-gallery="quarto-lightbox-gallery-7" title="img"><img src="8.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">img</figcaption><p></p>
+</figure>
+</div>
+<p>We can feed full-size images to the <strong>encoder</strong> and it will output <strong>latents</strong> that are used as inputs to the U-Net (for training and inference).</p>
+<p>The final denoised latents (from U-Net) become the inputs to the <strong>decoder</strong> which outputs full-size images.</p>
+<p>In this way we can train the U-Net on 48x less data because we are able to recover most of the information with our trained autoencoder’s <strong>decoder</strong>!</p>
+<p>The autoencoder that we will use is called a <strong>VAE</strong> (Variational Autoencoder).</p>
+<p>The use of latents is entirely optional:</p>
+<blockquote class="blockquote">
+<p>generally speaking, we would rather not use more compute than necessary, so, unless you’re trying to sell the world a room full of TPUs, you would probably rather everybody was doing stuff in the thing that’s 48 times smaller. So the VAE is optional but it saves us a whole lot of time and a whole lot of money. So that’s good.</p>
+</blockquote>
+</section>
+<section id="encoding-a-cute-teddy-clip-contrastive-language-image-pre-training" class="level2">
+<h2 class="anchored" data-anchor-id="encoding-a-cute-teddy-clip-contrastive-language-image-pre-training">Encoding “A cute teddy”: CLIP (Contrastive Language-Image Pre-Training)</h2>
+<p>How could we modify our pipeline so that we could tell the U-Net that we wanted it to give us the noise to remove and leave behind not just any digit, but a particular digit, like 3?</p>
+<p>We want to pass into the model (as input) “3” as a one-hot encoded vector so it predicts the noise we need to remove (to leave behind a “3”). There are 10 elements in this vector representing each possible digit in the MNIST dataset, 0-9:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="9.png" class="lightbox" data-gallery="quarto-lightbox-gallery-8" title="img"><img src="9.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">img</figcaption><p></p>
+</figure>
+</div>
+<p>During training, in addition to passing in noisy digits, we pass in a one-hot encoded representation of that digit. The model thus learns what noise needs to be removed to leave a particular digit behind:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="10.png" class="lightbox" data-gallery="quarto-lightbox-gallery-9" title="img"><img src="10.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">img</figcaption><p></p>
+</figure>
+</div>
+<p>That’s a straightforward way to give it <strong>guidance</strong>. When the guidance gets more complex than single digits, one-hot encoding no longer works:</p>
+<blockquote class="blockquote">
+<p>we can’t create every possible sentence that’s been uttered in the whole world and then create a one-hot encoded version of every sentence in the world</p>
+</blockquote>
+<p>The solution? <strong>Embeddings</strong>!!</p>
+<p>We can train two neural nets: one that takes in as inputs texts and outputs embeddings (vectors w/ numbers) and one that takes in as inputs images and also outputs embeddings.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="11.png" class="lightbox" data-gallery="quarto-lightbox-gallery-10" title="img"><img src="11.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">img</figcaption><p></p>
+</figure>
+</div>
+<p>For each pair of text and image, we want the model to output text embeddings that are similar to the corresponding image’s embeddings:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="12.png" class="lightbox" data-gallery="quarto-lightbox-gallery-11" title="img"><img src="12.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">img</figcaption><p></p>
+</figure>
+</div>
+<p>To achieve this, we use something called <em>contrastive loss</em> (the “CL” in “CLIP”). Optimizing this loss means increasing the dot product between related image/text pairs (e.g.&nbsp;“a graceful swan” and the image of the swan) and decreasing the dot product between unrelated image/text pairs (e.g.&nbsp;“a graceful swan” and the fast.ai logo).</p>
+<p>The result is a model where similar texts:</p>
+<ul>
+<li>“a graceful swan”</li>
+<li>“a beautiful swan”</li>
+<li>“such a lovely swan”</li>
+</ul>
+<p>will produce similar embeddings as they correspond to similar images.</p>
+<p>These two models put text and images <em>into the same space</em>; they are a <em>multimodal</em> set of models.</p>
+<p>We can now embed “a cute teddy” and pass it to a U-Net (that is trained on input images and corresponding text embeddings) and it will return the noise that needs to be removed from the somewhat noisy latent to leave behind something that looks like a cute teddy.</p>
+</section>
+<section id="weird-and-confusing-time-steps-the-inference-process" class="level2">
+<h2 class="anchored" data-anchor-id="weird-and-confusing-time-steps-the-inference-process">Weird and Confusing “Time Steps”: The Inference Process</h2>
+<p>When we’re training the U-Net, we pick a random amount of noise to add to each input image (or latent). One way to pick it is to select a certain “time step” (an overhang from the mathematical formulation of diffusion) for which there is a corresponding amount of noise. A “noising schedule” will look something like this:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="13.png" class="lightbox" data-gallery="quarto-lightbox-gallery-12" title="img"><img src="13.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">img</figcaption><p></p>
+</figure>
+</div>
+<p>You may also see the standard deviation of the noise being used referred to as the Greek letter beta (<span class="math inline">\(\beta\)</span>).</p>
+<p>At inference time (generating a picture from pure noise) the model will create some hideous and random thing:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="14.png" class="lightbox" data-gallery="quarto-lightbox-gallery-13" title="img"><img src="14.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">img</figcaption><p></p>
+</figure>
+</div>
+<p>We multiply the predicted noise by a constant (a la learning rate, but for updating pixels, not weights) and subtract it from the pixels. We have to take these incremental steps toward fully denoising the image because our model didn’t train on the hideous image above, so it doesn’t know how to go in one step (at the time of this video) from hideous-random-thing to a high resolution image of something plausible.</p>
+<p>The <strong>diffusion sampler</strong> is used to decide how much noise to add during training and how much noise to subtract during inference.</p>
+<p>If you squint—diffusion samplers look like optimizers. We have tricks we can use (like momentum, or adaptive learning rate) for optimizers and fastai early research at the time showed that we can use similar ideas for diffusion.</p>
+<p>U-Nets traditionally also take as input the time step t. If a model is trained knowing how much noise is used, the better it will be at removing noise.</p>
+<p>Jeremy thinks this premise is incorrect, because neural nets can very easily predict how noisy something is.</p>
+<p>If you step passing the U-Net the time step t:</p>
+<blockquote class="blockquote">
+<p>things stop looking like differential equations and they start looking more like optimizers. Early results suggest that when we re-think the whole thing as being about learning rates and optimizers, maybe it actually works better.</p>
+</blockquote>
+<p>If we stop centering the concepts that are related to the mathematical formulation of diffusion, such as using the mathematically easy Mean Squared Error as loss, we can use something more sophisticated like <em>perceptual loss</em> to evaluate if our outputs resemble our targets (e.g.&nbsp;handwritten digits).</p>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>I’ll finish this blog post by reiterating what Jeremy emphasized is the main takeaway from this lesson: understanding what the inputs and outputs are of the different models used for diffusion:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Model</th>
+<th style="text-align: center;">Inputs</th>
+<th style="text-align: center;">Outputs</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">U-Net</td>
+<td style="text-align: center;">Somewhat Noisy Latents</td>
+<td style="text-align: center;">Noise</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">VAE’s Decoder</td>
+<td style="text-align: center;">Small Latents Tensor</td>
+<td style="text-align: center;">Large Image</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">CLIP Text Encoder</td>
+<td style="text-align: center;">Text</td>
+<td style="text-align: center;">Embedding</td>
+</tr>
+</tbody>
+</table>
+<p><br></p>
+<p>I hope you enjoyed this blog post! Follow me on Twitter <a href="https://twitter.com/vishal_learner"><span class="citation" data-cites="vishal_learner">@vishal_learner</span></a>.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","loop":true,"selector":".lightbox","descPosition":"bottom","openEffect":"zoom"});</script>
+
+
+
+</body></html>
