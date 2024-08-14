@@ -1,0 +1,1654 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2024-08-13">
+<meta name="description" content="In this blog post I fine-tune the TinyStories-33M model on the financial_phrasebank dataset and achieve 79%+ accuracy on the validation and test set.">
+
+<title>vishal bakshi - Fine-tuning TinyStories-33M on the financial_phrasebank Dataset</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">vishal bakshi</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#initial-fine-tune" id="toc-initial-fine-tune" class="nav-link" data-scroll-target="#initial-fine-tune">Initial Fine-Tune</a>
+  <ul class="collapse">
+  <li><a href="#tokenize-the-dataset" id="toc-tokenize-the-dataset" class="nav-link" data-scroll-target="#tokenize-the-dataset">Tokenize the Dataset</a></li>
+  <li><a href="#train-valid-test-split" id="toc-train-valid-test-split" class="nav-link" data-scroll-target="#train-valid-test-split">Train-Valid-Test Split</a></li>
+  <li><a href="#initial-training-run" id="toc-initial-training-run" class="nav-link" data-scroll-target="#initial-training-run">Initial Training Run</a></li>
+  <li><a href="#evaluating-model-performance-on-the-test-set" id="toc-evaluating-model-performance-on-the-test-set" class="nav-link" data-scroll-target="#evaluating-model-performance-on-the-test-set">Evaluating Model Performance on the Test Set</a></li>
+  </ul></li>
+  <li><a href="#learning-rate-sweep" id="toc-learning-rate-sweep" class="nav-link" data-scroll-target="#learning-rate-sweep">Learning Rate Sweep</a>
+  <ul class="collapse">
+  <li><a href="#learning-rate-with-highest-validation-accuracy" id="toc-learning-rate-with-highest-validation-accuracy" class="nav-link" data-scroll-target="#learning-rate-with-highest-validation-accuracy">Learning Rate with Highest Validation Accuracy</a></li>
+  <li><a href="#learning-rate-with-highest-test-set-accuracy" id="toc-learning-rate-with-highest-test-set-accuracy" class="nav-link" data-scroll-target="#learning-rate-with-highest-test-set-accuracy">Learning Rate with Highest Test Set Accuracy</a></li>
+  </ul></li>
+  <li><a href="#training-with-the-best-learning-rate-10-times" id="toc-training-with-the-best-learning-rate-10-times" class="nav-link" data-scroll-target="#training-with-the-best-learning-rate-10-times">Training with the Best Learning Rate 10 Times</a></li>
+  <li><a href="#final-thoughts" id="toc-final-thoughts" class="nav-link" data-scroll-target="#final-thoughts">Final Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Fine-tuning TinyStories-33M on the <code>financial_phrasebank</code> Dataset</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">python</div>
+    <div class="quarto-category">LLM</div>
+    <div class="quarto-category">TinySentiment</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    In this blog post I fine-tune the TinyStories-33M model on the <code>financial_phrasebank</code> dataset and achieve 79%+ accuracy on the validation and test set.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">August 13, 2024</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In this notebook, I’ll fine-tune different TinyStories base models on the <code>financial_phrasebank</code> dataset to perform sentiment classification on financial news text. In a <a href="https://vishalbakshi.github.io/blog/posts/2024-08-05-tinyinstruct-sentiment-classification/">previous blog post</a> I showed that TinyStories-Instruct-33M does not follow even simple instructions (e.g., <em>“What is the color an apple?”</em>) that deviate from its training data, so that motivated me to finetune these models.</p>
+<p>The <a href="https://arxiv.org/abs/2305.07759">TinyStories paper</a> doesn’t include any hyperparameters (of particular interest are the learning rate and batch size) used to train their models so I’ll experiment with different values.</p>
+<p>::: {.cell _kg_hide-input=‘true’ _kg_hide-output=‘true’ execution=‘{“iopub.execute_input”:“2024-08-14T01:38:21.709113Z”,“iopub.status.busy”:“2024-08-14T01:38:21.708520Z”,“iopub.status.idle”:“2024-08-14T01:38:29.432773Z”,“shell.execute_reply”:“2024-08-14T01:38:29.431843Z”,“shell.execute_reply.started”:“2024-08-14T01:38:21.709080Z”}’ trusted=‘true’ execution_count=1}</p>
+<details>
+<summary>Show imports and setup</summary>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">#!pip install accelerate evaluate datasets -Uqq</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> datasets <span class="im">import</span> load_dataset</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers <span class="im">import</span> AutoModelForSequenceClassification, AutoTokenizer, TrainingArguments, Trainer, TrainerCallback</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.metrics <span class="im">import</span> confusion_matrix, ConfusionMatrixDisplay</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch.nn.functional <span class="im">as</span> F</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> gc</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> report_gpu():</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(torch.cuda.list_gpu_processes())</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    gc.collect()</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    torch.cuda.empty_cache()</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>model_nm <span class="op">=</span> <span class="st">"roneneldan/TinyStories-33M"</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a><span class="co">#model_nm = "roneneldan/TinyStories-1M"</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a><span class="co">#model_nm = "roneneldan/TinyStories-3M"</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="co">#model_nm = "roneneldan/TinyStories-8M"</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>tokz <span class="op">=</span> AutoTokenizer.from_pretrained(model_nm)</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> tok_func(x): <span class="cf">return</span> tokz(x[<span class="st">"input"</span>], padding<span class="op">=</span><span class="va">True</span>, truncation<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stderr">
+<pre><code>2024-08-14 01:38:25.564071: E external/local_xla/xla/stream_executor/cuda/cuda_dnn.cc:9261] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+2024-08-14 01:38:25.564133: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:607] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+2024-08-14 01:38:25.565856: E external/local_xla/xla/stream_executor/cuda/cuda_blas.cc:1515] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered</code></pre>
+</div>
+<p>:::</p>
+<p>::: {.cell _kg_hide-input=‘true’ _kg_hide-output=‘true’ execution=‘{“iopub.execute_input”:“2024-08-14T01:38:29.435012Z”,“iopub.status.busy”:“2024-08-14T01:38:29.434443Z”,“iopub.status.idle”:“2024-08-14T01:38:30.986381Z”,“shell.execute_reply”:“2024-08-14T01:38:30.985392Z”,“shell.execute_reply.started”:“2024-08-14T01:38:29.434985Z”}’ trusted=‘true’ execution_count=2}</p>
+<details>
+<summary>Show load_dataset</summary>
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>dataset <span class="op">=</span> load_dataset(</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"financial_phrasebank"</span>, <span class="st">"sentences_allagree"</span>,</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    split<span class="op">=</span><span class="st">"train"</span>  <span class="co"># note that the dataset does not have a default test split</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co"># # Source: https://huggingface.co/blog/synthetic-data-save-costs</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="co"># # create a new column with the numeric label verbalised as label_text (e.g. "positive" instead of "0")</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co"># label_map = {</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co">#     i: label_text</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="co">#     for i, label_text in enumerate(dataset.features["label"].names)</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="co"># }</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="co"># def add_label_text(example):</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a><span class="co">#     example["labels"] = label_map[example["label"]]</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="co">#     return example</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a><span class="co"># dataset = dataset.map(add_label_text)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<p>:::</p>
+</section>
+<section id="initial-fine-tune" class="level2">
+<h2 class="anchored" data-anchor-id="initial-fine-tune">Initial Fine-Tune</h2>
+<section id="tokenize-the-dataset" class="level3">
+<h3 class="anchored" data-anchor-id="tokenize-the-dataset">Tokenize the Dataset</h3>
+<p>The HuggingFace Trainer, if I’m not mistaken, expects the target variable to have the title <code>labels</code> and the independent variable titled <code>input</code> for classification tasks:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:38:42.642442Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:38:42.641734Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:38:42.648997Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:38:42.647988Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:38:42.642397Z&quot;}" data-trusted="true" data-execution_count="3">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>dataset <span class="op">=</span> dataset.rename_columns({<span class="st">'label'</span>:<span class="st">'labels'</span>, <span class="st">'sentence'</span>: <span class="st">'input'</span>})</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:38:43.044671Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:38:43.043887Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:38:43.049569Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:38:43.048392Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:38:43.044634Z&quot;}" data-trusted="true" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>tokz.add_special_tokens({<span class="st">'pad_token'</span>: <span class="st">'[PAD]'</span>})</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>tokz.padding_side <span class="op">=</span> <span class="st">"left"</span> <span class="co"># https://github.com/huggingface/transformers/issues/16595 and https://www.kaggle.com/code/baekseungyun/gpt-2-with-huggingface-pytorch</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:38:43.362184Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:38:43.361302Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:38:43.405608Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:38:43.404517Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:38:43.362148Z&quot;}" data-outputid="74e24296-ee8d-44b9-88cd-8ab2a697c078" data-trusted="true" data-execution_count="5">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>tok_ds <span class="op">=</span> dataset.<span class="bu">map</span>(tok_func, batched<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>tok_ds</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<pre><code>Dataset({
+    features: ['input', 'labels', 'input_ids', 'attention_mask'],
+    num_rows: 2264
+})</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:38:43.776238Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:38:43.775346Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:38:43.782983Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:38:43.781824Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:38:43.776204Z&quot;}" data-trusted="true" data-execution_count="6">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>tok_ds[<span class="dv">0</span>][<span class="st">'input'</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<pre><code>'According to Gran , the company has no plans to move all production to Russia , although that is where the company is growing .'</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:38:44.458942Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:38:44.458277Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:38:44.466074Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:38:44.464975Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:38:44.458910Z&quot;}" data-trusted="true" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>tok_ds[<span class="dv">0</span>][<span class="st">'input_ids'</span>][<span class="dv">100</span>:<span class="dv">110</span>] <span class="co"># first 100 elements are 50257 ('[PAD]')</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<pre><code>[50257, 50257, 50257, 50257, 50257, 50257, 4821, 284, 17113, 837]</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:38:45.071963Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:38:45.071106Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:38:45.078903Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:38:45.077925Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:38:45.071926Z&quot;}" data-trusted="true" data-execution_count="8">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>tokz.decode(<span class="dv">50257</span>), tokz.decode(<span class="dv">4821</span>), tokz.decode(<span class="dv">284</span>), tokz.decode(<span class="dv">17113</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<pre><code>('[PAD]', 'According', ' to', ' Gran')</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:38:45.539679Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:38:45.539064Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:38:45.546309Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:38:45.545239Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:38:45.539645Z&quot;}" data-trusted="true" data-execution_count="9">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>tok_ds[<span class="dv">0</span>][<span class="st">'labels'</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="9">
+<pre><code>1</code></pre>
+</div>
+</div>
+</section>
+<section id="train-valid-test-split" class="level3">
+<h3 class="anchored" data-anchor-id="train-valid-test-split">Train-Valid-Test Split</h3>
+<p>The <code>financial_phrasebank</code> dataset doesn’t have a default test split, so I’ll use 225 sentences (~10%) as the test set. I’ll split the remaining data into an 80/20 train/validation set.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:38:48.478599Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:38:48.477409Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:38:48.498095Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:38:48.497161Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:38:48.478550Z&quot;}" data-outputid="2af693d6-da78-4586-ecd1-df350fda9a9c" data-trusted="true" data-execution_count="10">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>split_dataset <span class="op">=</span> tok_ds.train_test_split(test_size<span class="op">=</span><span class="dv">225</span><span class="op">/</span><span class="dv">2264</span>, seed<span class="op">=</span><span class="dv">42</span>)</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>training_split <span class="op">=</span> split_dataset[<span class="st">'train'</span>].train_test_split(test_size<span class="op">=</span><span class="fl">0.2</span>, seed<span class="op">=</span><span class="dv">42</span>)</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>train_ds <span class="op">=</span> training_split[<span class="st">'train'</span>]</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>eval_ds <span class="op">=</span> training_split[<span class="st">'test'</span>]</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>test_ds <span class="op">=</span> split_dataset[<span class="st">'test'</span>]</span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>train_ds, eval_ds, test_ds</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<pre><code>(Dataset({
+     features: ['input', 'labels', 'input_ids', 'attention_mask'],
+     num_rows: 1631
+ }),
+ Dataset({
+     features: ['input', 'labels', 'input_ids', 'attention_mask'],
+     num_rows: 408
+ }),
+ Dataset({
+     features: ['input', 'labels', 'input_ids', 'attention_mask'],
+     num_rows: 225
+ }))</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:38:51.430200Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:38:51.429829Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:38:51.437705Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:38:51.436802Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:38:51.430169Z&quot;}" data-outputid="acf502fb-9010-4b0c-ec6a-805d9ca687aa" data-trusted="true" data-execution_count="11">
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>train_ds[<span class="dv">0</span>][<span class="st">'input'</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<pre><code>'The result will also be burdened by increased fixed costs associated with operations in China , and restructuring costs in Japan .'</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:38:52.626681Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:38:52.625624Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:38:52.633576Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:38:52.632402Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:38:52.626644Z&quot;}" data-outputid="245c4255-1c22-43a9-b7cc-e0f4d1c1db4e" data-trusted="true" data-execution_count="12">
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>train_ds[<span class="dv">0</span>][<span class="st">'labels'</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<pre><code>0</code></pre>
+</div>
+</div>
+<p>Looking at the distribution of <code>label</code> values (negative, positive, neutral) in each dataset, they contain roughly the same split:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T00:23:28.172158Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T00:23:28.171797Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T00:23:28.200555Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T00:23:28.199646Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T00:23:28.172134Z&quot;}" data-outputid="5488524f-76e3-4dfa-cc9f-556b65dd21de" data-trusted="true" data-execution_count="13">
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>train_ds.to_pandas()[<span class="st">'labels'</span>].value_counts() <span class="op">/</span> <span class="bu">len</span>(train_ds)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<pre><code>labels
+1    0.622318
+2    0.251993
+0    0.125690
+Name: count, dtype: float64</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T00:23:28.872618Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T00:23:28.871838Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T00:23:28.886921Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T00:23:28.885758Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T00:23:28.872586Z&quot;}" data-outputid="d46a8f83-4c6f-40ea-dc4b-82d56f451d6b" data-trusted="true" data-execution_count="14">
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>eval_ds.to_pandas()[<span class="st">'labels'</span>].value_counts() <span class="op">/</span> <span class="bu">len</span>(eval_ds)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<pre><code>labels
+1    0.615196
+2    0.257353
+0    0.127451
+Name: count, dtype: float64</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T00:23:29.896260Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T00:23:29.895551Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T00:23:29.908854Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T00:23:29.907767Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T00:23:29.896227Z&quot;}" data-outputid="27c8baa5-3f0b-41af-cecc-f9452ccde8bd" data-trusted="true" data-execution_count="15">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>test_ds.to_pandas()[<span class="st">'labels'</span>].value_counts() <span class="op">/</span> <span class="bu">len</span>(test_ds)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<pre><code>labels
+1    0.555556
+2    0.240000
+0    0.204444
+Name: count, dtype: float64</code></pre>
+</div>
+</div>
+</section>
+<section id="initial-training-run" class="level3">
+<h3 class="anchored" data-anchor-id="initial-training-run">Initial Training Run</h3>
+<p>I’ll define some initial hyperparameters, re-using most of what was used in Part 1 of the fastai course in Jeremy’s <a href="https://www.kaggle.com/code/jhoward/getting-started-with-nlp-for-absolute-beginners#Test-and-validation-sets">“Getting started with NLP for absolute beginners” notebook</a>.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:18:45.251035Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:18:45.250100Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:18:45.255266Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:18:45.254288Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:18:45.251001Z&quot;}" data-trusted="true" data-execution_count="24">
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>lr <span class="op">=</span> <span class="fl">8e-5</span></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>epochs <span class="op">=</span> <span class="dv">3</span></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>bs <span class="op">=</span> <span class="dv">16</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I’ll use accuracy as my metric:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:38:59.528166Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:38:59.527624Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:38:59.533579Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:38:59.532482Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:38:59.528130Z&quot;}" data-trusted="true" data-execution_count="13">
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_acc(eval_pred):</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>    logits, labels <span class="op">=</span> eval_pred</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>    predictions <span class="op">=</span> np.argmax(logits, axis<span class="op">=-</span><span class="dv">1</span>)</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {<span class="st">"accuracy"</span>: (predictions <span class="op">==</span> labels).astype(np.float32).mean().item()}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I’ll also try to implement a callback (to capture the metrics later on when I’m doing hyperparameter sweeps).</p>
+<p>::: {.cell _kg_hide-input=‘true’ execution=‘{“iopub.execute_input”:“2024-08-14T01:39:01.810464Z”,“iopub.status.busy”:“2024-08-14T01:39:01.809789Z”,“iopub.status.idle”:“2024-08-14T01:39:01.822903Z”,“shell.execute_reply”:“2024-08-14T01:39:01.821784Z”,“shell.execute_reply.started”:“2024-08-14T01:39:01.810404Z”}’ trusted=‘true’ execution_count=14}</p>
+<details>
+<summary>Show MetricCallback code</summary>
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="co"># thanks Claude</span></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> MetricCallback(TrainerCallback):</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>):</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.metrics <span class="op">=</span> []</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.current_epoch_metrics <span class="op">=</span> {}</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> on_log(<span class="va">self</span>, args, state, control, logs<span class="op">=</span><span class="va">None</span>, <span class="op">**</span>kwargs):</span>
+<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> logs <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>.current_epoch_metrics.update(logs)</span>
+<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> on_epoch_end(<span class="va">self</span>, args, state, control, <span class="op">**</span>kwargs):</span>
+<span id="cb30-13"><a href="#cb30-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="bu">hasattr</span>(state, <span class="st">'log_history'</span>) <span class="kw">and</span> state.log_history:</span>
+<span id="cb30-14"><a href="#cb30-14" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Get the last logged learning rate</span></span>
+<span id="cb30-15"><a href="#cb30-15" aria-hidden="true" tabindex="-1"></a>            last_lr <span class="op">=</span> state.log_history[<span class="op">-</span><span class="dv">1</span>].get(<span class="st">'learning_rate'</span>, <span class="va">None</span>)</span>
+<span id="cb30-16"><a href="#cb30-16" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
+<span id="cb30-17"><a href="#cb30-17" aria-hidden="true" tabindex="-1"></a>            last_lr <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb30-18"><a href="#cb30-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-19"><a href="#cb30-19" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.metrics.append({</span>
+<span id="cb30-20"><a href="#cb30-20" aria-hidden="true" tabindex="-1"></a>            <span class="st">"epoch"</span>: state.epoch,</span>
+<span id="cb30-21"><a href="#cb30-21" aria-hidden="true" tabindex="-1"></a>            <span class="st">"learning_rate"</span>: last_lr,</span>
+<span id="cb30-22"><a href="#cb30-22" aria-hidden="true" tabindex="-1"></a>            <span class="op">**</span><span class="va">self</span>.current_epoch_metrics</span>
+<span id="cb30-23"><a href="#cb30-23" aria-hidden="true" tabindex="-1"></a>        })</span>
+<span id="cb30-24"><a href="#cb30-24" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.current_epoch_metrics <span class="op">=</span> {}  <span class="co"># Reset for next epoch</span></span>
+<span id="cb30-25"><a href="#cb30-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-26"><a href="#cb30-26" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> on_train_end(<span class="va">self</span>, args, state, control, <span class="op">**</span>kwargs):</span>
+<span id="cb30-27"><a href="#cb30-27" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Capture final metrics after the last epoch</span></span>
+<span id="cb30-28"><a href="#cb30-28" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="va">self</span>.current_epoch_metrics:</span>
+<span id="cb30-29"><a href="#cb30-29" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>.metrics.append({</span>
+<span id="cb30-30"><a href="#cb30-30" aria-hidden="true" tabindex="-1"></a>                <span class="st">"epoch"</span>: state.num_train_epochs,</span>
+<span id="cb30-31"><a href="#cb30-31" aria-hidden="true" tabindex="-1"></a>                <span class="st">"learning_rate"</span>: <span class="va">self</span>.metrics[<span class="op">-</span><span class="dv">1</span>].get(<span class="st">'learning_rate'</span>) <span class="cf">if</span> <span class="va">self</span>.metrics <span class="cf">else</span> <span class="va">None</span>,</span>
+<span id="cb30-32"><a href="#cb30-32" aria-hidden="true" tabindex="-1"></a>                <span class="op">**</span><span class="va">self</span>.current_epoch_metrics</span>
+<span id="cb30-33"><a href="#cb30-33" aria-hidden="true" tabindex="-1"></a>            })</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<p>:::</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:27:02.638072Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:27:02.637401Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:27:02.642215Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:27:02.641185Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:27:02.638043Z&quot;}" data-trusted="true" data-execution_count="61">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>metric_callback <span class="op">=</span> MetricCallback()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:27:03.807408Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:27:03.806579Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:27:03.840401Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:27:03.839703Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:27:03.807375Z&quot;}" data-trusted="true" data-execution_count="62">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>args <span class="op">=</span> TrainingArguments(</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'outputs'</span>,</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>    learning_rate<span class="op">=</span>lr,</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>    warmup_ratio<span class="op">=</span><span class="fl">0.1</span>,</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>    lr_scheduler_type<span class="op">=</span><span class="st">'cosine'</span>,</span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a>    fp16<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a>    eval_strategy<span class="op">=</span><span class="st">"epoch"</span>,</span>
+<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a>    logging_strategy<span class="op">=</span><span class="st">"epoch"</span>,</span>
+<span id="cb32-9"><a href="#cb32-9" aria-hidden="true" tabindex="-1"></a>    per_device_train_batch_size<span class="op">=</span>bs,</span>
+<span id="cb32-10"><a href="#cb32-10" aria-hidden="true" tabindex="-1"></a>    per_device_eval_batch_size<span class="op">=</span>bs<span class="op">*</span><span class="dv">2</span>,</span>
+<span id="cb32-11"><a href="#cb32-11" aria-hidden="true" tabindex="-1"></a>    num_train_epochs<span class="op">=</span>epochs,</span>
+<span id="cb32-12"><a href="#cb32-12" aria-hidden="true" tabindex="-1"></a>    weight_decay<span class="op">=</span><span class="fl">0.01</span>,</span>
+<span id="cb32-13"><a href="#cb32-13" aria-hidden="true" tabindex="-1"></a>    report_to<span class="op">=</span><span class="st">'none'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:27:05.002450Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:27:05.001815Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:27:05.390585Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:27:05.389833Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:27:05.002407Z&quot;}" data-outputid="c6c38b12-2e71-49ef-ef84-4586ed44f14b" data-trusted="true" data-execution_count="63">
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> AutoModelForSequenceClassification.from_pretrained(model_nm, num_labels<span class="op">=</span><span class="dv">3</span>) <span class="co"># 3 labels for 3 classes</span></span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>trainer <span class="op">=</span> Trainer(model, args, train_dataset<span class="op">=</span>train_ds, eval_dataset<span class="op">=</span>eval_ds, </span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>                  tokenizer<span class="op">=</span>tokz, compute_metrics<span class="op">=</span>get_acc, callbacks<span class="op">=</span>[metric_callback])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Some weights of GPTNeoForSequenceClassification were not initialized from the model checkpoint at roneneldan/TinyStories-33M and are newly initialized: ['score.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:27:05.649181Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:27:05.648849Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:27:05.664865Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:27:05.663835Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:27:05.649155Z&quot;}" data-outputid="9528624f-fa21-4d26-d00c-7c4df0a395d6" data-trusted="true" data-execution_count="64">
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>model.resize_token_embeddings(<span class="bu">len</span>(tokz)) <span class="co"># do this otherwise I get a "index out of range" error</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="64">
+<pre><code>Embedding(50258, 768)</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:27:06.852603Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:27:06.851868Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:27:06.856852Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:27:06.855782Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:27:06.852567Z&quot;}" data-trusted="true" data-execution_count="65">
+<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>model.config.pad_token_id <span class="op">=</span> model.config.eos_token_id <span class="co"># do this otherwise I get an error about padding tokens</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:27:08.107016Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:27:08.106533Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:27:44.074335Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:27:44.073457Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:27:08.106985Z&quot;}" data-outputid="5f1b2d6d-e8c8-47e0-8612-e2e9facb1da6" data-trusted="true" data-execution_count="66">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>trainer.train()<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/opt/conda/lib/python3.10/site-packages/torch/nn/parallel/_functions.py:68: UserWarning: Was asked to gather along dimension 0, but all input tensors were scalars; will instead unsqueeze and return a vector.
+  warnings.warn('Was asked to gather along dimension 0, but all '</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+
+
+    <div>
+      
+      <progress value="153" max="153" style="width:300px; height:20px; vertical-align: middle;"></progress>
+      [153/153 00:34, Epoch 3/3]
+    </div>
+    <table class="dataframe table table-sm table-striped">
+  <thead>
+ <tr>
+      <th>Epoch</th>
+      <th>Training Loss</th>
+      <th>Validation Loss</th>
+      <th>Accuracy</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>0.809300</td>
+      <td>0.450100</td>
+      <td>0.833333</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>0.192700</td>
+      <td>0.429838</td>
+      <td>0.889706</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>0.010500</td>
+      <td>0.751890</td>
+      <td>0.879902</td>
+    </tr>
+  </tbody>
+</table><p>
+</p></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/opt/conda/lib/python3.10/site-packages/torch/nn/parallel/_functions.py:68: UserWarning: Was asked to gather along dimension 0, but all input tensors were scalars; will instead unsqueeze and return a vector.
+  warnings.warn('Was asked to gather along dimension 0, but all '</code></pre>
+</div>
+</div>
+<p>The <code>metric_callback</code> stores the loss, accuracy and runtime (among other metrics) for each epoch:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:27:49.539619Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:27:49.538716Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:27:49.544469Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:27:49.543437Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:27:49.539584Z&quot;}" data-trusted="true" data-execution_count="67">
+<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> []</span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>results.append({<span class="st">"learning_rate"</span>: lr, <span class="st">"metrics"</span>: metric_callback.metrics})</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>::: {.cell _kg_hide-input=‘true’ execution=‘{“iopub.execute_input”:“2024-08-14T01:39:09.613858Z”,“iopub.status.busy”:“2024-08-14T01:39:09.613015Z”,“iopub.status.idle”:“2024-08-14T01:39:09.620988Z”,“shell.execute_reply”:“2024-08-14T01:39:09.619840Z”,“shell.execute_reply.started”:“2024-08-14T01:39:09.613806Z”}’ trusted=‘true’ execution_count=15}</p>
+<details>
+<summary>Show function to convert results dict into DataFrame</summary>
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> results_to_dataframe(results, model_name):</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>    rows <span class="op">=</span> []</span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> result <span class="kw">in</span> results:</span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>        initial_lr <span class="op">=</span> result[<span class="st">'learning_rate'</span>]</span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> metric <span class="kw">in</span> result[<span class="st">'metrics'</span>]:</span>
+<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a>            row <span class="op">=</span> {</span>
+<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a>                <span class="st">'model_name'</span>: model_name,</span>
+<span id="cb42-8"><a href="#cb42-8" aria-hidden="true" tabindex="-1"></a>                <span class="st">'initial_learning_rate'</span>: initial_lr,</span>
+<span id="cb42-9"><a href="#cb42-9" aria-hidden="true" tabindex="-1"></a>                <span class="st">'current_learning_rate'</span>: metric.get(<span class="st">'learning_rate'</span>),</span>
+<span id="cb42-10"><a href="#cb42-10" aria-hidden="true" tabindex="-1"></a>            }</span>
+<span id="cb42-11"><a href="#cb42-11" aria-hidden="true" tabindex="-1"></a>            row.update(metric)</span>
+<span id="cb42-12"><a href="#cb42-12" aria-hidden="true" tabindex="-1"></a>            rows.append(row)</span>
+<span id="cb42-13"><a href="#cb42-13" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb42-14"><a href="#cb42-14" aria-hidden="true" tabindex="-1"></a>    df <span class="op">=</span> pd.DataFrame(rows)</span>
+<span id="cb42-15"><a href="#cb42-15" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb42-16"><a href="#cb42-16" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Ensure specific columns are at the beginning</span></span>
+<span id="cb42-17"><a href="#cb42-17" aria-hidden="true" tabindex="-1"></a>    first_columns <span class="op">=</span> [<span class="st">'model_name'</span>, <span class="st">'initial_learning_rate'</span>, <span class="st">'current_learning_rate'</span>, <span class="st">'epoch'</span>]</span>
+<span id="cb42-18"><a href="#cb42-18" aria-hidden="true" tabindex="-1"></a>    other_columns <span class="op">=</span> [col <span class="cf">for</span> col <span class="kw">in</span> df.columns <span class="cf">if</span> col <span class="kw">not</span> <span class="kw">in</span> first_columns]</span>
+<span id="cb42-19"><a href="#cb42-19" aria-hidden="true" tabindex="-1"></a>    df <span class="op">=</span> df[first_columns <span class="op">+</span> other_columns]</span>
+<span id="cb42-20"><a href="#cb42-20" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb42-21"><a href="#cb42-21" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> df</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<p>:::</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:55:19.443150Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:55:19.442799Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:55:19.466561Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:55:19.465298Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:55:19.443120Z&quot;}" data-trusted="true" data-execution_count="109">
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a>res_df <span class="op">=</span> results_to_dataframe(results, model_name<span class="op">=</span><span class="st">"TinyStories-33M"</span>)</span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>res_df</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="109">
+
+<div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>model_name</th>
+      <th>initial_learning_rate</th>
+      <th>current_learning_rate</th>
+      <th>epoch</th>
+      <th>learning_rate</th>
+      <th>loss</th>
+      <th>grad_norm</th>
+      <th>eval_loss</th>
+      <th>eval_accuracy</th>
+      <th>eval_runtime</th>
+      <th>eval_samples_per_second</th>
+      <th>eval_steps_per_second</th>
+      <th>train_runtime</th>
+      <th>train_samples_per_second</th>
+      <th>train_steps_per_second</th>
+      <th>total_flos</th>
+      <th>train_loss</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>TinyStories-33M</td>
+      <td>0.00008</td>
+      <td>NaN</td>
+      <td>1.0</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>TinyStories-33M</td>
+      <td>0.00008</td>
+      <td>0.000068</td>
+      <td>1.0</td>
+      <td>0.000068</td>
+      <td>0.8093</td>
+      <td>9.747781e+05</td>
+      <td>0.450100</td>
+      <td>0.833333</td>
+      <td>0.8285</td>
+      <td>492.428</td>
+      <td>8.449</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>TinyStories-33M</td>
+      <td>0.00008</td>
+      <td>0.000024</td>
+      <td>2.0</td>
+      <td>0.000024</td>
+      <td>0.1927</td>
+      <td>1.633982e+06</td>
+      <td>0.429838</td>
+      <td>0.889706</td>
+      <td>0.8315</td>
+      <td>490.653</td>
+      <td>8.418</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>TinyStories-33M</td>
+      <td>0.00008</td>
+      <td>0.000000</td>
+      <td>3.0</td>
+      <td>0.000000</td>
+      <td>0.0105</td>
+      <td>2.495563e+04</td>
+      <td>0.751890</td>
+      <td>0.879902</td>
+      <td>0.9311</td>
+      <td>438.202</td>
+      <td>7.518</td>
+      <td>35.2349</td>
+      <td>138.868</td>
+      <td>4.342</td>
+      <td>1.090163e+14</td>
+      <td>0.337512</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+</div>
+</section>
+<section id="evaluating-model-performance-on-the-test-set" class="level3">
+<h3 class="anchored" data-anchor-id="evaluating-model-performance-on-the-test-set">Evaluating Model Performance on the Test Set</h3>
+<p>I’ll see how well the model does on the 10% test set that I’ve set aside.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:31:24.573010Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:31:24.572313Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:31:24.593629Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:31:24.592501Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:31:24.572977Z&quot;}" data-trusted="true" data-execution_count="72">
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>test_df <span class="op">=</span> test_ds.to_pandas()[[<span class="st">'input'</span>, <span class="st">'labels'</span>]]</span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>test_df.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="72">
+
+<div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>input</th>
+      <th>labels</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Indigo and Somoncom serve 377,000 subscribers ...</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>The sellers were EOSS Innovationsmanagement an...</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>UPM-Kymmene said its has ` not indicated any i...</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>These financing arrangements will enable the c...</td>
+      <td>2</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>Fortum expects its annual capital expenditure ...</td>
+      <td>1</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:31:48.370497Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:31:48.370109Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:31:48.943566Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:31:48.942488Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:31:48.370459Z&quot;}" data-outputid="bf32bee1-ff44-46b4-c4b2-0734e0750720" data-trusted="true" data-execution_count="73">
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>preds <span class="op">=</span> trainer.predict(test_ds).predictions.astype(<span class="bu">float</span>)</span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>probs <span class="op">=</span> F.softmax(torch.tensor(preds), dim<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a>predicted_classes <span class="op">=</span> torch.argmax(probs, dim<span class="op">=</span><span class="dv">1</span>).numpy()</span>
+<span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb45-5"><a href="#cb45-5" aria-hidden="true" tabindex="-1"></a>test_df[<span class="st">'predicted'</span>] <span class="op">=</span> predicted_classes</span>
+<span id="cb45-6"><a href="#cb45-6" aria-hidden="true" tabindex="-1"></a>test_df.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/opt/conda/lib/python3.10/site-packages/torch/nn/parallel/_functions.py:68: UserWarning: Was asked to gather along dimension 0, but all input tensors were scalars; will instead unsqueeze and return a vector.
+  warnings.warn('Was asked to gather along dimension 0, but all '</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+
+</div>
+<div class="cell-output cell-output-display" data-execution_count="73">
+
+<div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>input</th>
+      <th>labels</th>
+      <th>predicted</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Indigo and Somoncom serve 377,000 subscribers ...</td>
+      <td>1</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>The sellers were EOSS Innovationsmanagement an...</td>
+      <td>1</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>UPM-Kymmene said its has ` not indicated any i...</td>
+      <td>1</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>These financing arrangements will enable the c...</td>
+      <td>2</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>Fortum expects its annual capital expenditure ...</td>
+      <td>1</td>
+      <td>1</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+</div>
+<p>This training run resulted in a TinyStories-33M finetuned model that predicted 85% of the 225 test sentences’ sentiment correctly.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:34:25.289399Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:34:25.288771Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:34:25.296323Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:34:25.295391Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:34:25.289367Z&quot;}" data-trusted="true" data-execution_count="76">
+<div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>test_df[<span class="st">'match'</span>] <span class="op">=</span> test_df[<span class="st">'labels'</span>] <span class="op">==</span> test_df[<span class="st">'predicted'</span>]</span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>test_df[<span class="st">'match'</span>].mean()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="76">
+<pre><code>0.8488888888888889</code></pre>
+</div>
+</div>
+<p>I’ll reuse a confusion matrix helper function I created in a previous notebook:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:48:02.877688Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:48:02.876899Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:48:02.884623Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:48:02.883679Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:48:02.877654Z&quot;}" data-trusted="true" data-execution_count="104">
+<div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>label_map <span class="op">=</span> {i: label_text <span class="cf">for</span> i, label_text <span class="kw">in</span> <span class="bu">enumerate</span>(test_ds.features[<span class="st">"labels"</span>].names)}</span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>label_map</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="104">
+<pre><code>{0: 'negative', 1: 'neutral', 2: 'positive'}</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:38:57.778744Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:38:57.778302Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:38:57.786308Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:38:57.785075Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:38:57.778712Z&quot;}" data-trusted="true" data-execution_count="86">
+<div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a>test_df[<span class="st">'label_text'</span>] <span class="op">=</span> test_df[<span class="st">'labels'</span>].<span class="bu">apply</span>(<span class="kw">lambda</span> x: label_map[x])</span>
+<span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>test_df[<span class="st">'pred_text'</span>] <span class="op">=</span> test_df[<span class="st">'predicted'</span>].<span class="bu">apply</span>(<span class="kw">lambda</span> x: label_map[x])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>::: {.cell _kg_hide-input=‘true’ execution=‘{“iopub.execute_input”:“2024-08-14T01:39:17.295162Z”,“iopub.status.busy”:“2024-08-14T01:39:17.294780Z”,“iopub.status.idle”:“2024-08-14T01:39:17.303012Z”,“shell.execute_reply”:“2024-08-14T01:39:17.302055Z”,“shell.execute_reply.started”:“2024-08-14T01:39:17.295134Z”}’ trusted=‘true’ execution_count=16}</p>
+<details>
+<summary>Show function to make confusion matrix</summary>
+<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> make_cm(df):</span>
+<span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Create confusion matrix for true vs predicted sentiment classes"""</span></span>
+<span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb52-4"><a href="#cb52-4" aria-hidden="true" tabindex="-1"></a>    cm <span class="op">=</span> confusion_matrix(y_true<span class="op">=</span>df[<span class="st">'label_text'</span>], y_pred<span class="op">=</span>df[<span class="st">'pred_text'</span>], labels<span class="op">=</span>[<span class="st">'negative'</span>, <span class="st">'neutral'</span>, <span class="st">'positive'</span>])</span>
+<span id="cb52-5"><a href="#cb52-5" aria-hidden="true" tabindex="-1"></a>    disp <span class="op">=</span> ConfusionMatrixDisplay(cm, display_labels<span class="op">=</span>[<span class="st">'negative'</span>, <span class="st">'neutral'</span>, <span class="st">'positive'</span>])</span>
+<span id="cb52-6"><a href="#cb52-6" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb52-7"><a href="#cb52-7" aria-hidden="true" tabindex="-1"></a>    fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>(<span class="dv">4</span>,<span class="dv">4</span>))</span>
+<span id="cb52-8"><a href="#cb52-8" aria-hidden="true" tabindex="-1"></a>    disp.plot(ax<span class="op">=</span>ax,text_kw<span class="op">=</span>{<span class="st">'fontsize'</span>: <span class="dv">12</span>}, cmap<span class="op">=</span><span class="st">'Blues'</span>, colorbar<span class="op">=</span><span class="va">False</span>)<span class="op">;</span></span>
+<span id="cb52-9"><a href="#cb52-9" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb52-10"><a href="#cb52-10" aria-hidden="true" tabindex="-1"></a>    <span class="co"># change label font size without changing label text</span></span>
+<span id="cb52-11"><a href="#cb52-11" aria-hidden="true" tabindex="-1"></a>    ax.xaxis.label.set_fontsize(<span class="dv">16</span>)</span>
+<span id="cb52-12"><a href="#cb52-12" aria-hidden="true" tabindex="-1"></a>    ax.yaxis.label.set_fontsize(<span class="dv">16</span>)</span>
+<span id="cb52-13"><a href="#cb52-13" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb52-14"><a href="#cb52-14" aria-hidden="true" tabindex="-1"></a>    <span class="co"># make tick labels larger</span></span>
+<span id="cb52-15"><a href="#cb52-15" aria-hidden="true" tabindex="-1"></a>    ax.tick_params(axis<span class="op">=</span><span class="st">'y'</span>, labelsize<span class="op">=</span><span class="dv">14</span>)</span>
+<span id="cb52-16"><a href="#cb52-16" aria-hidden="true" tabindex="-1"></a>    ax.tick_params(axis<span class="op">=</span><span class="st">'x'</span>, labelsize<span class="op">=</span><span class="dv">14</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<p>:::</p>
+<p>The model predicted <code>neutral</code> sentences with the highest accuracy (122/125), followed by <code>negative</code> sentences (32/46) and finally <code>positive</code> sentences (37/54).</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:40:31.079852Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:40:31.079481Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:40:31.256696Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:40:31.255470Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:40:31.079822Z&quot;}" data-trusted="true" data-execution_count="94">
+<div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a>make_cm(test_df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-35-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="index_files/figure-html/cell-35-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>As a final sanity check, I’ll prompt the model with a made-up financial new sentence and see if it correctly classifies it (as positive, negative, or neutral):</p>
+<p>::: {.cell _kg_hide-input=‘true’ execution=‘{“iopub.execute_input”:“2024-08-14T01:39:22.953906Z”,“iopub.status.busy”:“2024-08-14T01:39:22.953383Z”,“iopub.status.idle”:“2024-08-14T01:39:22.964771Z”,“shell.execute_reply”:“2024-08-14T01:39:22.963553Z”,“shell.execute_reply.started”:“2024-08-14T01:39:22.953863Z”}’ outputId=‘4f13174f-5e05-438d-efe4-392395dd3750’ trusted=‘true’ execution_count=17}</p>
+<details>
+<summary>Show function to generate a prediction</summary>
+<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_prediction(model, text, tokz):</span>
+<span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Determine the device</span></span>
+<span id="cb54-3"><a href="#cb54-3" aria-hidden="true" tabindex="-1"></a>    device <span class="op">=</span> torch.device(<span class="st">"cuda"</span> <span class="cf">if</span> torch.cuda.is_available() <span class="cf">else</span> <span class="st">"cpu"</span>)</span>
+<span id="cb54-4"><a href="#cb54-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-5"><a href="#cb54-5" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Move the model to the appropriate device</span></span>
+<span id="cb54-6"><a href="#cb54-6" aria-hidden="true" tabindex="-1"></a>    model <span class="op">=</span> model.to(device)</span>
+<span id="cb54-7"><a href="#cb54-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-8"><a href="#cb54-8" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Tokenize the input text</span></span>
+<span id="cb54-9"><a href="#cb54-9" aria-hidden="true" tabindex="-1"></a>    inputs <span class="op">=</span> tokz(text, return_tensors<span class="op">=</span><span class="st">"pt"</span>, truncation<span class="op">=</span><span class="va">True</span>, padding<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb54-10"><a href="#cb54-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-11"><a href="#cb54-11" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Move input tensors to the same device as the model</span></span>
+<span id="cb54-12"><a href="#cb54-12" aria-hidden="true" tabindex="-1"></a>    inputs <span class="op">=</span> {k: v.to(device) <span class="cf">for</span> k, v <span class="kw">in</span> inputs.items()}</span>
+<span id="cb54-13"><a href="#cb54-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-14"><a href="#cb54-14" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Get the model's prediction</span></span>
+<span id="cb54-15"><a href="#cb54-15" aria-hidden="true" tabindex="-1"></a>    model.<span class="bu">eval</span>()  <span class="co"># Set the model to evaluation mode</span></span>
+<span id="cb54-16"><a href="#cb54-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> torch.no_grad():</span>
+<span id="cb54-17"><a href="#cb54-17" aria-hidden="true" tabindex="-1"></a>        outputs <span class="op">=</span> model(<span class="op">**</span>inputs)</span>
+<span id="cb54-18"><a href="#cb54-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-19"><a href="#cb54-19" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Ensure logits are on CPU for numpy operations</span></span>
+<span id="cb54-20"><a href="#cb54-20" aria-hidden="true" tabindex="-1"></a>    logits <span class="op">=</span> outputs.logits.detach().cpu()</span>
+<span id="cb54-21"><a href="#cb54-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-22"><a href="#cb54-22" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Get probabilities</span></span>
+<span id="cb54-23"><a href="#cb54-23" aria-hidden="true" tabindex="-1"></a>    probs <span class="op">=</span> torch.softmax(logits, dim<span class="op">=-</span><span class="dv">1</span>)</span>
+<span id="cb54-24"><a href="#cb54-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-25"><a href="#cb54-25" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Get the predicted class</span></span>
+<span id="cb54-26"><a href="#cb54-26" aria-hidden="true" tabindex="-1"></a>    p_class <span class="op">=</span> torch.argmax(probs, dim<span class="op">=-</span><span class="dv">1</span>).item()</span>
+<span id="cb54-27"><a href="#cb54-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-28"><a href="#cb54-28" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Get the probability for the predicted class</span></span>
+<span id="cb54-29"><a href="#cb54-29" aria-hidden="true" tabindex="-1"></a>    p <span class="op">=</span> probs[<span class="dv">0</span>][p_class].item()</span>
+<span id="cb54-30"><a href="#cb54-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-31"><a href="#cb54-31" aria-hidden="true" tabindex="-1"></a>    labels <span class="op">=</span> {<span class="dv">0</span>: <span class="st">"negative"</span>, <span class="dv">1</span>: <span class="st">"neutral"</span>, <span class="dv">2</span>: <span class="st">"positive"</span>}</span>
+<span id="cb54-32"><a href="#cb54-32" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb54-33"><a href="#cb54-33" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"Probability: </span><span class="sc">{</span>p<span class="sc">:.2f}</span><span class="ss">"</span>)</span>
+<span id="cb54-34"><a href="#cb54-34" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"Predicted label: </span><span class="sc">{</span>labels[p_class]<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb54-35"><a href="#cb54-35" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> p_class, p</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<p>:::</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:46:57.643014Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:46:57.642630Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:46:57.657719Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:46:57.656789Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:46:57.642983Z&quot;}" data-trusted="true" data-execution_count="101">
+<div class="sourceCode cell-code" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a>text <span class="op">=</span> <span class="st">"The net sales went up from USD $3.4M to USD $5.6M since the same quarter last year"</span></span>
+<span id="cb55-2"><a href="#cb55-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb55-3"><a href="#cb55-3" aria-hidden="true" tabindex="-1"></a>_ <span class="op">=</span> get_prediction(model, text, tokz)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Probability: 0.60
+Predicted label: positive</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:47:15.240169Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:47:15.239818Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:47:15.256219Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:47:15.255024Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:47:15.240143Z&quot;}" data-trusted="true" data-execution_count="102">
+<div class="sourceCode cell-code" id="cb57"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1"><a href="#cb57-1" aria-hidden="true" tabindex="-1"></a>text <span class="op">=</span> <span class="st">"The net sales went down from USD $8.9M to USD $1.2M since the same quarter last year"</span></span>
+<span id="cb57-2"><a href="#cb57-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb57-3"><a href="#cb57-3" aria-hidden="true" tabindex="-1"></a>_ <span class="op">=</span> get_prediction(model, text, tokz)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Probability: 1.00
+Predicted label: negative</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-13T22:47:31.582519Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-13T22:47:31.581319Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-13T22:47:31.616940Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-13T22:47:31.615919Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-13T22:47:31.582473Z&quot;}" data-trusted="true" data-execution_count="103">
+<div class="sourceCode cell-code" id="cb59"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1"><a href="#cb59-1" aria-hidden="true" tabindex="-1"></a>text <span class="op">=</span> <span class="st">"The net sales stayed the as the same quarter last year"</span></span>
+<span id="cb59-2"><a href="#cb59-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb59-3"><a href="#cb59-3" aria-hidden="true" tabindex="-1"></a>_ <span class="op">=</span> get_prediction(model, text, tokz)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Probability: 0.93
+Predicted label: neutral</code></pre>
+</div>
+</div>
+</section>
+</section>
+<section id="learning-rate-sweep" class="level2">
+<h2 class="anchored" data-anchor-id="learning-rate-sweep">Learning Rate Sweep</h2>
+<p>Let’s see if I can beat the validation accuracy of 89% and test set accuracy of 85% by using different learning rates. I’ll wrap up some of the training code (there’s so much of it!!) in helper functions so I can loop through my learning rates. I’ve also created a helper function to get the test set accuracy.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:39:26.874242Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:39:26.873182Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:39:26.883845Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:39:26.882412Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:39:26.874201Z&quot;}" data-trusted="true" data-execution_count="18">
+<details>
+<summary>Show function to prep trainer</summary>
+<div class="sourceCode cell-code" id="cb61"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb61-1"><a href="#cb61-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_trainer(lr, bs<span class="op">=</span><span class="dv">16</span>):</span>
+<span id="cb61-2"><a href="#cb61-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-3"><a href="#cb61-3" aria-hidden="true" tabindex="-1"></a>    args <span class="op">=</span> TrainingArguments(</span>
+<span id="cb61-4"><a href="#cb61-4" aria-hidden="true" tabindex="-1"></a>        <span class="st">'outputs'</span>,</span>
+<span id="cb61-5"><a href="#cb61-5" aria-hidden="true" tabindex="-1"></a>        learning_rate<span class="op">=</span>lr,</span>
+<span id="cb61-6"><a href="#cb61-6" aria-hidden="true" tabindex="-1"></a>        warmup_ratio<span class="op">=</span><span class="fl">0.1</span>,</span>
+<span id="cb61-7"><a href="#cb61-7" aria-hidden="true" tabindex="-1"></a>        lr_scheduler_type<span class="op">=</span><span class="st">'cosine'</span>,</span>
+<span id="cb61-8"><a href="#cb61-8" aria-hidden="true" tabindex="-1"></a>        fp16<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb61-9"><a href="#cb61-9" aria-hidden="true" tabindex="-1"></a>        eval_strategy<span class="op">=</span><span class="st">"epoch"</span>,</span>
+<span id="cb61-10"><a href="#cb61-10" aria-hidden="true" tabindex="-1"></a>        logging_strategy<span class="op">=</span><span class="st">"epoch"</span>,</span>
+<span id="cb61-11"><a href="#cb61-11" aria-hidden="true" tabindex="-1"></a>        per_device_train_batch_size<span class="op">=</span>bs,</span>
+<span id="cb61-12"><a href="#cb61-12" aria-hidden="true" tabindex="-1"></a>        per_device_eval_batch_size<span class="op">=</span>bs<span class="op">*</span><span class="dv">2</span>,</span>
+<span id="cb61-13"><a href="#cb61-13" aria-hidden="true" tabindex="-1"></a>        num_train_epochs<span class="op">=</span><span class="dv">3</span>,</span>
+<span id="cb61-14"><a href="#cb61-14" aria-hidden="true" tabindex="-1"></a>        weight_decay<span class="op">=</span><span class="fl">0.01</span>,</span>
+<span id="cb61-15"><a href="#cb61-15" aria-hidden="true" tabindex="-1"></a>        report_to<span class="op">=</span><span class="st">'none'</span>)</span>
+<span id="cb61-16"><a href="#cb61-16" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb61-17"><a href="#cb61-17" aria-hidden="true" tabindex="-1"></a>    model <span class="op">=</span> AutoModelForSequenceClassification.from_pretrained(model_nm, num_labels<span class="op">=</span><span class="dv">3</span>) <span class="co"># 3 labels for 3 classes</span></span>
+<span id="cb61-18"><a href="#cb61-18" aria-hidden="true" tabindex="-1"></a>    model.resize_token_embeddings(<span class="bu">len</span>(tokz))</span>
+<span id="cb61-19"><a href="#cb61-19" aria-hidden="true" tabindex="-1"></a>    model.config.pad_token_id <span class="op">=</span> model.config.eos_token_id</span>
+<span id="cb61-20"><a href="#cb61-20" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb61-21"><a href="#cb61-21" aria-hidden="true" tabindex="-1"></a>    trainer <span class="op">=</span> Trainer(model, args, train_dataset<span class="op">=</span>train_ds, eval_dataset<span class="op">=</span>eval_ds, </span>
+<span id="cb61-22"><a href="#cb61-22" aria-hidden="true" tabindex="-1"></a>                  tokenizer<span class="op">=</span>tokz, compute_metrics<span class="op">=</span>get_acc, callbacks<span class="op">=</span>[metric_callback])</span>
+<span id="cb61-23"><a href="#cb61-23" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb61-24"><a href="#cb61-24" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> trainer, args</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:39:39.375917Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:39:39.375026Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:39:39.383621Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:39:39.382656Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:39:39.375864Z&quot;}" data-trusted="true" data-execution_count="19">
+<details>
+<summary>Show function to get test set accuracy</summary>
+<div class="sourceCode cell-code" id="cb62"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_test_df(trainer):</span>
+<span id="cb62-2"><a href="#cb62-2" aria-hidden="true" tabindex="-1"></a>    test_df <span class="op">=</span> test_ds.to_pandas()[[<span class="st">'input'</span>, <span class="st">'labels'</span>]]</span>
+<span id="cb62-3"><a href="#cb62-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb62-4"><a href="#cb62-4" aria-hidden="true" tabindex="-1"></a>    preds <span class="op">=</span> trainer.predict(test_ds).predictions.astype(<span class="bu">float</span>)</span>
+<span id="cb62-5"><a href="#cb62-5" aria-hidden="true" tabindex="-1"></a>    probs <span class="op">=</span> F.softmax(torch.tensor(preds), dim<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb62-6"><a href="#cb62-6" aria-hidden="true" tabindex="-1"></a>    predicted_classes <span class="op">=</span> torch.argmax(probs, dim<span class="op">=</span><span class="dv">1</span>).numpy()</span>
+<span id="cb62-7"><a href="#cb62-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-8"><a href="#cb62-8" aria-hidden="true" tabindex="-1"></a>    test_df[<span class="st">'predicted'</span>] <span class="op">=</span> predicted_classes</span>
+<span id="cb62-9"><a href="#cb62-9" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb62-10"><a href="#cb62-10" aria-hidden="true" tabindex="-1"></a>    test_df[<span class="st">'match'</span>] <span class="op">=</span> test_df[<span class="st">'labels'</span>] <span class="op">==</span> test_df[<span class="st">'predicted'</span>]</span>
+<span id="cb62-11"><a href="#cb62-11" aria-hidden="true" tabindex="-1"></a>    acc <span class="op">=</span> test_df[<span class="st">'match'</span>].mean()</span>
+<span id="cb62-12"><a href="#cb62-12" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb62-13"><a href="#cb62-13" aria-hidden="true" tabindex="-1"></a>    label_map <span class="op">=</span> {i: label_text <span class="cf">for</span> i, label_text <span class="kw">in</span> <span class="bu">enumerate</span>(test_ds.features[<span class="st">"labels"</span>].names)}</span>
+<span id="cb62-14"><a href="#cb62-14" aria-hidden="true" tabindex="-1"></a>    test_df[<span class="st">'label_text'</span>] <span class="op">=</span> test_df[<span class="st">'labels'</span>].<span class="bu">apply</span>(<span class="kw">lambda</span> x: label_map[x])</span>
+<span id="cb62-15"><a href="#cb62-15" aria-hidden="true" tabindex="-1"></a>    test_df[<span class="st">'pred_text'</span>] <span class="op">=</span> test_df[<span class="st">'predicted'</span>].<span class="bu">apply</span>(<span class="kw">lambda</span> x: label_map[x])</span>
+<span id="cb62-16"><a href="#cb62-16" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb62-17"><a href="#cb62-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> test_df, acc</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>::: {.cell _kg_hide-input=‘true’ trusted=‘true’}</p>
+<details>
+<summary>Show training loop</summary>
+<div class="sourceCode cell-code" id="cb63"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1"><a href="#cb63-1" aria-hidden="true" tabindex="-1"></a>metrics <span class="op">=</span> []</span>
+<span id="cb63-2"><a href="#cb63-2" aria-hidden="true" tabindex="-1"></a>trainers <span class="op">=</span> []</span>
+<span id="cb63-3"><a href="#cb63-3" aria-hidden="true" tabindex="-1"></a>learning_rates <span class="op">=</span> [<span class="fl">1e-6</span>, <span class="fl">1e-5</span>, <span class="fl">3e-5</span>, <span class="fl">5e-5</span>, <span class="fl">8e-5</span>, <span class="fl">1e-4</span>, <span class="fl">3e-4</span>, <span class="fl">5e-4</span>, <span class="fl">8e-4</span>, <span class="fl">1e-3</span>, <span class="fl">1e-2</span>, <span class="fl">1e-1</span>]</span>
+<span id="cb63-4"><a href="#cb63-4" aria-hidden="true" tabindex="-1"></a><span class="co">#learning_rates = [8e-5]</span></span>
+<span id="cb63-5"><a href="#cb63-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb63-6"><a href="#cb63-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> lr <span class="kw">in</span> learning_rates:</span>
+<span id="cb63-7"><a href="#cb63-7" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"Learning Rate: </span><span class="sc">{</span>lr<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb63-8"><a href="#cb63-8" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb63-9"><a href="#cb63-9" aria-hidden="true" tabindex="-1"></a>    metric_callback <span class="op">=</span> MetricCallback()</span>
+<span id="cb63-10"><a href="#cb63-10" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb63-11"><a href="#cb63-11" aria-hidden="true" tabindex="-1"></a>    trainer, args <span class="op">=</span> get_trainer(lr, bs<span class="op">=</span><span class="dv">64</span>)</span>
+<span id="cb63-12"><a href="#cb63-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb63-13"><a href="#cb63-13" aria-hidden="true" tabindex="-1"></a>    trainer.train()</span>
+<span id="cb63-14"><a href="#cb63-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb63-15"><a href="#cb63-15" aria-hidden="true" tabindex="-1"></a>    metrics.append({</span>
+<span id="cb63-16"><a href="#cb63-16" aria-hidden="true" tabindex="-1"></a>        <span class="st">"learning_rate"</span>: lr,</span>
+<span id="cb63-17"><a href="#cb63-17" aria-hidden="true" tabindex="-1"></a>        <span class="st">"metrics"</span>: metric_callback.metrics</span>
+<span id="cb63-18"><a href="#cb63-18" aria-hidden="true" tabindex="-1"></a>        })</span>
+<span id="cb63-19"><a href="#cb63-19" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb63-20"><a href="#cb63-20" aria-hidden="true" tabindex="-1"></a>    trainers.append(trainer) </span>
+<span id="cb63-21"><a href="#cb63-21" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb63-22"><a href="#cb63-22" aria-hidden="true" tabindex="-1"></a>    <span class="co"># clean up</span></span>
+<span id="cb63-23"><a href="#cb63-23" aria-hidden="true" tabindex="-1"></a>    report_gpu()</span>
+<span id="cb63-24"><a href="#cb63-24" aria-hidden="true" tabindex="-1"></a>    report_gpu()</span>
+<span id="cb63-25"><a href="#cb63-25" aria-hidden="true" tabindex="-1"></a>    <span class="op">!</span>rm <span class="op">-</span>r <span class="op">/</span>kaggle<span class="op">/</span>working<span class="op">/</span>outputs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<p>:::</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T00:43:01.302220Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T00:43:01.301777Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T00:43:01.313752Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T00:43:01.312840Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T00:43:01.302184Z&quot;}" data-trusted="true" data-execution_count="50">
+<div class="sourceCode cell-code" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a>metrics_df <span class="op">=</span> results_to_dataframe(metrics, model_name<span class="op">=</span><span class="st">"TinyStories-33M"</span>)</span>
+<span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a>metrics_df <span class="op">=</span> metrics_df.query(<span class="st">'current_learning_rate.notna()'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T00:43:02.303840Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T00:43:02.303172Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T00:43:02.329570Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T00:43:02.328674Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T00:43:02.303805Z&quot;}" data-trusted="true" data-execution_count="51">
+<div class="sourceCode cell-code" id="cb65"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a>metrics_df.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="51">
+
+<div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>model_name</th>
+      <th>initial_learning_rate</th>
+      <th>current_learning_rate</th>
+      <th>epoch</th>
+      <th>learning_rate</th>
+      <th>loss</th>
+      <th>grad_norm</th>
+      <th>eval_loss</th>
+      <th>eval_accuracy</th>
+      <th>eval_runtime</th>
+      <th>eval_samples_per_second</th>
+      <th>eval_steps_per_second</th>
+      <th>train_runtime</th>
+      <th>train_samples_per_second</th>
+      <th>train_steps_per_second</th>
+      <th>total_flos</th>
+      <th>train_loss</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>1</th>
+      <td>TinyStories-33M</td>
+      <td>0.000001</td>
+      <td>8.455313e-07</td>
+      <td>1.0</td>
+      <td>8.455313e-07</td>
+      <td>1.0189</td>
+      <td>1631760.000</td>
+      <td>0.955949</td>
+      <td>0.588235</td>
+      <td>0.7160</td>
+      <td>569.866</td>
+      <td>2.793</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>TinyStories-33M</td>
+      <td>0.000001</td>
+      <td>3.034875e-07</td>
+      <td>2.0</td>
+      <td>3.034875e-07</td>
+      <td>0.8713</td>
+      <td>1828322.000</td>
+      <td>0.902843</td>
+      <td>0.612745</td>
+      <td>0.7188</td>
+      <td>567.645</td>
+      <td>2.783</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>TinyStories-33M</td>
+      <td>0.000001</td>
+      <td>0.000000e+00</td>
+      <td>3.0</td>
+      <td>0.000000e+00</td>
+      <td>0.8171</td>
+      <td>1519178.375</td>
+      <td>0.894423</td>
+      <td>0.620098</td>
+      <td>0.7479</td>
+      <td>545.515</td>
+      <td>2.674</td>
+      <td>25.9696</td>
+      <td>188.413</td>
+      <td>1.502</td>
+      <td>1.090163e+14</td>
+      <td>0.902434</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>TinyStories-33M</td>
+      <td>0.000010</td>
+      <td>8.455313e-06</td>
+      <td>1.0</td>
+      <td>8.455313e-06</td>
+      <td>1.2371</td>
+      <td>1272109.750</td>
+      <td>0.816271</td>
+      <td>0.617647</td>
+      <td>0.7218</td>
+      <td>565.288</td>
+      <td>2.771</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>TinyStories-33M</td>
+      <td>0.000010</td>
+      <td>3.034875e-06</td>
+      <td>2.0</td>
+      <td>3.034875e-06</td>
+      <td>0.5578</td>
+      <td>1321395.500</td>
+      <td>0.704009</td>
+      <td>0.713235</td>
+      <td>0.7366</td>
+      <td>553.892</td>
+      <td>2.715</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+</div>
+<section id="learning-rate-with-highest-validation-accuracy" class="level3">
+<h3 class="anchored" data-anchor-id="learning-rate-with-highest-validation-accuracy">Learning Rate with Highest Validation Accuracy</h3>
+<p>The learning rate with the highest validation set accuracy (85.5%) is <code>0.0005</code> (5e-4).</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T00:45:07.607765Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T00:45:07.606942Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T00:45:07.632814Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T00:45:07.631754Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T00:45:07.607732Z&quot;}" data-trusted="true" data-execution_count="52">
+<div class="sourceCode cell-code" id="cb66"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb66-1"><a href="#cb66-1" aria-hidden="true" tabindex="-1"></a>metrics_df.query(<span class="st">'eval_accuracy == eval_accuracy.max()'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="52">
+
+<div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>model_name</th>
+      <th>initial_learning_rate</th>
+      <th>current_learning_rate</th>
+      <th>epoch</th>
+      <th>learning_rate</th>
+      <th>loss</th>
+      <th>grad_norm</th>
+      <th>eval_loss</th>
+      <th>eval_accuracy</th>
+      <th>eval_runtime</th>
+      <th>eval_samples_per_second</th>
+      <th>eval_steps_per_second</th>
+      <th>train_runtime</th>
+      <th>train_samples_per_second</th>
+      <th>train_steps_per_second</th>
+      <th>total_flos</th>
+      <th>train_loss</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>31</th>
+      <td>TinyStories-33M</td>
+      <td>0.0005</td>
+      <td>0.0</td>
+      <td>3.0</td>
+      <td>0.0</td>
+      <td>0.2443</td>
+      <td>389968.15625</td>
+      <td>0.406566</td>
+      <td>0.855392</td>
+      <td>0.7971</td>
+      <td>511.863</td>
+      <td>2.509</td>
+      <td>25.9521</td>
+      <td>188.54</td>
+      <td>1.503</td>
+      <td>1.090163e+14</td>
+      <td>0.819404</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T00:46:23.715736Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T00:46:23.715009Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T00:46:23.722901Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T00:46:23.721694Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T00:46:23.715693Z&quot;}" data-trusted="true" data-execution_count="54">
+<div class="sourceCode cell-code" id="cb67"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb67-1"><a href="#cb67-1" aria-hidden="true" tabindex="-1"></a>learning_rates[<span class="dv">7</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="54">
+<pre><code>0.0005</code></pre>
+</div>
+</div>
+<p>The corresponding model has a 79% accuracy on the test set.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T00:46:43.884782Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T00:46:43.884075Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T00:46:44.383581Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T00:46:44.382679Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T00:46:43.884741Z&quot;}" data-trusted="true" data-execution_count="55">
+<div class="sourceCode cell-code" id="cb69"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb69-1"><a href="#cb69-1" aria-hidden="true" tabindex="-1"></a>test_df, acc <span class="op">=</span> get_test_df(trainers[<span class="dv">7</span>])</span>
+<span id="cb69-2"><a href="#cb69-2" aria-hidden="true" tabindex="-1"></a>acc</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/opt/conda/lib/python3.10/site-packages/torch/nn/parallel/_functions.py:68: UserWarning: Was asked to gather along dimension 0, but all input tensors were scalars; will instead unsqueeze and return a vector.
+  warnings.warn('Was asked to gather along dimension 0, but all '</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+
+</div>
+<div class="cell-output cell-output-display" data-execution_count="55">
+<pre><code>0.7911111111111111</code></pre>
+</div>
+</div>
+<p>Similar to before the model does well at predicting <code>neutral</code> sentences (119/125). This time, the model has a better accuracy with <code>positive</code> sentences (41/54) than <code>negative</code> sentences where it gets less than 50% correct (18/46).</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T00:49:33.725347Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T00:49:33.724549Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T00:49:33.947229Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T00:49:33.945781Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T00:49:33.725311Z&quot;}" data-trusted="true" data-execution_count="56">
+<div class="sourceCode cell-code" id="cb72"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb72-1"><a href="#cb72-1" aria-hidden="true" tabindex="-1"></a>make_cm(test_df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-48-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2"><img src="index_files/figure-html/cell-48-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Interestingly enough, this model gets my made-up “positive” sentence incorrect (while getting the “neutral” and “negative” made-up ones correct):</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T00:51:50.539001Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T00:51:50.537936Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T00:51:50.561638Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T00:51:50.560721Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T00:51:50.538956Z&quot;}" data-trusted="true" data-execution_count="57">
+<div class="sourceCode cell-code" id="cb73"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb73-1"><a href="#cb73-1" aria-hidden="true" tabindex="-1"></a>text <span class="op">=</span> <span class="st">"The net sales went up from USD $3.4M to USD $5.6M since the same quarter last year"</span></span>
+<span id="cb73-2"><a href="#cb73-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb73-3"><a href="#cb73-3" aria-hidden="true" tabindex="-1"></a>_ <span class="op">=</span> get_prediction(trainers[<span class="dv">7</span>].model, text, tokz)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Probability: 0.49
+Predicted label: neutral</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T00:51:58.486198Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T00:51:58.485282Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T00:51:58.504635Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T00:51:58.503490Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T00:51:58.486153Z&quot;}" data-trusted="true" data-execution_count="58">
+<div class="sourceCode cell-code" id="cb75"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb75-1"><a href="#cb75-1" aria-hidden="true" tabindex="-1"></a>text <span class="op">=</span> <span class="st">"The net sales went down from USD $8.9M to USD $1.2M since the same quarter last year"</span></span>
+<span id="cb75-2"><a href="#cb75-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb75-3"><a href="#cb75-3" aria-hidden="true" tabindex="-1"></a>_ <span class="op">=</span> get_prediction(trainers[<span class="dv">7</span>].model, text, tokz)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Probability: 0.36
+Predicted label: negative</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T00:52:04.500778Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T00:52:04.500409Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T00:52:04.521138Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T00:52:04.520253Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T00:52:04.500750Z&quot;}" data-trusted="true" data-execution_count="59">
+<div class="sourceCode cell-code" id="cb77"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb77-1"><a href="#cb77-1" aria-hidden="true" tabindex="-1"></a>text <span class="op">=</span> <span class="st">"The net sales stayed the as the same quarter last year"</span></span>
+<span id="cb77-2"><a href="#cb77-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb77-3"><a href="#cb77-3" aria-hidden="true" tabindex="-1"></a>_ <span class="op">=</span> get_prediction(trainers[<span class="dv">7</span>].model, text, tokz)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Probability: 0.54
+Predicted label: neutral</code></pre>
+</div>
+</div>
+<section id="relationship-between-learning-rate-and-validation-accuracy" class="level4">
+<h4 class="anchored" data-anchor-id="relationship-between-learning-rate-and-validation-accuracy">Relationship between Learning Rate and Validation Accuracy</h4>
+<p>The validation set accuracy starts low, increases to a peak at <code>lr=0.0005</code> and then decreases again. I’ve used a log-scale on the x-axis to more easily view all of the data.</p>
+<p>::: {.cell _kg_hide-input=‘true’ execution=‘{“iopub.execute_input”:“2024-08-14T01:05:23.103349Z”,“iopub.status.busy”:“2024-08-14T01:05:23.102976Z”,“iopub.status.idle”:“2024-08-14T01:05:23.716368Z”,“shell.execute_reply”:“2024-08-14T01:05:23.715425Z”,“shell.execute_reply.started”:“2024-08-14T01:05:23.103315Z”}’ trusted=‘true’ execution_count=72}</p>
+<div class="sourceCode cell-code" id="cb79"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb79-1"><a href="#cb79-1" aria-hidden="true" tabindex="-1"></a>final_epoch_metrics <span class="op">=</span> metrics_df.query(<span class="st">"epoch == 3"</span>)</span>
+<span id="cb79-2"><a href="#cb79-2" aria-hidden="true" tabindex="-1"></a>plt.scatter(final_epoch_metrics[<span class="st">'initial_learning_rate'</span>], final_epoch_metrics[<span class="st">'eval_accuracy'</span>])<span class="op">;</span></span>
+<span id="cb79-3"><a href="#cb79-3" aria-hidden="true" tabindex="-1"></a>plt.xscale(<span class="st">'log'</span>)</span>
+<span id="cb79-4"><a href="#cb79-4" aria-hidden="true" tabindex="-1"></a>plt.xlabel(<span class="st">'Learning Rate (log scale)'</span>)</span>
+<span id="cb79-5"><a href="#cb79-5" aria-hidden="true" tabindex="-1"></a>plt.ylabel(<span class="st">'Validation Set Accuracy'</span>)</span>
+<span id="cb79-6"><a href="#cb79-6" aria-hidden="true" tabindex="-1"></a>plt.title(<span class="st">'Learning Rate vs. Final Epoch Validation Accuracy'</span>)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-52-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3"><img src="index_files/figure-html/cell-52-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+<p>:::</p>
+</section>
+</section>
+<section id="learning-rate-with-highest-test-set-accuracy" class="level3">
+<h3 class="anchored" data-anchor-id="learning-rate-with-highest-test-set-accuracy">Learning Rate with Highest Test Set Accuracy</h3>
+<div class="cell" data-trusted="true">
+<div class="sourceCode cell-code" id="cb80"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb80-1"><a href="#cb80-1" aria-hidden="true" tabindex="-1"></a>test_dfs <span class="op">=</span> []</span>
+<span id="cb80-2"><a href="#cb80-2" aria-hidden="true" tabindex="-1"></a>accs <span class="op">=</span> []</span>
+<span id="cb80-3"><a href="#cb80-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> t <span class="kw">in</span> trainers:</span>
+<span id="cb80-4"><a href="#cb80-4" aria-hidden="true" tabindex="-1"></a>    test_df, acc <span class="op">=</span> get_test_df(t)</span>
+<span id="cb80-5"><a href="#cb80-5" aria-hidden="true" tabindex="-1"></a>    test_dfs.append(test_df)</span>
+<span id="cb80-6"><a href="#cb80-6" aria-hidden="true" tabindex="-1"></a>    accs.append(acc)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The learning rate of 0.0005 also had the highest test set accuracy.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:34:03.464737Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:34:03.464323Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:34:03.472215Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:34:03.470949Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:34:03.464706Z&quot;}" data-trusted="true" data-execution_count="75">
+<div class="sourceCode cell-code" id="cb81"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb81-1"><a href="#cb81-1" aria-hidden="true" tabindex="-1"></a>accs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="75">
+<pre><code>[0.6088888888888889,
+ 0.6222222222222222,
+ 0.7066666666666667,
+ 0.7155555555555555,
+ 0.72,
+ 0.7511111111111111,
+ 0.76,
+ 0.7911111111111111,
+ 0.6622222222222223,
+ 0.6177777777777778,
+ 0.5555555555555556,
+ 0.5555555555555556]</code></pre>
+</div>
+</div>
+</section>
+</section>
+<section id="training-with-the-best-learning-rate-10-times" class="level2">
+<h2 class="anchored" data-anchor-id="training-with-the-best-learning-rate-10-times">Training with the Best Learning Rate 10 Times</h2>
+<p>I’m curious how consistently this model trains so I’ll train it 10 times with the best-performing learning rate.</p>
+<div class="cell" data-trusted="true">
+<div class="sourceCode cell-code" id="cb83"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb83-1"><a href="#cb83-1" aria-hidden="true" tabindex="-1"></a>best_metrics <span class="op">=</span> []</span>
+<span id="cb83-2"><a href="#cb83-2" aria-hidden="true" tabindex="-1"></a>best_trainers <span class="op">=</span> []</span>
+<span id="cb83-3"><a href="#cb83-3" aria-hidden="true" tabindex="-1"></a>lr <span class="op">=</span> <span class="fl">0.0005</span></span>
+<span id="cb83-4"><a href="#cb83-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb83-5"><a href="#cb83-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">10</span>):</span>
+<span id="cb83-6"><a href="#cb83-6" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb83-7"><a href="#cb83-7" aria-hidden="true" tabindex="-1"></a>    metric_callback <span class="op">=</span> MetricCallback()</span>
+<span id="cb83-8"><a href="#cb83-8" aria-hidden="true" tabindex="-1"></a>    trainer, args <span class="op">=</span> get_trainer(lr<span class="op">=</span>lr, bs<span class="op">=</span><span class="dv">64</span>)</span>
+<span id="cb83-9"><a href="#cb83-9" aria-hidden="true" tabindex="-1"></a>    trainer.train()</span>
+<span id="cb83-10"><a href="#cb83-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb83-11"><a href="#cb83-11" aria-hidden="true" tabindex="-1"></a>    best_metrics.append({</span>
+<span id="cb83-12"><a href="#cb83-12" aria-hidden="true" tabindex="-1"></a>        <span class="st">"learning_rate"</span>: lr,</span>
+<span id="cb83-13"><a href="#cb83-13" aria-hidden="true" tabindex="-1"></a>        <span class="st">"metrics"</span>: metric_callback.metrics</span>
+<span id="cb83-14"><a href="#cb83-14" aria-hidden="true" tabindex="-1"></a>        })</span>
+<span id="cb83-15"><a href="#cb83-15" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb83-16"><a href="#cb83-16" aria-hidden="true" tabindex="-1"></a>    best_trainers.append(trainer) </span>
+<span id="cb83-17"><a href="#cb83-17" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb83-18"><a href="#cb83-18" aria-hidden="true" tabindex="-1"></a>    <span class="co"># clean up</span></span>
+<span id="cb83-19"><a href="#cb83-19" aria-hidden="true" tabindex="-1"></a>    report_gpu()</span>
+<span id="cb83-20"><a href="#cb83-20" aria-hidden="true" tabindex="-1"></a>    report_gpu()</span>
+<span id="cb83-21"><a href="#cb83-21" aria-hidden="true" tabindex="-1"></a>    <span class="op">!</span>rm <span class="op">-</span>r <span class="op">/</span>kaggle<span class="op">/</span>working<span class="op">/</span>outputs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:46:36.104738Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:46:36.104291Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:46:36.136292Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:46:36.135051Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:46:36.104705Z&quot;}" data-trusted="true" data-execution_count="23">
+<div class="sourceCode cell-code" id="cb84"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb84-1"><a href="#cb84-1" aria-hidden="true" tabindex="-1"></a>best_metrics_df <span class="op">=</span> results_to_dataframe(best_metrics, model_name<span class="op">=</span><span class="st">"TinyStories-33M"</span>)</span>
+<span id="cb84-2"><a href="#cb84-2" aria-hidden="true" tabindex="-1"></a>best_metrics_df <span class="op">=</span> best_metrics_df.query(<span class="st">'current_learning_rate.notna()'</span>)</span>
+<span id="cb84-3"><a href="#cb84-3" aria-hidden="true" tabindex="-1"></a>best_metrics_df.head(<span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="23">
+
+<div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>model_name</th>
+      <th>initial_learning_rate</th>
+      <th>current_learning_rate</th>
+      <th>epoch</th>
+      <th>learning_rate</th>
+      <th>loss</th>
+      <th>grad_norm</th>
+      <th>eval_loss</th>
+      <th>eval_accuracy</th>
+      <th>eval_runtime</th>
+      <th>eval_samples_per_second</th>
+      <th>eval_steps_per_second</th>
+      <th>train_runtime</th>
+      <th>train_samples_per_second</th>
+      <th>train_steps_per_second</th>
+      <th>total_flos</th>
+      <th>train_loss</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>1</th>
+      <td>TinyStories-33M</td>
+      <td>0.0005</td>
+      <td>0.000423</td>
+      <td>1.0</td>
+      <td>0.000423</td>
+      <td>2.0251</td>
+      <td>2.925652e+05</td>
+      <td>0.693838</td>
+      <td>0.723039</td>
+      <td>0.7110</td>
+      <td>573.874</td>
+      <td>2.813</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>TinyStories-33M</td>
+      <td>0.0005</td>
+      <td>0.000152</td>
+      <td>2.0</td>
+      <td>0.000152</td>
+      <td>0.6226</td>
+      <td>1.006726e+06</td>
+      <td>0.634036</td>
+      <td>0.678922</td>
+      <td>0.7205</td>
+      <td>566.265</td>
+      <td>2.776</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>TinyStories-33M</td>
+      <td>0.0005</td>
+      <td>0.000000</td>
+      <td>3.0</td>
+      <td>0.000000</td>
+      <td>0.3786</td>
+      <td>2.750663e+05</td>
+      <td>0.581288</td>
+      <td>0.769608</td>
+      <td>0.7977</td>
+      <td>511.497</td>
+      <td>2.507</td>
+      <td>26.0778</td>
+      <td>187.631</td>
+      <td>1.496</td>
+      <td>1.090163e+14</td>
+      <td>1.008766</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+</div>
+<p>I would say this model’s training is quite consistent! Almost too consistent? Something feels weird about it getting the same accuracy for 9 out of the 10 runs.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:47:35.679375Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:47:35.679017Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:47:35.697278Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:47:35.696250Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:47:35.679345Z&quot;}" data-trusted="true" data-execution_count="24">
+<div class="sourceCode cell-code" id="cb85"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb85-1"><a href="#cb85-1" aria-hidden="true" tabindex="-1"></a>final_accs <span class="op">=</span> best_metrics_df.query(<span class="st">"epoch == 3"</span>)[<span class="st">'eval_accuracy'</span>]</span>
+<span id="cb85-2"><a href="#cb85-2" aria-hidden="true" tabindex="-1"></a>final_accs.describe()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="24">
+<pre><code>count    10.000000
+mean      0.846814
+std       0.027127
+min       0.769608
+25%       0.855392
+50%       0.855392
+75%       0.855392
+max       0.855392
+Name: eval_accuracy, dtype: float64</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:48:51.805884Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:48:51.805076Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:48:51.818210Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:48:51.817363Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:48:51.805852Z&quot;}" data-trusted="true" data-execution_count="25">
+<div class="sourceCode cell-code" id="cb87"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb87-1"><a href="#cb87-1" aria-hidden="true" tabindex="-1"></a>final_accs.value_counts()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="25">
+<pre><code>eval_accuracy
+0.855392    9
+0.769608    1
+Name: count, dtype: int64</code></pre>
+</div>
+</div>
+<div class="cell" data-trusted="true">
+<div class="sourceCode cell-code" id="cb89"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb89-1"><a href="#cb89-1" aria-hidden="true" tabindex="-1"></a>test_dfs <span class="op">=</span> []</span>
+<span id="cb89-2"><a href="#cb89-2" aria-hidden="true" tabindex="-1"></a>accs <span class="op">=</span> []</span>
+<span id="cb89-3"><a href="#cb89-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> t <span class="kw">in</span> best_trainers:</span>
+<span id="cb89-4"><a href="#cb89-4" aria-hidden="true" tabindex="-1"></a>    test_df, acc <span class="op">=</span> get_test_df(t)</span>
+<span id="cb89-5"><a href="#cb89-5" aria-hidden="true" tabindex="-1"></a>    test_dfs.append(test_df)</span>
+<span id="cb89-6"><a href="#cb89-6" aria-hidden="true" tabindex="-1"></a>    accs.append(acc)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The model also gets consistently the same test set accuracy.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T01:49:54.907806Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T01:49:54.906905Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T01:49:54.913565Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T01:49:54.912637Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T01:49:54.907770Z&quot;}" data-trusted="true" data-execution_count="27">
+<div class="sourceCode cell-code" id="cb90"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb90-1"><a href="#cb90-1" aria-hidden="true" tabindex="-1"></a>accs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="27">
+<pre><code>[0.68,
+ 0.7911111111111111,
+ 0.7911111111111111,
+ 0.7911111111111111,
+ 0.7911111111111111,
+ 0.7911111111111111,
+ 0.7911111111111111,
+ 0.7911111111111111,
+ 0.7911111111111111,
+ 0.7911111111111111]</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-08-14T02:00:01.142771Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-08-14T02:00:01.142140Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-08-14T02:00:01.151626Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-08-14T02:00:01.150695Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-08-14T02:00:01.142738Z&quot;}" data-trusted="true" data-execution_count="31">
+<div class="sourceCode cell-code" id="cb92"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb92-1"><a href="#cb92-1" aria-hidden="true" tabindex="-1"></a>test_df.to_csv(<span class="st">"TinyStories-33M_test set predictions_LR5e-4.csv"</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>I entered this experiment expecting TinyStories-33M to perform poorly on sentiment classification, and am surprised (even shocked?) that it’s achieving 80%+ accuracy consistently. Granted, I have a small test set (and validation set) but these results are promising.</p>
+<p>I also didn’t do an exhaustive hyperparameter search (weight decay, learning rate warmup, number of epochs) so maybe I could have increased the performance of the model. I’ll leave that for a future exercise.</p>
+<p>For now, in my next notebook/blog post related to this project (that I’m calling <strong>TinySentiment</strong>), I’ll fine-tune three smaller base models (TinyStories-8M, TinyStories-3M, and TinyStories-1M) on the <code>financial_phrasebank</code> dataset and compare their results with the 33M model.</p>
+<p>I hope you enjoyed this notebook! Please upvote if you did. Follow me on Twitter <a href="https://twitter.com/vishal_learner"><span class="citation" data-cites="vishal_learner">@vishal_learner</span></a>.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<script>var lightboxQuarto = GLightbox({"loop":true,"descPosition":"bottom","selector":".lightbox","closeEffect":"zoom","openEffect":"zoom"});</script>
+
+
+
+</body></html>
