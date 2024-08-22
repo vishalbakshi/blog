@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2024-08-21">
+<meta name="description" content="In this blog post, as I develop a non-ML baseline for image typeface classification, I use the OpenCV library to calculate the average letter area ratio in a text image.">
+
+<title>vishal bakshi - Calculating the Letter Area Ratio in a Text Image</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">vishal bakshi</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#find-the-contours-of-a-binarized-image" id="toc-find-the-contours-of-a-binarized-image" class="nav-link" data-scroll-target="#find-the-contours-of-a-binarized-image">Find the Contours of a Binarized Image</a></li>
+  <li><a href="#calculating-bounding-box-and-contour-areas" id="toc-calculating-bounding-box-and-contour-areas" class="nav-link" data-scroll-target="#calculating-bounding-box-and-contour-areas">Calculating Bounding Box and Contour Areas</a></li>
+  <li><a href="#calculating-average-letter-area-ratio-of-different-images-of-text" id="toc-calculating-average-letter-area-ratio-of-different-images-of-text" class="nav-link" data-scroll-target="#calculating-average-letter-area-ratio-of-different-images-of-text">Calculating Average Letter Area Ratio of Different Images of Text</a></li>
+  <li><a href="#final-thoughts" id="toc-final-thoughts" class="nav-link" data-scroll-target="#final-thoughts">Final Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Calculating the Letter Area Ratio in a Text Image</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">python</div>
+    <div class="quarto-category">computer vision</div>
+    <div class="quarto-category">TypefaceClassifier</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    In this blog post, as I develop a non-ML baseline for image typeface classification, I use the OpenCV library to calculate the average letter area ratio in a text image.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">August 21, 2024</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In this notebook, I’ll walk through a modified algorithm (suggested by Claude) to calculate the percentage of positive space in the letters of an image. I’ll define this percentage as:</p>
+<p><br></p>
+<p><span class="math display">\[\frac{\text{Area of Letter}}{\text{Area of Bounding Box Around Letter}}\]</span></p>
+<p><br></p>
+<p>This algorithm is part of my exploration of non-ML baselines to classify text images into various typeface categories (e.g., “humanist sans,” “grotesque sans,” “script,” “display,” etc.). Once the non-ML baseline is established, I’ll train a neural network for this task. This is one of many notebooks in my <a href="https://vishalbakshi.github.io/blog/index.html#category=TypefaceClassifier"><strong>TypefaceClassifier</strong></a> project series.</p>
+<div class="cell" data-execution_count="91">
+<details>
+<summary>Show imports</summary>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> cv2</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+</section>
+<section id="find-the-contours-of-a-binarized-image" class="level2">
+<h2 class="anchored" data-anchor-id="find-the-contours-of-a-binarized-image">Find the Contours of a Binarized Image</h2>
+<p>As we do with all of these algorithms (thus far), we start by loading the image of text and binarizing it.</p>
+<div class="cell" data-execution_count="125">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>image_path <span class="op">=</span> <span class="st">'serif-76px.png'</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="14baee80-186b-4466-f71a-3900b4d0d761" data-execution_count="126">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>img <span class="op">=</span> cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>_, binary <span class="op">=</span> cv2.threshold(img, <span class="dv">0</span>, <span class="dv">255</span>, cv2.THRESH_BINARY_INV <span class="op">+</span> cv2.THRESH_OTSU)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>binary</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="126">
+<style>
+      .ndarray_repr .ndarray_raw_data {
+        display: none;
+      }
+      .ndarray_repr.show_array .ndarray_raw_data {
+        display: block;
+      }
+      .ndarray_repr.show_array .ndarray_image_preview {
+        display: none;
+      }
+      </style>
+      <div id="id-da72d525-44f8-45b9-9f36-2bd09d32aab7" class="ndarray_repr"><pre>ndarray (512, 512) <button style="padding: 0 2px;">show data</button></pre><img src="data:image/png;base64,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" class="ndarray_image_preview"><pre class="ndarray_raw_data">array([[0, 0, 0, ..., 0, 0, 0],
+       [0, 0, 0, ..., 0, 0, 0],
+       [0, 0, 0, ..., 0, 0, 0],
+       ...,
+       [0, 0, 0, ..., 0, 0, 0],
+       [0, 0, 0, ..., 0, 0, 0],
+       [0, 0, 0, ..., 0, 0, 0]], dtype=uint8)</pre></div><script>
+      (() => {
+      const titles = ['show data', 'hide data'];
+      let index = 0
+      document.querySelector('#id-da72d525-44f8-45b9-9f36-2bd09d32aab7 button').onclick = (e) => {
+        document.querySelector('#id-da72d525-44f8-45b9-9f36-2bd09d32aab7').classList.toggle('show_array');
+        index = (++index) % 2;
+        document.querySelector('#id-da72d525-44f8-45b9-9f36-2bd09d32aab7 button').textContent = titles[index];
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      })();
+    </script>
+</div>
+</div>
+<p>Then we <code>findContours</code> in the image. In order to find both the inner and outer contours (for letters with “holes” in them like <code>o</code>, <code>d</code>, <code>e</code> <code>p</code> <code>q</code> and so on) we use the <code>cv2.RETR_TREE</code> parameter.</p>
+<p>This returns a <code>hierarchy</code> which has the shape <code>1, N, 4</code> where <code>N</code> is the number of contours. The <code>4</code> elements per contour are <code>[Next, Previous, First_Child, Parent]</code>. If a contour doesn’t have one of those, the value of <code>hierarchy</code> is <code>-1</code>.</p>
+<div class="cell" data-execution_count="127">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>contours, hierarchy <span class="op">=</span> cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="c7fe3417-c52d-411c-82a4-f167a57af06e" data-execution_count="128">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>hierarchy.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="128">
+<pre><code>(1, 75, 4)</code></pre>
+</div>
+</div>
+<p>Visualizing the contours—note how the inside shapes (holes) of letters like <code>d</code> are also identified as contours.</p>
+<div class="cell" data-execution_count="129">
+<details>
+<summary>Show <code>plot_contour</code> definition</summary>
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_contour(img, contour):</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  img_rgb <span class="op">=</span> cv2.cvtColor(img, cv2.COLOR_BGR2RGB)</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  cv2.drawContours(img_rgb, contour, <span class="op">-</span><span class="dv">1</span>, (<span class="dv">250</span>, <span class="dv">0</span>, <span class="dv">92</span>), <span class="dv">2</span>)</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  fig, ax <span class="op">=</span> plt.subplots(<span class="dv">1</span>, <span class="dv">1</span> , figsize<span class="op">=</span>(<span class="dv">5</span>,<span class="dv">5</span>))</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>  fig.suptitle(<span class="ss">f'Binarized Contours'</span>, fontsize<span class="op">=</span><span class="dv">16</span>)</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>  ax.imshow(img_rgb)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-outputid="15ddfa12-0e13-4121-e347-f1cbe367012e" data-execution_count="130">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>plot_contour(img, contours)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-8-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="index_files/figure-html/cell-8-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="calculating-bounding-box-and-contour-areas" class="level2">
+<h2 class="anchored" data-anchor-id="calculating-bounding-box-and-contour-areas">Calculating Bounding Box and Contour Areas</h2>
+<p>As an example, I’ll calculate the area inside the contours of the letter <code>d</code> (it has an outer contour, <code>67</code> and an inner contour <code>68</code>):</p>
+<div class="cell" data-outputid="2084d87c-3bf2-4180-ece4-012684846e29" data-execution_count="131">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>plot_contour(img, contours[<span class="dv">67</span>]) <span class="co"># outside contour</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-9-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2"><img src="index_files/figure-html/cell-9-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell" data-outputid="b512a807-3c1d-400c-bacf-1e9147bf2a9e" data-execution_count="132">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>plot_contour(img, contours[<span class="dv">68</span>]) <span class="co"># inside contour</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-10-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3"><img src="index_files/figure-html/cell-10-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>The bounding box (rectangle) around the contour is calculated with <code>boundingRect</code>:</p>
+<div class="cell" data-execution_count="133">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>x, y, w, h <span class="op">=</span> cv2.boundingRect(contours[<span class="dv">67</span>]) <span class="co"># outer contour bounding box</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The rectangle’s area is:</p>
+<div class="cell" data-outputid="e127d5ff-aa53-43c1-e0a0-6b56993bc778" data-execution_count="134">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>rect_area <span class="op">=</span> w<span class="op">*</span>h</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>rect_area</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="134">
+<pre><code>1998</code></pre>
+</div>
+</div>
+<p>The area of the <code>contour</code> is a bit more involved as it’s the difference between the outer area of the <code>d</code> and the inner (hole) area of the <code>d</code>:</p>
+<div class="cell" data-outputid="0b53bc20-022f-4d60-ba64-00a0702336d4" data-execution_count="135">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>outer_area <span class="op">=</span> cv2.contourArea(contours[<span class="dv">67</span>])</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>outer_area</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="135">
+<pre><code>1049.5</code></pre>
+</div>
+</div>
+<p>The <code>hierarchy</code> of this <code>d</code>’s outer contour tells us that is has no parent (<code>-1</code>) and it has a child <code>68</code>.</p>
+<div class="cell" data-outputid="1a385d3c-e3a5-418d-d80b-df95d16b8390" data-execution_count="136">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>hierarchy[<span class="dv">0</span>][<span class="dv">67</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="136">
+<pre><code>array([69, 66, 68, -1], dtype=int32)</code></pre>
+</div>
+</div>
+<p>Iterating through the children (it has 1 child) we calculate the inner contour’s area:</p>
+<div class="cell" data-execution_count="157">
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>child <span class="op">=</span> hierarchy[<span class="dv">0</span>][<span class="dv">67</span>][<span class="dv">2</span>]  <span class="co"># First child</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>inner_area <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a><span class="cf">while</span> child <span class="op">!=</span> <span class="op">-</span><span class="dv">1</span> <span class="kw">and</span> child <span class="op">&lt;</span> <span class="bu">len</span>(contours):</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>  inner_area <span class="op">+=</span> cv2.contourArea(contours[child])</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>  child <span class="op">=</span> hierarchy[<span class="dv">0</span>][child][<span class="dv">2</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="4732fefd-e31e-4611-c67c-bc1d32b28de6" data-execution_count="158">
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>inner_area</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="158">
+<pre><code>425.5</code></pre>
+</div>
+</div>
+<p>In this case, since there is only one child, we could calculate the contour directly:</p>
+<div class="cell" data-outputid="39b14681-4774-4cc7-abe1-ed834bf18060" data-execution_count="139">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>cv2.contourArea(contours[<span class="dv">68</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="139">
+<pre><code>425.5</code></pre>
+</div>
+</div>
+<p>The area of the letter is the difference between inner and outer areas:</p>
+<div class="cell" data-outputid="4b0ab84b-06f8-49e2-8d74-df0c8f804646" data-execution_count="140">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>d_area <span class="op">=</span> outer_area <span class="op">-</span> inner_area</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>d_area</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="140">
+<pre><code>624.0</code></pre>
+</div>
+</div>
+<p>The percentage of positive space of the letter <code>d</code>, in pixels, is the area of the letter divided by the area of the bounding box:</p>
+<div class="cell" data-outputid="48c1d57d-36b6-4586-cdb6-e43494bca80c" data-execution_count="141">
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>d_area <span class="op">/</span> rect_area</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="141">
+<pre><code>0.3123123123123123</code></pre>
+</div>
+</div>
+<p>If we had ignored the inner area of the <code>d</code> and used the outer contour area, this percentage would be significantly larger:</p>
+<div class="cell" data-outputid="6e987361-0dfb-4fa7-ff63-6341b0162caf" data-execution_count="142">
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>outer_area <span class="op">/</span> rect_area</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="142">
+<pre><code>0.5252752752752753</code></pre>
+</div>
+</div>
+</section>
+<section id="calculating-average-letter-area-ratio-of-different-images-of-text" class="level2">
+<h2 class="anchored" data-anchor-id="calculating-average-letter-area-ratio-of-different-images-of-text">Calculating Average Letter Area Ratio of Different Images of Text</h2>
+<p>I’ll wrap all of this functionality into a set of functions (well, Claude did that for me to begin with) and then test it out on different images of text. I’m also calculating the outer contour area so I can illustrate the difference of areas for an image.</p>
+<div class="cell" data-execution_count="186">
+<details>
+<summary>Show <code>pct_positive_space</code> definition</summary>
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_letter_area(contour, hierarchy, contours, idx):</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>    outer_area <span class="op">=</span> cv2.contourArea(contour)</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>    inner_area <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Check if hierarchy is valid</span></span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> hierarchy <span class="kw">is</span> <span class="va">None</span> <span class="kw">or</span> <span class="bu">len</span>(hierarchy) <span class="op">&lt;</span> <span class="dv">3</span>:</span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> outer_area  <span class="co"># Return outer area if hierarchy is invalid</span></span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>    child <span class="op">=</span> hierarchy[idx][<span class="dv">2</span>]  <span class="co"># First child</span></span>
+<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">while</span> child <span class="op">!=</span> <span class="op">-</span><span class="dv">1</span> <span class="kw">and</span> child <span class="op">&lt;</span> <span class="bu">len</span>(contours):</span>
+<span id="cb29-12"><a href="#cb29-12" aria-hidden="true" tabindex="-1"></a>        inner_area <span class="op">+=</span> cv2.contourArea(contours[child])</span>
+<span id="cb29-13"><a href="#cb29-13" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Safely get next child</span></span>
+<span id="cb29-14"><a href="#cb29-14" aria-hidden="true" tabindex="-1"></a>        <span class="co">#if child &lt; len(hierarchy) and len(hierarchy[child]) &gt; 0:</span></span>
+<span id="cb29-15"><a href="#cb29-15" aria-hidden="true" tabindex="-1"></a>        child <span class="op">=</span> hierarchy[child][<span class="dv">2</span>]</span>
+<span id="cb29-16"><a href="#cb29-16" aria-hidden="true" tabindex="-1"></a>        <span class="co"># else:</span></span>
+<span id="cb29-17"><a href="#cb29-17" aria-hidden="true" tabindex="-1"></a>        <span class="co">#     break  # Exit loop if we can't get next child safely</span></span>
+<span id="cb29-18"><a href="#cb29-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-19"><a href="#cb29-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> outer_area <span class="op">-</span> inner_area</span>
+<span id="cb29-20"><a href="#cb29-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-21"><a href="#cb29-21" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> letter_area_ratio(image_path):</span>
+<span id="cb29-22"><a href="#cb29-22" aria-hidden="true" tabindex="-1"></a>    img <span class="op">=</span> cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)</span>
+<span id="cb29-23"><a href="#cb29-23" aria-hidden="true" tabindex="-1"></a>    _, binary <span class="op">=</span> cv2.threshold(img, <span class="dv">0</span>, <span class="dv">255</span>, cv2.THRESH_BINARY_INV <span class="op">+</span> cv2.THRESH_OTSU)</span>
+<span id="cb29-24"><a href="#cb29-24" aria-hidden="true" tabindex="-1"></a>    contours, hierarchy <span class="op">=</span> cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)</span>
+<span id="cb29-25"><a href="#cb29-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-26"><a href="#cb29-26" aria-hidden="true" tabindex="-1"></a>    area_ratios <span class="op">=</span> []</span>
+<span id="cb29-27"><a href="#cb29-27" aria-hidden="true" tabindex="-1"></a>    total_outer_area <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb29-28"><a href="#cb29-28" aria-hidden="true" tabindex="-1"></a>    total_box_area <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb29-29"><a href="#cb29-29" aria-hidden="true" tabindex="-1"></a>    total_letter_area <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb29-30"><a href="#cb29-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-31"><a href="#cb29-31" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i, contour <span class="kw">in</span> <span class="bu">enumerate</span>(contours):</span>
+<span id="cb29-32"><a href="#cb29-32" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> hierarchy[<span class="dv">0</span>][i][<span class="dv">3</span>] <span class="op">==</span> <span class="op">-</span><span class="dv">1</span>:  <span class="co"># This is an outer contour</span></span>
+<span id="cb29-33"><a href="#cb29-33" aria-hidden="true" tabindex="-1"></a>            x, y, w, h <span class="op">=</span> cv2.boundingRect(contour)</span>
+<span id="cb29-34"><a href="#cb29-34" aria-hidden="true" tabindex="-1"></a>            rect_area <span class="op">=</span> w <span class="op">*</span> h</span>
+<span id="cb29-35"><a href="#cb29-35" aria-hidden="true" tabindex="-1"></a>            outer_area <span class="op">=</span> cv2.contourArea(contour)</span>
+<span id="cb29-36"><a href="#cb29-36" aria-hidden="true" tabindex="-1"></a>            letter_area <span class="op">=</span> get_letter_area(contour, hierarchy[<span class="dv">0</span>], contours, i)</span>
+<span id="cb29-37"><a href="#cb29-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-38"><a href="#cb29-38" aria-hidden="true" tabindex="-1"></a>            total_box_area <span class="op">+=</span> rect_area</span>
+<span id="cb29-39"><a href="#cb29-39" aria-hidden="true" tabindex="-1"></a>            total_outer_area <span class="op">+=</span> outer_area</span>
+<span id="cb29-40"><a href="#cb29-40" aria-hidden="true" tabindex="-1"></a>            total_letter_area <span class="op">+=</span> letter_area</span>
+<span id="cb29-41"><a href="#cb29-41" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-42"><a href="#cb29-42" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> rect_area <span class="op">&gt;</span> <span class="dv">0</span>:</span>
+<span id="cb29-43"><a href="#cb29-43" aria-hidden="true" tabindex="-1"></a>                ratio <span class="op">=</span> letter_area <span class="op">/</span> rect_area</span>
+<span id="cb29-44"><a href="#cb29-44" aria-hidden="true" tabindex="-1"></a>                area_ratios.append(ratio)</span>
+<span id="cb29-45"><a href="#cb29-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-46"><a href="#cb29-46" aria-hidden="true" tabindex="-1"></a>    avg_ratio <span class="op">=</span> np.median(area_ratios) <span class="cf">if</span> area_ratios <span class="cf">else</span> <span class="dv">0</span></span>
+<span id="cb29-47"><a href="#cb29-47" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> avg_ratio, total_box_area, total_outer_area, total_letter_area</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>I also asked Claude for a function to visualize the original image, the bounding boxes, the outer contours, and the refined (outer - inner) contours.</p>
+<div class="cell" data-execution_count="187">
+<details>
+<summary>Show <code>visualize_analysis</code> definition</summary>
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> visualize_analysis(image_path):</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>    img <span class="op">=</span> cv2.imread(image_path)</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    img_rgb <span class="op">=</span> cv2.cvtColor(img, cv2.COLOR_BGR2RGB)</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>    gray <span class="op">=</span> cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Threshold the image</span></span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>    _, binary <span class="op">=</span> cv2.threshold(gray, <span class="dv">0</span>, <span class="dv">255</span>, cv2.THRESH_BINARY_INV <span class="op">+</span> cv2.THRESH_OTSU)</span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Find contours with hierarchy</span></span>
+<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a>    contours, hierarchy <span class="op">=</span> cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)</span>
+<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a>    avg_ratio, total_box_area, total_outer_area, total_letter_area <span class="op">=</span> letter_area_ratio(image_path)</span>
+<span id="cb30-13"><a href="#cb30-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-14"><a href="#cb30-14" aria-hidden="true" tabindex="-1"></a>    img_boxes <span class="op">=</span> img_rgb.copy()</span>
+<span id="cb30-15"><a href="#cb30-15" aria-hidden="true" tabindex="-1"></a>    img_contours <span class="op">=</span> img_rgb.copy()</span>
+<span id="cb30-16"><a href="#cb30-16" aria-hidden="true" tabindex="-1"></a>    img_refined <span class="op">=</span> img_rgb.copy()</span>
+<span id="cb30-17"><a href="#cb30-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-18"><a href="#cb30-18" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Draw bounding boxes</span></span>
+<span id="cb30-19"><a href="#cb30-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> contour <span class="kw">in</span> contours:</span>
+<span id="cb30-20"><a href="#cb30-20" aria-hidden="true" tabindex="-1"></a>        x, y, w, h <span class="op">=</span> cv2.boundingRect(contour)</span>
+<span id="cb30-21"><a href="#cb30-21" aria-hidden="true" tabindex="-1"></a>        cv2.rectangle(img_boxes, (x, y), (x<span class="op">+</span>w, y<span class="op">+</span>h), (<span class="dv">250</span>, <span class="dv">0</span>, <span class="dv">92</span>), <span class="dv">2</span>)</span>
+<span id="cb30-22"><a href="#cb30-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-23"><a href="#cb30-23" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Draw all contours, including inner ones</span></span>
+<span id="cb30-24"><a href="#cb30-24" aria-hidden="true" tabindex="-1"></a>    cv2.drawContours(img_refined, contours, <span class="op">-</span><span class="dv">1</span>, (<span class="dv">250</span>, <span class="dv">0</span>, <span class="dv">92</span>), <span class="dv">2</span>)</span>
+<span id="cb30-25"><a href="#cb30-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-26"><a href="#cb30-26" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Draw only outer contours</span></span>
+<span id="cb30-27"><a href="#cb30-27" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i, contour <span class="kw">in</span> <span class="bu">enumerate</span>(contours):</span>
+<span id="cb30-28"><a href="#cb30-28" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> hierarchy[<span class="dv">0</span>][i][<span class="dv">3</span>] <span class="op">==</span> <span class="op">-</span><span class="dv">1</span>:  <span class="co"># This is an outer contour</span></span>
+<span id="cb30-29"><a href="#cb30-29" aria-hidden="true" tabindex="-1"></a>            cv2.drawContours(img_contours, [contour], <span class="dv">0</span>, (<span class="dv">250</span>, <span class="dv">0</span>, <span class="dv">92</span>), <span class="dv">2</span>)</span>
+<span id="cb30-30"><a href="#cb30-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-31"><a href="#cb30-31" aria-hidden="true" tabindex="-1"></a>    fig, axs <span class="op">=</span> plt.subplots(<span class="dv">2</span>, <span class="dv">2</span>, figsize<span class="op">=</span>(<span class="dv">10</span>, <span class="dv">8</span>))</span>
+<span id="cb30-32"><a href="#cb30-32" aria-hidden="true" tabindex="-1"></a>    fig.suptitle(<span class="ss">f'Letter Analysis (Avg Area Ratio: </span><span class="sc">{</span>avg_ratio<span class="sc">:.2f}</span><span class="ss">)'</span>, fontsize<span class="op">=</span><span class="dv">16</span>)</span>
+<span id="cb30-33"><a href="#cb30-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-34"><a href="#cb30-34" aria-hidden="true" tabindex="-1"></a>    axs[<span class="dv">0</span>, <span class="dv">0</span>].imshow(img_rgb)</span>
+<span id="cb30-35"><a href="#cb30-35" aria-hidden="true" tabindex="-1"></a>    axs[<span class="dv">0</span>, <span class="dv">0</span>].set_title(<span class="st">'Original Image'</span>)</span>
+<span id="cb30-36"><a href="#cb30-36" aria-hidden="true" tabindex="-1"></a>    axs[<span class="dv">0</span>, <span class="dv">0</span>].axis(<span class="st">'off'</span>)</span>
+<span id="cb30-37"><a href="#cb30-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-38"><a href="#cb30-38" aria-hidden="true" tabindex="-1"></a>    axs[<span class="dv">0</span>, <span class="dv">1</span>].imshow(img_boxes)</span>
+<span id="cb30-39"><a href="#cb30-39" aria-hidden="true" tabindex="-1"></a>    axs[<span class="dv">0</span>, <span class="dv">1</span>].set_title(<span class="ss">f'Bounding Boxes</span><span class="ch">\n</span><span class="ss">Total Area: </span><span class="sc">{</span>total_box_area<span class="sc">:.0f}</span><span class="ss"> pixels'</span>)</span>
+<span id="cb30-40"><a href="#cb30-40" aria-hidden="true" tabindex="-1"></a>    axs[<span class="dv">0</span>, <span class="dv">1</span>].axis(<span class="st">'off'</span>)</span>
+<span id="cb30-41"><a href="#cb30-41" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-42"><a href="#cb30-42" aria-hidden="true" tabindex="-1"></a>    axs[<span class="dv">1</span>, <span class="dv">0</span>].imshow(img_contours)</span>
+<span id="cb30-43"><a href="#cb30-43" aria-hidden="true" tabindex="-1"></a>    axs[<span class="dv">1</span>, <span class="dv">0</span>].set_title(<span class="ss">f'Outer Contours</span><span class="ch">\n</span><span class="ss">Total Area: </span><span class="sc">{</span>total_outer_area<span class="sc">:.0f}</span><span class="ss"> pixels'</span>)</span>
+<span id="cb30-44"><a href="#cb30-44" aria-hidden="true" tabindex="-1"></a>    axs[<span class="dv">1</span>, <span class="dv">0</span>].axis(<span class="st">'off'</span>)</span>
+<span id="cb30-45"><a href="#cb30-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-46"><a href="#cb30-46" aria-hidden="true" tabindex="-1"></a>    axs[<span class="dv">1</span>, <span class="dv">1</span>].imshow(img_refined)</span>
+<span id="cb30-47"><a href="#cb30-47" aria-hidden="true" tabindex="-1"></a>    axs[<span class="dv">1</span>, <span class="dv">1</span>].set_title(<span class="ss">f'Outer - Inner Contours</span><span class="ch">\n</span><span class="ss">Total Area: </span><span class="sc">{</span>total_letter_area<span class="sc">:.0f}</span><span class="ss"> pixels'</span>)</span>
+<span id="cb30-48"><a href="#cb30-48" aria-hidden="true" tabindex="-1"></a>    axs[<span class="dv">1</span>, <span class="dv">1</span>].axis(<span class="st">'off'</span>)</span>
+<span id="cb30-49"><a href="#cb30-49" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-50"><a href="#cb30-50" aria-hidden="true" tabindex="-1"></a>    plt.tight_layout()</span>
+<span id="cb30-51"><a href="#cb30-51" aria-hidden="true" tabindex="-1"></a>    plt.show()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>Across the entire image, the refined (outer - inner) contour area is about 10% less than the outer area.</p>
+<div class="cell" data-outputid="a08c6ea7-27fd-4299-fe13-e6e03aea651e" data-execution_count="188">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>visualize_analysis(<span class="st">'serif-76px.png'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-23-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4"><img src="index_files/figure-html/cell-23-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>For the same typeface (<code>serif</code>) the average percentage of positive space is (kind of?) consistent.</p>
+<div class="cell" data-outputid="894f601d-2a71-4834-f34c-f49b1773d952" data-execution_count="190">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> sz <span class="kw">in</span> [<span class="dv">18</span>, <span class="dv">24</span>, <span class="dv">36</span>, <span class="dv">76</span>, <span class="dv">330</span>]:</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>  avg_ratio, _, _, _ <span class="op">=</span> letter_area_ratio(<span class="ss">f'serif-</span><span class="sc">{</span>sz<span class="sc">}</span><span class="ss">px.png'</span>)</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(<span class="st">'serif'</span>, sz, avg_ratio)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>serif 18 0.25
+serif 24 0.30213903743315507
+serif 36 0.32516339869281047
+serif 76 0.37477598566308246
+serif 330 0.425178283873936</code></pre>
+</div>
+</div>
+<p>For a different typeface (<code>display</code>), the average ratio (of letter area to bounding box area) is considerably larger:</p>
+<div class="cell" data-outputid="7d46bbf1-2d1f-4052-e9ce-44e11912bc54" data-execution_count="191">
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> sz <span class="kw">in</span> [<span class="dv">18</span>, <span class="dv">24</span>, <span class="dv">36</span>, <span class="dv">76</span>, <span class="dv">330</span>]:</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>  avg_ratio, _, _, _ <span class="op">=</span> letter_area_ratio(<span class="ss">f'display-</span><span class="sc">{</span>sz<span class="sc">}</span><span class="ss">px.png'</span>)</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(<span class="st">'display'</span>, sz, avg_ratio)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>display 18 0.4
+display 24 0.4444444444444444
+display 36 0.5015625
+display 76 0.5613636363636364
+display 330 0.579352195423624</code></pre>
+</div>
+</div>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>Given that the median letter area ratio for <code>display</code> is larger than <code>serif</code> texts, I think this algorithm is a good candidate for distinguishing between different typefaces.</p>
+<p>I’m continually impressed by the functionality offered in the OpenCV library. I’m also impressed by Claude’s ability to provide me simple, usable and understandable code for OpenCV.</p>
+<p>I hope you enjoyed this blog post! Follow me on Twitter <a href="https://twitter.com/vishal_learner"><span class="citation" data-cites="vishal_learner">@vishal_learner</span></a>.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<script>var lightboxQuarto = GLightbox({"openEffect":"zoom","selector":".lightbox","loop":true,"descPosition":"bottom","closeEffect":"zoom"});</script>
+
+
+
+</body></html>
