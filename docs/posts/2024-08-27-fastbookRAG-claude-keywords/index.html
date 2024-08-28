@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2024-08-27">
+<meta name="description" content="In this blog post, I use Answer.AI’s claudette library to iteratively improve keywords generated for sqlite’s full text search.">
+
+<title>vishal bakshi - Iterating on Full Text Search Keywords using claudette</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">vishal bakshi</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#setup" id="toc-setup" class="nav-link" data-scroll-target="#setup">Setup</a></li>
+  <li><a href="#generating-keywords-with-claude-using-different-prompts" id="toc-generating-keywords-with-claude-using-different-prompts" class="nav-link" data-scroll-target="#generating-keywords-with-claude-using-different-prompts">Generating Keywords with Claude Using Different Prompts</a>
+  <ul class="collapse">
+  <li><a href="#prompt-a" id="toc-prompt-a" class="nav-link" data-scroll-target="#prompt-a">Prompt A</a></li>
+  <li><a href="#prompt-b" id="toc-prompt-b" class="nav-link" data-scroll-target="#prompt-b">Prompt B</a></li>
+  <li><a href="#prompt-c" id="toc-prompt-c" class="nav-link" data-scroll-target="#prompt-c">Prompt C</a></li>
+  <li><a href="#prompt-d" id="toc-prompt-d" class="nav-link" data-scroll-target="#prompt-d">Prompt D</a></li>
+  <li><a href="#prompt-e" id="toc-prompt-e" class="nav-link" data-scroll-target="#prompt-e">Prompt E</a></li>
+  </ul></li>
+  <li><a href="#generating-keywords-for-all-questions" id="toc-generating-keywords-for-all-questions" class="nav-link" data-scroll-target="#generating-keywords-for-all-questions">Generating Keywords for All Questions</a></li>
+  <li><a href="#final-thoughts" id="toc-final-thoughts" class="nav-link" data-scroll-target="#final-thoughts">Final Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Iterating on Full Text Search Keywords using <code>claudette</code></h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">python</div>
+    <div class="quarto-category">RAG</div>
+    <div class="quarto-category">information retrieval</div>
+    <div class="quarto-category">LLM</div>
+    <div class="quarto-category">fastbookRAG</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    In this blog post, I use Answer.AI’s <code>claudette</code> library to iteratively improve keywords generated for sqlite’s full text search.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">August 27, 2024</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In a <a href="https://vishalbakshi.github.io/blog/posts/2024-08-25-fastbookRAG-claude-keywords/">previous blog post</a> I used Claude (with the help of the Answer.AI <code>claudette</code> library) to generate keywords for 220 questions across the 7 Chapter Questionnaires covered in Part 1 of the fastai course. Using those keywords I retrieved context from fastbook that allowed me to answer 33% (10/30 questions) of the Chapter 1 Questionnaire. In <a href="https://vishalbakshi.github.io/blog/posts/2024-08-04-fastbook-ch1-fts5/">another blog post</a> I manually came up with keywords and achieved a 40% answer rate.</p>
+<p>In this notebook I’ll see if I can improve the quality of information retrieval by improving the keywords that Claude generates.</p>
+<div class="callout-important callout callout-style-default callout-captioned">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-caption-container flex-fill">
+Important
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Full text search uses corpus-wide statistics so I’ve made sure to load the entire corpus (7 chapter notebooks) into the database which matches my final production environment. Otherwise the same keywords with FTS5 may retrieve different top-1 BM25-ranked contexts.</p>
+</div>
+</div>
+<p>This notebook is part <a href="https://vishalbakshi.github.io/blog/index.html#category=fastbookRAG">a series of blog posts</a> for a project I’m working on called <strong>fastbookRAG</strong> in which I’m building a hybrid search + LLM pipeline to answer questions from the end-of-chapter Questionnaires in the freely available <a href="https://github.com/fastai/fastbook/tree/master">fastai textbook</a>.</p>
+<p>Here are the results from this notebook. <strong>Answer Rate</strong> is the percentage of Chapter 1 Questionnaire questions answered using context retrieved from SQLite full-text search with Claude-generated keywords.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Prompt</th>
+<th style="text-align: center;">Answer Rate</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><a href="#prompt-a">A</a></td>
+<td style="text-align: center;">33%</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><a href="#prompt-b">B</a></td>
+<td style="text-align: center;">33%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><a href="#prompt-c">C</a></td>
+<td style="text-align: center;">36%</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><a href="#prompt-d">D</a></td>
+<td style="text-align: center;">33%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><a href="#prompt-e">E</a></td>
+<td style="text-align: center;"><strong>40%</strong></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="setup" class="level2">
+<h2 class="anchored" data-anchor-id="setup">Setup</h2>
+<p>This section defines helper functions needed to chunk, load and retrieve the Chapter 1 notebook from a sqlite database.</p>
+<div class="cell" data-execution_count="67">
+<details>
+<summary>Show imports</summary>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>pip install claudette <span class="op">-</span>qq</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> sqlite3</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> json</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> re</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd, numpy <span class="im">as</span> np</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> claudette <span class="im">import</span> <span class="op">*</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-outputid="3179f1b6-24b5-4f8d-efa3-788c5bffe91b" data-execution_count="70">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> models[<span class="dv">1</span>]</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>model</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="70">
+<pre><code>'claude-3-5-sonnet-20240620'</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="71">
+<details>
+<summary>Show chunking code</summary>
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_chunks(notebook_path):</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> <span class="bu">open</span>(notebook_path, <span class="st">'r'</span>, encoding<span class="op">=</span><span class="st">'utf-8'</span>) <span class="im">as</span> <span class="bu">file</span>:</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>        notebook <span class="op">=</span> json.load(<span class="bu">file</span>)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    chunks <span class="op">=</span> []</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    current_header <span class="op">=</span> <span class="st">""</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> add_chunk(content):</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> content.strip():</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>            chunks.append(<span class="ss">f"</span><span class="sc">{</span>current_header<span class="sc">}</span><span class="ch">\n\n</span><span class="sc">{</span>content<span class="sc">.</span>strip()<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> cell <span class="kw">in</span> notebook[<span class="st">'cells'</span>]:</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> cell[<span class="st">'cell_type'</span>] <span class="op">==</span> <span class="st">'markdown'</span>:</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>            content <span class="op">=</span> <span class="st">''</span>.join(cell[<span class="st">'source'</span>])</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>            header_match <span class="op">=</span> re.match(<span class="vs">r'^(#+\s+.*?)$'</span>, content, re.MULTILINE)</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> header_match:  <span class="co"># Check if the cell starts with a header</span></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>                current_header <span class="op">=</span> header_match.group(<span class="dv">1</span>)</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>                <span class="co"># Add any content after the header in the same cell</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>                remaining_content <span class="op">=</span> content[<span class="bu">len</span>(current_header):].strip()</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>                <span class="cf">if</span> remaining_content:</span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>                    paragraphs <span class="op">=</span> re.split(<span class="vs">r'\n\s*\n'</span>, remaining_content)</span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">for</span> paragraph <span class="kw">in</span> paragraphs:</span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>                        add_chunk(paragraph)</span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>            <span class="cf">else</span>:</span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>                paragraphs <span class="op">=</span> re.split(<span class="vs">r'\n\s*\n'</span>, content)</span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a>                <span class="cf">for</span> paragraph <span class="kw">in</span> paragraphs:</span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a>                    add_chunk(paragraph)</span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a>        <span class="cf">elif</span> cell[<span class="st">'cell_type'</span>] <span class="op">==</span> <span class="st">'code'</span>:</span>
+<span id="cb4-29"><a href="#cb4-29" aria-hidden="true" tabindex="-1"></a>          code_content <span class="op">=</span> <span class="st">'```python</span><span class="ch">\n</span><span class="st">'</span> <span class="op">+</span> <span class="st">''</span>.join(cell[<span class="st">'source'</span>]) <span class="op">+</span> <span class="st">'</span><span class="ch">\n</span><span class="st">```'</span></span>
+<span id="cb4-30"><a href="#cb4-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-31"><a href="#cb4-31" aria-hidden="true" tabindex="-1"></a>          <span class="co"># Include the output of the code cell</span></span>
+<span id="cb4-32"><a href="#cb4-32" aria-hidden="true" tabindex="-1"></a>          output_content <span class="op">=</span> <span class="st">''</span></span>
+<span id="cb4-33"><a href="#cb4-33" aria-hidden="true" tabindex="-1"></a>          <span class="cf">if</span> <span class="st">'outputs'</span> <span class="kw">in</span> cell <span class="kw">and</span> cell[<span class="st">'outputs'</span>]:</span>
+<span id="cb4-34"><a href="#cb4-34" aria-hidden="true" tabindex="-1"></a>              <span class="cf">for</span> output <span class="kw">in</span> cell[<span class="st">'outputs'</span>]:</span>
+<span id="cb4-35"><a href="#cb4-35" aria-hidden="true" tabindex="-1"></a>                  <span class="cf">if</span> <span class="st">'text'</span> <span class="kw">in</span> output:</span>
+<span id="cb4-36"><a href="#cb4-36" aria-hidden="true" tabindex="-1"></a>                      output_content <span class="op">+=</span> <span class="st">''</span>.join(output[<span class="st">'text'</span>])</span>
+<span id="cb4-37"><a href="#cb4-37" aria-hidden="true" tabindex="-1"></a>                  <span class="cf">elif</span> <span class="st">'data'</span> <span class="kw">in</span> output <span class="kw">and</span> <span class="st">'text/plain'</span> <span class="kw">in</span> output[<span class="st">'data'</span>]:</span>
+<span id="cb4-38"><a href="#cb4-38" aria-hidden="true" tabindex="-1"></a>                      output_content <span class="op">+=</span> <span class="st">''</span>.join(output[<span class="st">'data'</span>][<span class="st">'text/plain'</span>])</span>
+<span id="cb4-39"><a href="#cb4-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-40"><a href="#cb4-40" aria-hidden="true" tabindex="-1"></a>          <span class="co"># Combine code and output in the same chunk</span></span>
+<span id="cb4-41"><a href="#cb4-41" aria-hidden="true" tabindex="-1"></a>          combined_content <span class="op">=</span> code_content <span class="op">+</span> <span class="st">'</span><span class="ch">\n\n</span><span class="st">Output:</span><span class="ch">\n</span><span class="st">'</span> <span class="op">+</span> output_content <span class="cf">if</span> output_content <span class="cf">else</span> code_content</span>
+<span id="cb4-42"><a href="#cb4-42" aria-hidden="true" tabindex="-1"></a>          add_chunk(combined_content)</span>
+<span id="cb4-43"><a href="#cb4-43" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-44"><a href="#cb4-44" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> filter_chunks(chunks, exclude_headers<span class="op">=</span>[<span class="st">"Questionnaire"</span>, <span class="st">"Further Research"</span>]):</span>
+<span id="cb4-45"><a href="#cb4-45" aria-hidden="true" tabindex="-1"></a>      filtered_chunks <span class="op">=</span> []</span>
+<span id="cb4-46"><a href="#cb4-46" aria-hidden="true" tabindex="-1"></a>      <span class="cf">for</span> chunk <span class="kw">in</span> chunks:</span>
+<span id="cb4-47"><a href="#cb4-47" aria-hidden="true" tabindex="-1"></a>          lines <span class="op">=</span> chunk.split(<span class="st">'</span><span class="ch">\n</span><span class="st">'</span>)</span>
+<span id="cb4-48"><a href="#cb4-48" aria-hidden="true" tabindex="-1"></a>          <span class="co"># Check if the first line (header) is in the exclude list</span></span>
+<span id="cb4-49"><a href="#cb4-49" aria-hidden="true" tabindex="-1"></a>          <span class="cf">if</span> <span class="kw">not</span> <span class="bu">any</span>(header <span class="kw">in</span> lines[<span class="dv">0</span>] <span class="cf">for</span> header <span class="kw">in</span> exclude_headers):</span>
+<span id="cb4-50"><a href="#cb4-50" aria-hidden="true" tabindex="-1"></a>              filtered_chunks.append(chunk)</span>
+<span id="cb4-51"><a href="#cb4-51" aria-hidden="true" tabindex="-1"></a>      <span class="cf">return</span> filtered_chunks</span>
+<span id="cb4-52"><a href="#cb4-52" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-53"><a href="#cb4-53" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> filter_chunks(chunks)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution_count="72">
+<details>
+<summary>Show the <code>load_data</code> function</summary>
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> load_data(chunks, db_path, chapter<span class="op">=</span><span class="dv">1</span>):</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Create virtual table if database doesn't exist</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="kw">not</span> os.path.exists(db_path):</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>            <span class="cf">with</span> sqlite3.<span class="ex">connect</span>(db_path) <span class="im">as</span> conn:</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>              cur <span class="op">=</span> conn.cursor()</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>              cur.execute(<span class="st">"""</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="st">              CREATE VIRTUAL TABLE fastbook_text</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="st">              USING FTS5(chapter, text);</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="st">              """</span>)</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>              conn.commit()</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Load in the chunks for each chapter</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> sqlite3.<span class="ex">connect</span>(db_path) <span class="im">as</span> conn:</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>            cur <span class="op">=</span> conn.cursor()</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> chunk <span class="kw">in</span> chunks:</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>                cur.execute(<span class="st">"INSERT INTO fastbook_text(chapter, text) VALUES (?, ?)"</span>, (chapter, chunk))</span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>            conn.commit()</span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a>            res <span class="op">=</span> cur.execute(<span class="st">"SELECT * FROM fastbook_text WHERE chapter = ?"</span>, (chapter,)).fetchall()</span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="bu">len</span>(res) <span class="op">!=</span> <span class="bu">len</span>(chunks):</span>
+<span id="cb5-24"><a href="#cb5-24" aria-hidden="true" tabindex="-1"></a>            <span class="cf">raise</span> <span class="pp">ValueError</span>(<span class="ss">f"Number of inserted chunks (</span><span class="sc">{</span><span class="bu">len</span>(res)<span class="sc">}</span><span class="ss">) doesn't match input chunks (</span><span class="sc">{</span><span class="bu">len</span>(chunks)<span class="sc">}</span><span class="ss">)"</span>)</span>
+<span id="cb5-25"><a href="#cb5-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-26"><a href="#cb5-26" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">True</span></span>
+<span id="cb5-27"><a href="#cb5-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-28"><a href="#cb5-28" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> sqlite3.Error <span class="im">as</span> e:</span>
+<span id="cb5-29"><a href="#cb5-29" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"An error occurred: </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb5-30"><a href="#cb5-30" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">False</span></span>
+<span id="cb5-31"><a href="#cb5-31" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> <span class="pp">Exception</span> <span class="im">as</span> e:</span>
+<span id="cb5-32"><a href="#cb5-32" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"An unexpected error occurred: </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb5-33"><a href="#cb5-33" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">False</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution_count="73">
+<details>
+<summary>Show the <code>load_data</code> function</summary>
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> load_data(chunks, db_path, chapter<span class="op">=</span><span class="dv">1</span>):</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Create virtual table if database doesn't exist</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="kw">not</span> os.path.exists(db_path):</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>            <span class="cf">with</span> sqlite3.<span class="ex">connect</span>(db_path) <span class="im">as</span> conn:</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>              cur <span class="op">=</span> conn.cursor()</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>              cur.execute(<span class="st">"""</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="st">              CREATE VIRTUAL TABLE fastbook_text</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="st">              USING FTS5(chapter, text);</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="st">              """</span>)</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>              conn.commit()</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Load in the chunks for each chapter</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> sqlite3.<span class="ex">connect</span>(db_path) <span class="im">as</span> conn:</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>            cur <span class="op">=</span> conn.cursor()</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> chunk <span class="kw">in</span> chunks:</span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>                cur.execute(<span class="st">"INSERT INTO fastbook_text(chapter, text) VALUES (?, ?)"</span>, (chapter, chunk))</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>            conn.commit()</span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>            res <span class="op">=</span> cur.execute(<span class="st">"SELECT * FROM fastbook_text WHERE chapter = ?"</span>, (chapter,)).fetchall()</span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="bu">len</span>(res) <span class="op">!=</span> <span class="bu">len</span>(chunks):</span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>            <span class="cf">raise</span> <span class="pp">ValueError</span>(<span class="ss">f"Number of inserted chunks (</span><span class="sc">{</span><span class="bu">len</span>(res)<span class="sc">}</span><span class="ss">) doesn't match input chunks (</span><span class="sc">{</span><span class="bu">len</span>(chunks)<span class="sc">}</span><span class="ss">)"</span>)</span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">True</span></span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-28"><a href="#cb6-28" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> sqlite3.Error <span class="im">as</span> e:</span>
+<span id="cb6-29"><a href="#cb6-29" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"An error occurred: </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb6-30"><a href="#cb6-30" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">False</span></span>
+<span id="cb6-31"><a href="#cb6-31" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> <span class="pp">Exception</span> <span class="im">as</span> e:</span>
+<span id="cb6-32"><a href="#cb6-32" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"An unexpected error occurred: </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb6-33"><a href="#cb6-33" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">False</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution_count="74">
+<details>
+<summary>Show the <code>db_search</code> function</summary>
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> db_search(df, limit<span class="op">=</span><span class="dv">1</span>):</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  results <span class="op">=</span> []</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">with</span> sqlite3.<span class="ex">connect</span>(<span class="st">'fastbook.db'</span>) <span class="im">as</span> conn:</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    cur <span class="op">=</span> conn.cursor()</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _, row <span class="kw">in</span> df.iterrows():</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>      keywords <span class="op">=</span> <span class="st">' OR '</span>.join([<span class="ss">f'"</span><span class="sc">{</span>keyword<span class="sc">.</span>strip(<span class="st">","</span>)<span class="sc">}</span><span class="ss">"'</span> <span class="cf">for</span> keyword <span class="kw">in</span> row[<span class="st">'keywords'</span>].replace(<span class="st">'"'</span>, <span class="st">''</span>).split()])</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>      q <span class="op">=</span> <span class="ss">f"""</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="ss">        SELECT text, rank</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="ss">        FROM fastbook_text</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="ss">        WHERE fastbook_text MATCH ?</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="ss">        AND chapter = ?</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a><span class="ss">        ORDER BY rank</span></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a><span class="ss">        LIMIT ?</span></span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a><span class="ss">        """</span></span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>      res <span class="op">=</span> cur.execute(q, (keywords, <span class="bu">str</span>(row[<span class="st">'chapter'</span>]), limit)).fetchall()</span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>      res <span class="op">=</span> [item[<span class="dv">0</span>] <span class="cf">for</span> item <span class="kw">in</span> res]</span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>      results.extend(res)</span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>During this notebook I learned the implications of full text search using corpus-wide statistics. I wanted to test out Claude keywords for chapter 1 search and only loaded in chapter 1 into the database. This retrieved different contexts for the same keywords than when I used FTS with all 7 chapters loaded in the database. In order to improve the keywords, I need to make sure the corpus is the same as the final “production” environment.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="1.png" class="lightbox" title="Comparison of retrieved chunks using the same keywords on different databases" data-gallery="quarto-lightbox-gallery-1"><img src="1.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Comparison of retrieved chunks using the same keywords on different databases</figcaption><p></p>
+</figure>
+</div>
+<div class="cell" data-execution_count="75">
+<details>
+<summary>Show the dict w/ notebook filenames</summary>
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>nbs <span class="op">=</span> {</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'1'</span>: <span class="st">'01_intro.ipynb'</span>,</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">'2'</span>: <span class="st">'02_production.ipynb'</span>,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">'4'</span>: <span class="st">'04_mnist_basics.ipynb'</span>,</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">'8'</span>: <span class="st">'08_collab.ipynb'</span>,</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">'9'</span>: <span class="st">'09_tabular.ipynb'</span>,</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">'10'</span>: <span class="st">'10_nlp.ipynb'</span>,</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">'13'</span>: <span class="st">'13_convolutions.ipynb'</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution_count="76">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># chunkify all notebooks</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="co"># chunking each notebook</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>data <span class="op">=</span> {}</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chapter, nb <span class="kw">in</span> nbs.items():</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>  data[chapter] <span class="op">=</span> get_chunks(nb)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="44bb45b2-c568-4371-d918-707317e70a6e" data-execution_count="77">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chapter, chunks <span class="kw">in</span> data.items():</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(chapter, <span class="bu">len</span>(chunks))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>1 307
+2 227
+4 433
+8 157
+9 387
+10 190
+13 266</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="4ac07efa-53a1-40b8-ae69-daad5456f6a0" data-execution_count="78">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># load chunks into the database</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chapter, chunks <span class="kw">in</span> data.items():</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(<span class="ss">f"Chapter </span><span class="sc">{</span>chapter<span class="sc">}</span><span class="ss">:"</span>, load_data(chunks, <span class="st">'fastbook.db'</span>, chapter))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Chapter 1: True
+Chapter 2: True
+Chapter 4: True
+Chapter 8: True
+Chapter 9: True
+Chapter 10: True
+Chapter 13: True</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="c2b07fe9-0b9c-4dfe-9e3a-e65e4309e4ee" data-execution_count="79">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># get the questions and keywords</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>url <span class="op">=</span> <span class="st">'https://gist.githubusercontent.com/vishalbakshi/309fb3abb222d32446b2c4e29db753fe/raw/5e41b9eb34f515f00321e55307cc4d5abbd75cb5/fastbookRAG_evals.csv'</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>questions <span class="op">=</span> pd.read_csv(url).query(<span class="st">'chapter == 1 and is_answerable == 1'</span>)</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>questions.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="79">
+<pre><code>(30, 6)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="194409c3-0b06-4cf9-db07-6ea5cb9aae7f" data-execution_count="80">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co"># retrieve Top-1 chunk by BM25</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> db_search(questions, limit<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">30</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="80">
+<pre><code>True</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="81">
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># export results</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'context'</span>] <span class="op">=</span> results</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>questions.to_csv(<span class="st">'bm25_a_keywordsA.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="generating-keywords-with-claude-using-different-prompts" class="level2">
+<h2 class="anchored" data-anchor-id="generating-keywords-with-claude-using-different-prompts">Generating Keywords with Claude Using Different Prompts</h2>
+<section id="prompt-a" class="level3">
+<h3 class="anchored" data-anchor-id="prompt-a">Prompt A</h3>
+<p>The keywords generated using the following prompt retrieved context that allowed me to answer <strong>10/30 (33%)</strong> of the Chapter 1 Questionnaire questions:</p>
+<blockquote class="blockquote">
+<p>I am working on a keyword search project and i need to create 3-6 keywords for each <code>question_text</code> that I provide you. Do not generate keywords that stray too far in meaning from the <code>question_text</code>. Only respond with the comma-separated list of keywords surrounded by double quotes.</p>
+<p>No yapping.</p>
+<p>Examples:</p>
+<p>question_text: Name five areas where deep learning is now the best in the world</p>
+<p>keywords: “deep learning, state of the art, best, world”</p>
+<p>question_text: Why is it hard to use a traditional computer program to recognize images in a photo?</p>
+<p>keywords: “image, recognize, recognition, traditional, computer, program”</p>
+<p>question_text: What were the two theoretical misunderstandings that held back the field of neural networks?</p>
+<p>keywords: “theoretical, misunderstandings, held, back, field, neural network”</p>
+<p>question_text: Why is it hard to understand why a deep learning model makes a particular prediction?</p>
+<p>keywords:</p>
+</blockquote>
+</section>
+<section id="prompt-b" class="level3">
+<h3 class="anchored" data-anchor-id="prompt-b">Prompt B</h3>
+<p>I’ll start by creating a prompt that was recommended by Claude:</p>
+<blockquote class="blockquote">
+<p>For the following question text, please generate 3-6 comma-separated keywords that capture the main concepts and are suitable for use in a SQLite full-text search query. The keywords should be concise, relevant, and help in retrieving appropriate text chunks from a database. Avoid using articles, prepositions, or other common words that don’t add significant meaning. Here’s the question text:</p>
+<p>{question_text}</p>
+<p>Please provide the keywords in the following format: keywords: “keyword1, keyword2, keyword3”</p>
+</blockquote>
+<div class="cell" data-execution_count="82">
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>promptB <span class="op">=</span> <span class="st">"""For the following question text, please generate 3-6 comma-separated keywords that capture the main concepts and are suitable for use in a SQLite full-text search query. The keywords should be concise, relevant, and help in retrieving appropriate text chunks from a database. Avoid using articles, prepositions, or other common words that don't add significant meaning. Here's the question text:</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="sc">{question_text}</span></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a><span class="st">Please provide the keywords in the following format:</span></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a><span class="st">keywords: "keyword1, keyword2, keyword3" """</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="0d806f49-904f-44ae-8860-0f0acba65921" data-execution_count="83">
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>formatted_prompt <span class="op">=</span> promptB.<span class="bu">format</span>(question_text<span class="op">=</span><span class="st">"Why is it hard to understand why a deep learning model makes a particular prediction?"</span>)</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(formatted_prompt)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>For the following question text, please generate 3-6 comma-separated keywords that capture the main concepts and are suitable for use in a SQLite full-text search query. The keywords should be concise, relevant, and help in retrieving appropriate text chunks from a database. Avoid using articles, prepositions, or other common words that don't add significant meaning. Here's the question text:
+
+Why is it hard to understand why a deep learning model makes a particular prediction?
+
+Please provide the keywords in the following format:
+keywords: "keyword1, keyword2, keyword3" </code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="52a4607c-f911-48ed-b1d4-93a99fd0742c" data-execution_count="84">
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(model, sp<span class="op">=</span><span class="st">"""You are a helpful and concise assistant."""</span>)</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>chat.use</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="84">
+<pre><code>In: 0; Out: 0; Total: 0</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="13b67444-3a1f-4521-c061-e603221a3881" data-execution_count="85">
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> chat(formatted_prompt)</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>r</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="85">
+<p>keywords: “deep learning, model, prediction, understanding, interpretability”</p>
+<details>
+<ul>
+<li>id: <code>msg_01FTbVhR4dwjNqoDmEmBexS1</code></li>
+<li>content: <code>[{'text': 'keywords: "deep learning, model, prediction, understanding, interpretability"', 'type': 'text'}]</code></li>
+<li>model: <code>claude-3-5-sonnet-20240620</code></li>
+<li>role: <code>assistant</code></li>
+<li>stop_reason: <code>end_turn</code></li>
+<li>stop_sequence: <code>None</code></li>
+<li>type: <code>message</code></li>
+<li>usage: <code>{'input_tokens': 141, 'output_tokens': 18, 'cache_creation_input_tokens': 0, 'cache_read_input_tokens': 0}</code></li>
+</ul>
+</details>
+</div>
+</div>
+<p>Looks good! I’ll now use this prompt to generate keywords for all 30 Chapter 1 Questionnaire questions.</p>
+<div class="cell" data-execution_count="87">
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>keyword_results <span class="op">=</span> []</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>tokens <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> row <span class="kw">in</span> questions[<span class="st">'question_text'</span>]:</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>  chat <span class="op">=</span> Chat(model, sp<span class="op">=</span><span class="st">"""You are a helpful and concise assistant."""</span>)</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>  formatted_prompt <span class="op">=</span> promptB.<span class="bu">format</span>(question_text<span class="op">=</span>row[<span class="dv">2</span>:<span class="op">-</span><span class="dv">2</span>])</span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>  r <span class="op">=</span> chat(formatted_prompt)</span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>  keyword_results.append(r.content[<span class="dv">0</span>].text)</span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>  tokens <span class="op">+=</span> chat.use.total</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>That was about 2 cents of tokens used.</p>
+<div class="cell" data-outputid="74caa44c-021b-4d74-c3e9-b34d19c87ba4" data-execution_count="88">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(keyword_results), tokens</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="88">
+<pre><code>(30, 4736)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="68a9aae4-4873-4e4a-b73f-62ec4ea0a209" data-execution_count="91">
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>keyword_results[:<span class="dv">5</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="91">
+<pre><code>['keywords: "deep learning, math, data, expensive computers, PhD"',
+ 'keywords: "deep learning, best, areas, applications, achievements"',
+ 'keywords: "device, artificial neuron, first"',
+ 'keywords: "parallel distributed processing, PDP, book, requirements"',
+ 'keywords: "theoretical misunderstandings, neural networks, field setbacks"']</code></pre>
+</div>
+</div>
+<p>Unfortunately I missed the fact that Claude includes ‘keywords’ in each respone—oops! I’ll have to do some quick cleanup.</p>
+<div class="cell" data-outputid="554b2d58-87e8-4605-cd93-140779494d6d" data-execution_count="93">
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>cleaned_keywords <span class="op">=</span> [s.replace(<span class="st">'keywords: '</span>, <span class="st">''</span>) <span class="cf">for</span> s <span class="kw">in</span> keyword_results]</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>cleaned_keywords[:<span class="dv">5</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="93">
+<pre><code>['"deep learning, math, data, expensive computers, PhD"',
+ '"deep learning, best, areas, applications, achievements"',
+ '"device, artificial neuron, first"',
+ '"parallel distributed processing, PDP, book, requirements"',
+ '"theoretical misunderstandings, neural networks, field setbacks"']</code></pre>
+</div>
+</div>
+<p>I’ll replace the existing keywords and run the full text search again:</p>
+<div class="cell" data-outputid="6fc23abb-c3aa-44b2-8a56-c2e0689b444c" data-execution_count="94">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'keywords'</span>] <span class="op">=</span> cleaned_keywords</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'keywords'</span>].iloc[:<span class="dv">5</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="94">
+
+<div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>keywords</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>"deep learning, math, data, expensive computer...</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>"deep learning, best, areas, applications, ach...</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>"device, artificial neuron, first"</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>"parallel distributed processing, PDP, book, r...</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>"theoretical misunderstandings, neural network...</td>
+    </tr>
+  </tbody>
+</table>
+</div><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<div class="cell" data-outputid="a7005387-dcd2-4638-b39f-5dbdded56335" data-execution_count="95">
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>cleaned_keywords[<span class="op">-</span><span class="dv">5</span>:]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="95">
+<pre><code>['"architecture, design, structure, building, framework"',
+ '"segmentation, market, division, targeting, customer groups"',
+ '"y_range, purpose, usage, necessity"',
+ '"hyperparameters, machine learning, model tuning, optimization"',
+ '"avoid failures, AI implementation, organization, best practices"']</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="2aaafb29-67f4-4eb5-fe18-dec355c26147" data-execution_count="96">
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'keywords'</span>].iloc[<span class="op">-</span><span class="dv">5</span>:]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="96">
+
+<div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>keywords</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>28</th>
+      <td>"architecture, design, structure, building, fr...</td>
+    </tr>
+    <tr>
+      <th>29</th>
+      <td>"segmentation, market, division, targeting, cu...</td>
+    </tr>
+    <tr>
+      <th>30</th>
+      <td>"y_range, purpose, usage, necessity"</td>
+    </tr>
+    <tr>
+      <th>31</th>
+      <td>"hyperparameters, machine learning, model tuni...</td>
+    </tr>
+    <tr>
+      <th>32</th>
+      <td>"avoid failures, AI implementation, organizati...</td>
+    </tr>
+  </tbody>
+</table>
+</div><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<div class="cell" data-outputid="0c7fd03d-610a-41cd-8a2d-a1cec4d460f7" data-execution_count="97">
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="co"># retrieve Top-1 chunk by BM25</span></span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> db_search(questions, limit<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">30</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="97">
+<pre><code>True</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="98">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="co"># export results</span></span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'context'</span>] <span class="op">=</span> results</span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>questions.to_csv(<span class="st">'bm25_a_keywordsB.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>These keywords retrieved chunks that allowed me to answer 10/30 or 33% of the Chapter 1 Questionnaire. This was a different set of 10 questions that Prompt A.</p>
+</section>
+<section id="prompt-c" class="level3">
+<h3 class="anchored" data-anchor-id="prompt-c">Prompt C</h3>
+<p>After looking at the data, I’ll modify the prompt to provide some more flexibility in the keyword search by requesting Claude to do two things:</p>
+<ul>
+<li>use single-word keywords when possible</li>
+<li>include singular and plural versions of nouns when applicable</li>
+<li>remove the <code>keywords:</code> string before the example keywords</li>
+</ul>
+<p>Here’s the new prompt:</p>
+<blockquote class="blockquote">
+<p>For the given question text, generate 3-6 comma-separated keywords that capture the main concepts for a SQLite full-text search query. Prefer single-word keywords when possible. Include both singular and plural forms for nouns if relevant. Avoid articles, prepositions, and common words. Use this format:</p>
+<p>{question_text}</p>
+<p>“keyword1, keyword2, keyword3”</p>
+</blockquote>
+<div class="cell" data-execution_count="99">
+<div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>promptC <span class="op">=</span> <span class="st">""""For the given question text, generate 3-6 comma-separated keywords that capture the main concepts for a SQLite full-text search query. Prefer single-word keywords when possible. Include both singular and plural forms for nouns if relevant. Avoid articles, prepositions, and common words. Use this format:</span></span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a><span class="sc">{question_text}</span></span>
+<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a><span class="st">"keyword1, keyword2, keyword3" """</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="19435b53-e75d-40a0-8cc0-e265ae502fb9" data-execution_count="100">
+<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>formatted_prompt <span class="op">=</span> promptC.<span class="bu">format</span>(question_text<span class="op">=</span><span class="st">"Why is it hard to understand why a deep learning model makes a particular prediction?"</span>)</span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(formatted_prompt)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>"For the given question text, generate 3-6 comma-separated keywords that capture the main concepts for a SQLite full-text search query. Prefer single-word keywords when possible. Include both singular and plural forms for nouns if relevant. Avoid articles, prepositions, and common words. Use this format:
+
+Why is it hard to understand why a deep learning model makes a particular prediction?
+
+"keyword1, keyword2, keyword3" </code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="e0fd396b-c550-4a7b-c909-5aa84c0245e7" data-execution_count="101">
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(model, sp<span class="op">=</span><span class="st">"""You are a helpful and concise assistant."""</span>)</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> chat(formatted_prompt)</span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>r</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="101">
+<p>“deep learning, model, models, prediction, predictions, understand, understanding”</p>
+<details>
+<ul>
+<li>id: <code>msg_01HNHpvbABHGxLzxacXLXuv1</code></li>
+<li>content: <code>[{'text': '"deep learning, model, models, prediction, predictions, understand, understanding"', 'type': 'text'}]</code></li>
+<li>model: <code>claude-3-5-sonnet-20240620</code></li>
+<li>role: <code>assistant</code></li>
+<li>stop_reason: <code>end_turn</code></li>
+<li>stop_sequence: <code>None</code></li>
+<li>type: <code>message</code></li>
+<li>usage: <code>{'input_tokens': 114, 'output_tokens': 19, 'cache_creation_input_tokens': 0, 'cache_read_input_tokens': 0}</code></li>
+</ul>
+</details>
+</div>
+</div>
+<p>Nice! It’s following my instructions. I’ll run through the process of generating keywords, running full text search, and evaluating the results:</p>
+<div class="cell" data-execution_count="104">
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a>keyword_results <span class="op">=</span> []</span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>tokens <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> row <span class="kw">in</span> questions[<span class="st">'question_text'</span>]:</span>
+<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a>  chat <span class="op">=</span> Chat(model, sp<span class="op">=</span><span class="st">"""You are a helpful and concise assistant."""</span>)</span>
+<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a>  formatted_prompt <span class="op">=</span> promptC.<span class="bu">format</span>(question_text<span class="op">=</span>row[<span class="dv">2</span>:<span class="op">-</span><span class="dv">2</span>])</span>
+<span id="cb43-6"><a href="#cb43-6" aria-hidden="true" tabindex="-1"></a>  r <span class="op">=</span> chat(formatted_prompt)</span>
+<span id="cb43-7"><a href="#cb43-7" aria-hidden="true" tabindex="-1"></a>  keyword_results.append(r.content[<span class="dv">0</span>].text)</span>
+<span id="cb43-8"><a href="#cb43-8" aria-hidden="true" tabindex="-1"></a>  tokens <span class="op">+=</span> chat.use.total</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="18718a8f-2d27-4c12-aa05-ee248f7431c1" data-execution_count="107">
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(keyword_results), tokens</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="107">
+<pre><code>(30, 3884)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="9cfa92ed-47f5-4e9b-fc23-588309ce2b62" data-execution_count="106">
+<div class="sourceCode cell-code" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a>keyword_results[:<span class="dv">5</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="106">
+<pre><code>['"deep learning, math, data, computers, expensive, PhD"',
+ '"deep learning, areas, best, world, artificial intelligence, neural networks"',
+ '"neuron, neurons, device, artificial, first"',
+ '"parallel, distributed, processing, PDP, requirements, book"',
+ '"neural, networks, theoretical, misunderstandings, field"']</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="8d9ea165-8f90-4550-b3ab-4ab3e643ad72" data-execution_count="108">
+<div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'keywords'</span>] <span class="op">=</span> keyword_results</span>
+<span id="cb48-2"><a href="#cb48-2" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'keywords'</span>].iloc[:<span class="dv">5</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="108">
+
+<div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>keywords</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>"deep learning, math, data, computers, expensi...</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>"deep learning, areas, best, world, artificial...</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>"neuron, neurons, device, artificial, first"</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>"parallel, distributed, processing, PDP, requi...</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>"neural, networks, theoretical, misunderstandi...</td>
+    </tr>
+  </tbody>
+</table>
+</div><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<div class="cell" data-outputid="15f46802-9f99-4e93-d80f-9943fcd3214b" data-execution_count="109">
+<div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a><span class="co"># retrieve Top-1 chunk by BM25</span></span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> db_search(questions, limit<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">30</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="109">
+<pre><code>True</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="110">
+<div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a><span class="co"># export results</span></span>
+<span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'context'</span>] <span class="op">=</span> results</span>
+<span id="cb51-3"><a href="#cb51-3" aria-hidden="true" tabindex="-1"></a>questions.to_csv(<span class="st">'bm25_a_keywordsC.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The retrieved context allowed me to answer <strong>11/30 or 36%</strong> of the questions. Moving in the right direction! One of the set of keywords had some additional text and that would have likely increased the answer rate to 12/30:</p>
+<div class="cell" data-outputid="8e672a42-3e04-40b0-d797-b97bf5731924" data-execution_count="115">
+<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a>keyword_results[<span class="op">-</span><span class="dv">2</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="115">
+<pre><code>'Here are the keywords for the given question:\n\n"hyperparameters, hyperparameter, parameter, parameters, machine learning, tuning"'</code></pre>
+</div>
+</div>
+<p>I’ll also ask it to include any numbers it finds in the question text as separate keywords, as that might have gotten me another correct answer:</p>
+<div class="cell" data-outputid="59b67c50-a9b0-45ad-b697-d67ddd114cb1" data-execution_count="131">
+<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a>questions.iloc[<span class="dv">14</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="131">
+
+<div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>17</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>chapter</th>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>question_number</th>
+      <td>18</td>
+    </tr>
+    <tr>
+      <th>question_text</th>
+      <td>""Do we always have to use 224×224-pixel image...</td>
+    </tr>
+    <tr>
+      <th>answer</th>
+      <td>""No we do not. 224x224 is commonly used for h...</td>
+    </tr>
+    <tr>
+      <th>is_answerable</th>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>keywords</th>
+      <td>"cat, cats, recognition, model, image, images,...</td>
+    </tr>
+    <tr>
+      <th>context</th>
+      <td>### How Our Image Recognizer Works\n\nIn the t...</td>
+    </tr>
+  </tbody>
+</table>
+</div><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+</section>
+<section id="prompt-d" class="level3">
+<h3 class="anchored" data-anchor-id="prompt-d">Prompt D</h3>
+<p>I’ll update the prompt with the following observations:</p>
+<ul>
+<li>remind Claude “no yapping” so it doesn’t include additional explanatory text other than the keywords.</li>
+<li>ask Claude to include any numbers in the question as a keyword.</li>
+</ul>
+<p>Here’s the new prompt:</p>
+<blockquote class="blockquote">
+<p>For the given question text, generate 3-6 comma-separated keywords that capture the main concepts for a SQLite full-text search query. Prefer single-word keywords when possible. Include both singular and plural forms for nouns if relevant. Include any numbers as keywords. Avoid articles, prepositions, and common words. Use this format. No yapping:</p>
+<p>{question_text}</p>
+<p>“keyword1, keyword2, keyword3”</p>
+</blockquote>
+<div class="cell" data-execution_count="132">
+<div class="sourceCode cell-code" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a>promptD <span class="op">=</span> <span class="st">"""For the given question text, generate 3-6 comma-separated keywords that capture the main concepts for a SQLite full-text search query. Prefer single-word keywords when possible. Include both singular and plural forms for nouns if relevant. Include any numbers as keywords. Avoid articles, prepositions, and common words. Use this format. No yapping:</span></span>
+<span id="cb55-2"><a href="#cb55-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb55-3"><a href="#cb55-3" aria-hidden="true" tabindex="-1"></a><span class="sc">{question_text}</span></span>
+<span id="cb55-4"><a href="#cb55-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb55-5"><a href="#cb55-5" aria-hidden="true" tabindex="-1"></a><span class="st">"keyword1, keyword2, keyword3" """</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="75cfd03c-8d50-4527-f267-38db55df5795" data-execution_count="133">
+<div class="sourceCode cell-code" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a>formatted_prompt <span class="op">=</span> promptD.<span class="bu">format</span>(question_text<span class="op">=</span><span class="st">"Why is it hard to understand why a deep learning model makes a particular prediction?"</span>)</span>
+<span id="cb56-2"><a href="#cb56-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(formatted_prompt)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>For the given question text, generate 3-6 comma-separated keywords that capture the main concepts for a SQLite full-text search query. Prefer single-word keywords when possible. Include both singular and plural forms for nouns if relevant. Include any numbers as keywords. Avoid articles, prepositions, and common words. Use this format. No yapping:
+
+Why is it hard to understand why a deep learning model makes a particular prediction?
+
+"keyword1, keyword2, keyword3" </code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="411f466b-7d08-45d5-ef15-ccebdc965243" data-execution_count="134">
+<div class="sourceCode cell-code" id="cb58"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb58-1"><a href="#cb58-1" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(model, sp<span class="op">=</span><span class="st">"""You are a helpful and concise assistant."""</span>)</span>
+<span id="cb58-2"><a href="#cb58-2" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> chat(formatted_prompt)</span>
+<span id="cb58-3"><a href="#cb58-3" aria-hidden="true" tabindex="-1"></a>r</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="134">
+<p>“deep, learning, model, prediction, understand, hard”</p>
+<details>
+<ul>
+<li>id: <code>msg_01QtPrjfRGNPmt8eLxDxZcZE</code></li>
+<li>content: <code>[{'text': '"deep, learning, model, prediction, understand, hard"', 'type': 'text'}]</code></li>
+<li>model: <code>claude-3-5-sonnet-20240620</code></li>
+<li>role: <code>assistant</code></li>
+<li>stop_reason: <code>end_turn</code></li>
+<li>stop_sequence: <code>None</code></li>
+<li>type: <code>message</code></li>
+<li>usage: <code>{'input_tokens': 123, 'output_tokens': 16, 'cache_creation_input_tokens': 0, 'cache_read_input_tokens': 0}</code></li>
+</ul>
+</details>
+</div>
+</div>
+<p>It’s not including plural versions of nouns so I’ll remove the “if relevant” from the instruction and try again:</p>
+<div class="cell" data-execution_count="135">
+<div class="sourceCode cell-code" id="cb59"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1"><a href="#cb59-1" aria-hidden="true" tabindex="-1"></a>promptD <span class="op">=</span> <span class="st">"""For the given question text, generate 3-6 comma-separated keywords that capture the main concepts for a SQLite full-text search query. Prefer single-word keywords. Include both singular and plural forms for nouns. Include any numbers as keywords. Avoid articles, prepositions, and common words. No yapping:</span></span>
+<span id="cb59-2"><a href="#cb59-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb59-3"><a href="#cb59-3" aria-hidden="true" tabindex="-1"></a><span class="sc">{question_text}</span></span>
+<span id="cb59-4"><a href="#cb59-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb59-5"><a href="#cb59-5" aria-hidden="true" tabindex="-1"></a><span class="st">"keyword1, keyword2, keyword3" """</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="a849f63c-8638-49b9-e8d2-ae77fb85dc80" data-execution_count="136">
+<div class="sourceCode cell-code" id="cb60"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb60-1"><a href="#cb60-1" aria-hidden="true" tabindex="-1"></a>formatted_prompt <span class="op">=</span> promptD.<span class="bu">format</span>(question_text<span class="op">=</span><span class="st">"Why is it hard to understand why a deep learning model makes a particular prediction?"</span>)</span>
+<span id="cb60-2"><a href="#cb60-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(formatted_prompt)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>For the given question text, generate 3-6 comma-separated keywords that capture the main concepts for a SQLite full-text search query. Prefer single-word keywords. Include both singular and plural forms for nouns. Include any numbers as keywords. Avoid articles, prepositions, and common words. No yapping:
+
+Why is it hard to understand why a deep learning model makes a particular prediction?
+
+"keyword1, keyword2, keyword3" </code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="382cb92b-5205-4354-9bf1-08a8ac17d932" data-execution_count="137">
+<div class="sourceCode cell-code" id="cb62"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(model, sp<span class="op">=</span><span class="st">"""You are a helpful and concise assistant."""</span>)</span>
+<span id="cb62-2"><a href="#cb62-2" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> chat(formatted_prompt)</span>
+<span id="cb62-3"><a href="#cb62-3" aria-hidden="true" tabindex="-1"></a>r</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="137">
+<p>deep, learning, model, models, prediction, predictions, understand, understanding</p>
+<details>
+<ul>
+<li>id: <code>msg_01EQqyCJDRCc81cLL78E8sA7</code></li>
+<li>content: <code>[{'text': 'deep, learning, model, models, prediction, predictions, understand, understanding', 'type': 'text'}]</code></li>
+<li>model: <code>claude-3-5-sonnet-20240620</code></li>
+<li>role: <code>assistant</code></li>
+<li>stop_reason: <code>end_turn</code></li>
+<li>stop_sequence: <code>None</code></li>
+<li>type: <code>message</code></li>
+<li>usage: <code>{'input_tokens': 115, 'output_tokens': 18, 'cache_creation_input_tokens': 0, 'cache_read_input_tokens': 0}</code></li>
+</ul>
+</details>
+</div>
+</div>
+<p>Nice! That fixed it at least for one example.</p>
+<div class="cell" data-execution_count="140">
+<div class="sourceCode cell-code" id="cb63"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1"><a href="#cb63-1" aria-hidden="true" tabindex="-1"></a>keyword_results <span class="op">=</span> []</span>
+<span id="cb63-2"><a href="#cb63-2" aria-hidden="true" tabindex="-1"></a>tokens <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb63-3"><a href="#cb63-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> row <span class="kw">in</span> questions[<span class="st">'question_text'</span>]:</span>
+<span id="cb63-4"><a href="#cb63-4" aria-hidden="true" tabindex="-1"></a>  chat <span class="op">=</span> Chat(model, sp<span class="op">=</span><span class="st">"""You are a helpful and concise assistant."""</span>)</span>
+<span id="cb63-5"><a href="#cb63-5" aria-hidden="true" tabindex="-1"></a>  formatted_prompt <span class="op">=</span> promptD.<span class="bu">format</span>(question_text<span class="op">=</span>row[<span class="dv">2</span>:<span class="op">-</span><span class="dv">2</span>])</span>
+<span id="cb63-6"><a href="#cb63-6" aria-hidden="true" tabindex="-1"></a>  r <span class="op">=</span> chat(formatted_prompt)</span>
+<span id="cb63-7"><a href="#cb63-7" aria-hidden="true" tabindex="-1"></a>  keyword_results.append(r.content[<span class="dv">0</span>].text)</span>
+<span id="cb63-8"><a href="#cb63-8" aria-hidden="true" tabindex="-1"></a>  tokens <span class="op">+=</span> chat.use.total</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I’ll look at the full set of keywords to make sure there are no filler texts included:</p>
+<div class="cell" data-outputid="187cc60d-d352-49c7-b200-a61c2d7e42c3" data-execution_count="141">
+<div class="sourceCode cell-code" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a>keyword_results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="141">
+<pre><code>['deep, learning, math, data, computers, phd',
+ 'deep, learning, areas, best, world',
+ '"neuron, neurons, device, devices, artificial, first"',
+ 'book, requirements, parallel, distributed, processing, pdp',
+ 'theoretical, misunderstandings, held, back, field, neural, networks',
+ '"GPU, GPUs, graphics, processor, processors"',
+ 'notebook, notebooks, execute, cell, cells, 1',
+ 'image, images, photo, photos, recognize, recognition, computer, program, traditional',
+ '"Samuel, weight, weights, assignment, assignments"',
+ 'deep, learning, weights, weight, Samuel, term',
+ 'deep, learning, model, models, prediction, predictions, understand, understanding',
+ 'theorem, neural, networks, mathematical, problem, accuracy',
+ 'train, model, models, training, dataset, datasets, data',
+ 'feedback, loops, rollout, rollouts, predictive, policing, model, models',
+ 'cat, cats, recognition, model, 224, pixel, pixels, image, images',
+ 'classification, classifications, regression, regressions, difference, differences',
+ 'validation, validations, test, tests, set, sets',
+ 'fastai, validation, set, sets',
+ 'random, sample, samples, validation, set, sets',
+ 'overfitting, overfits, example, examples, model, models',
+ 'metric, metrics, loss, losses, differ, difference',
+ 'pretrained, models, model, help',
+ 'head, heads, model, models',
+ 'cnn, cnns, layer, layers, feature, features, early, late',
+ 'image, images, model, models, photo, photos',
+ 'architecture, architectures',
+ '"segmentation, segment, segments"',
+ '"y_range, ranges, plotting, visualization, axis, limits"',
+ 'hyperparameters, hyperparameter, machine, learning, model, parameter',
+ '"ai, artificial, intelligence, failures, avoid, organization, organizations"']</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="475f1d7e-58b9-43df-9ce2-98967ff2d87a" data-execution_count="142">
+<div class="sourceCode cell-code" id="cb66"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb66-1"><a href="#cb66-1" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'keywords'</span>] <span class="op">=</span> keyword_results</span>
+<span id="cb66-2"><a href="#cb66-2" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'keywords'</span>].iloc[:<span class="dv">5</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="142">
+
+<div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>keywords</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>deep, learning, math, data, computers, phd</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>deep, learning, areas, best, world</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>"neuron, neurons, device, devices, artificial,...</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>book, requirements, parallel, distributed, pro...</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>theoretical, misunderstandings, held, back, fi...</td>
+    </tr>
+  </tbody>
+</table>
+</div><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<div class="cell" data-outputid="b756e229-976a-46f9-b410-32f49b4d3376" data-execution_count="143">
+<div class="sourceCode cell-code" id="cb67"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb67-1"><a href="#cb67-1" aria-hidden="true" tabindex="-1"></a><span class="co"># retrieve Top-1 chunk by BM25</span></span>
+<span id="cb67-2"><a href="#cb67-2" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> db_search(questions, limit<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb67-3"><a href="#cb67-3" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">30</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="143">
+<pre><code>True</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="144">
+<div class="sourceCode cell-code" id="cb69"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb69-1"><a href="#cb69-1" aria-hidden="true" tabindex="-1"></a><span class="co"># export results</span></span>
+<span id="cb69-2"><a href="#cb69-2" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'context'</span>] <span class="op">=</span> results</span>
+<span id="cb69-3"><a href="#cb69-3" aria-hidden="true" tabindex="-1"></a>questions.to_csv(<span class="st">'bm25_a_keywordsD.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>This prompt resulted in <strong>10/30 or a 33% Answer Rate</strong> and didn’t improve the retrieved contexts in the way I thought it would! I’ll go back to Prompt C and only add “no yapping”</p>
+</section>
+<section id="prompt-e" class="level3">
+<h3 class="anchored" data-anchor-id="prompt-e">Prompt E</h3>
+<div class="cell" data-execution_count="154">
+<div class="sourceCode cell-code" id="cb70"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb70-1"><a href="#cb70-1" aria-hidden="true" tabindex="-1"></a>promptE <span class="op">=</span> <span class="st">""""For the given question text, generate 3-6 comma-separated keywords that capture the main concepts for a SQLite full-text search query. Prefer single-word keywords when possible. Include both singular and plural forms for nouns if relevant. Avoid articles, prepositions, and common words. Use this format. No yapping:</span></span>
+<span id="cb70-2"><a href="#cb70-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb70-3"><a href="#cb70-3" aria-hidden="true" tabindex="-1"></a><span class="sc">{question_text}</span></span>
+<span id="cb70-4"><a href="#cb70-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb70-5"><a href="#cb70-5" aria-hidden="true" tabindex="-1"></a><span class="st">"keyword1, keyword2, keyword3" """</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="4b5586fc-dffb-42b4-c980-205942f4ed2d" data-execution_count="155">
+<div class="sourceCode cell-code" id="cb71"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb71-1"><a href="#cb71-1" aria-hidden="true" tabindex="-1"></a>formatted_prompt <span class="op">=</span> promptE.<span class="bu">format</span>(question_text<span class="op">=</span><span class="st">"Why is it hard to understand why a deep learning model makes a particular prediction?"</span>)</span>
+<span id="cb71-2"><a href="#cb71-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(formatted_prompt)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>"For the given question text, generate 3-6 comma-separated keywords that capture the main concepts for a SQLite full-text search query. Prefer single-word keywords when possible. Include both singular and plural forms for nouns if relevant. Avoid articles, prepositions, and common words. Use this format. No yapping:
+
+Why is it hard to understand why a deep learning model makes a particular prediction?
+
+"keyword1, keyword2, keyword3" </code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="578a6f02-15a2-460f-ec89-1f390553f7b7" data-execution_count="156">
+<div class="sourceCode cell-code" id="cb73"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb73-1"><a href="#cb73-1" aria-hidden="true" tabindex="-1"></a>chat <span class="op">=</span> Chat(model, sp<span class="op">=</span><span class="st">"""You are a helpful and concise assistant."""</span>)</span>
+<span id="cb73-2"><a href="#cb73-2" aria-hidden="true" tabindex="-1"></a>r <span class="op">=</span> chat(formatted_prompt)</span>
+<span id="cb73-3"><a href="#cb73-3" aria-hidden="true" tabindex="-1"></a>r</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="156">
+<p>“deep learning, model, prediction, understand, predictions”</p>
+<details>
+<ul>
+<li>id: <code>msg_01G3w22vDXTpWryUwUpqouXN</code></li>
+<li>content: <code>[{'text': '"deep learning, model, prediction, understand, predictions"', 'type': 'text'}]</code></li>
+<li>model: <code>claude-3-5-sonnet-20240620</code></li>
+<li>role: <code>assistant</code></li>
+<li>stop_reason: <code>end_turn</code></li>
+<li>stop_sequence: <code>None</code></li>
+<li>type: <code>message</code></li>
+<li>usage: <code>{'input_tokens': 118, 'output_tokens': 15, 'cache_creation_input_tokens': 0, 'cache_read_input_tokens': 0}</code></li>
+</ul>
+</details>
+</div>
+</div>
+<div class="cell" data-execution_count="158">
+<div class="sourceCode cell-code" id="cb74"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb74-1"><a href="#cb74-1" aria-hidden="true" tabindex="-1"></a>keyword_results <span class="op">=</span> []</span>
+<span id="cb74-2"><a href="#cb74-2" aria-hidden="true" tabindex="-1"></a>tokens <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb74-3"><a href="#cb74-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> row <span class="kw">in</span> questions[<span class="st">'question_text'</span>]:</span>
+<span id="cb74-4"><a href="#cb74-4" aria-hidden="true" tabindex="-1"></a>  chat <span class="op">=</span> Chat(model, sp<span class="op">=</span><span class="st">"""You are a helpful and concise assistant."""</span>)</span>
+<span id="cb74-5"><a href="#cb74-5" aria-hidden="true" tabindex="-1"></a>  formatted_prompt <span class="op">=</span> promptE.<span class="bu">format</span>(question_text<span class="op">=</span>row[<span class="dv">2</span>:<span class="op">-</span><span class="dv">2</span>])</span>
+<span id="cb74-6"><a href="#cb74-6" aria-hidden="true" tabindex="-1"></a>  r <span class="op">=</span> chat(formatted_prompt)</span>
+<span id="cb74-7"><a href="#cb74-7" aria-hidden="true" tabindex="-1"></a>  keyword_results.append(r.content[<span class="dv">0</span>].text)</span>
+<span id="cb74-8"><a href="#cb74-8" aria-hidden="true" tabindex="-1"></a>  tokens <span class="op">+=</span> chat.use.total</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="19d4af17-7e2e-4f62-8a46-3677a31eb6a9" data-execution_count="159">
+<div class="sourceCode cell-code" id="cb75"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb75-1"><a href="#cb75-1" aria-hidden="true" tabindex="-1"></a>keyword_results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="159">
+<pre><code>['"deep learning, math, data, computers, PhD"',
+ 'deep learning, areas, best, world',
+ '"neuron, neurons, device, artificial, principle"',
+ '"parallel, distributed, processing, PDP, requirements, book"',
+ '"neural, networks, theoretical, misunderstandings, field"',
+ '"GPU, graphics, processor, processors, computing, hardware"',
+ '"notebook, execute, cell, calculation, result"',
+ '"computer, computers, image, images, recognition, photo, photos"',
+ '"Samuel, weight, weights, assignment, assignments"',
+ 'deep learning, weights, Samuel, term',
+ '"deep learning, model, prediction, understand, predictions"',
+ '"theorem, neural, network, networks, mathematical, problem, accuracy"',
+ '"train, model, training, models, dataset, data"',
+ '"feedback, loop, rollout, predictive, policing, model, models"',
+ '"cat, cats, recognition, model, image, images, pixel, pixels"',
+ '"classification, regression, difference, differences, machine learning, models"',
+ '"validation, test, set, sets, need, purpose"',
+ '"fastai, validation, set, datasets"',
+ '"random, sample, samples, validation, set, sets"',
+ '"overfitting, overfit, example, model, data, machine learning"',
+ '"metric, metrics, loss, differ, difference, measurement"',
+ '"pretrained, models, help, pretraining, model"',
+ 'head, model, models',
+ '"CNN, layers, features, early, later"',
+ '"image, images, model, models, photo, photos"',
+ '"architecture, architectures, design, structure, building"',
+ '"segmentation, segment, segments, divide, division, categorize"',
+ '"y_range, range, purpose, usage, need"',
+ '"hyperparameters, hyperparameter, machine learning, model, tuning, optimization"',
+ '"AI, failures, avoid, organization, organizations"']</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="430bc578-3954-48cb-9bed-1da993b069d0" data-execution_count="160">
+<div class="sourceCode cell-code" id="cb77"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb77-1"><a href="#cb77-1" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'keywords'</span>] <span class="op">=</span> keyword_results</span>
+<span id="cb77-2"><a href="#cb77-2" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'keywords'</span>].iloc[:<span class="dv">5</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="160">
+
+<div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>keywords</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>"deep learning, math, data, computers, PhD"</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>deep learning, areas, best, world</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>"neuron, neurons, device, artificial, principle"</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>"parallel, distributed, processing, PDP, requi...</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>"neural, networks, theoretical, misunderstandi...</td>
+    </tr>
+  </tbody>
+</table>
+</div><br><label><b>dtype:</b> object</label>
+</div>
+</div>
+<div class="cell" data-outputid="142e0a6f-e677-46b0-8cd1-5337fa07c93a" data-execution_count="161">
+<div class="sourceCode cell-code" id="cb78"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb78-1"><a href="#cb78-1" aria-hidden="true" tabindex="-1"></a><span class="co"># retrieve Top-1 chunk by BM25</span></span>
+<span id="cb78-2"><a href="#cb78-2" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> db_search(questions, limit<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb78-3"><a href="#cb78-3" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">30</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="161">
+<pre><code>True</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="162">
+<div class="sourceCode cell-code" id="cb80"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb80-1"><a href="#cb80-1" aria-hidden="true" tabindex="-1"></a><span class="co"># export results</span></span>
+<span id="cb80-2"><a href="#cb80-2" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'context'</span>] <span class="op">=</span> results</span>
+<span id="cb80-3"><a href="#cb80-3" aria-hidden="true" tabindex="-1"></a>questions.to_csv(<span class="st">'bm25_a_keywordsE.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The keywords generated by this prompt resulted in retrieved chunks that allowed me to answer <strong>12/30 or 40%</strong> of the questions! This is comparable to the 40% achieved with my manually generated keywords.</p>
+<p>I’ll go ahead and Claude-generate keywords for all 202 questions in my dataset.</p>
+</section>
+</section>
+<section id="generating-keywords-for-all-questions" class="level2">
+<h2 class="anchored" data-anchor-id="generating-keywords-for-all-questions">Generating Keywords for All Questions</h2>
+<div class="cell" data-outputid="373ed5d5-6a7a-4577-d1ee-7a3f932c23b4" data-execution_count="164">
+<div class="sourceCode cell-code" id="cb81"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb81-1"><a href="#cb81-1" aria-hidden="true" tabindex="-1"></a><span class="co"># get the questions</span></span>
+<span id="cb81-2"><a href="#cb81-2" aria-hidden="true" tabindex="-1"></a>url <span class="op">=</span> <span class="st">'https://gist.githubusercontent.com/vishalbakshi/309fb3abb222d32446b2c4e29db753fe/raw/5e41b9eb34f515f00321e55307cc4d5abbd75cb5/fastbookRAG_evals.csv'</span></span>
+<span id="cb81-3"><a href="#cb81-3" aria-hidden="true" tabindex="-1"></a>questions <span class="op">=</span> pd.read_csv(url).query(<span class="st">'is_answerable == 1'</span>)</span>
+<span id="cb81-4"><a href="#cb81-4" aria-hidden="true" tabindex="-1"></a>questions.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="164">
+<pre><code>(202, 6)</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="166">
+<div class="sourceCode cell-code" id="cb83"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb83-1"><a href="#cb83-1" aria-hidden="true" tabindex="-1"></a>keyword_results <span class="op">=</span> []</span>
+<span id="cb83-2"><a href="#cb83-2" aria-hidden="true" tabindex="-1"></a>tokens <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb83-3"><a href="#cb83-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> row <span class="kw">in</span> questions[<span class="st">'question_text'</span>]:</span>
+<span id="cb83-4"><a href="#cb83-4" aria-hidden="true" tabindex="-1"></a>  chat <span class="op">=</span> Chat(model, sp<span class="op">=</span><span class="st">"""You are a helpful and concise assistant."""</span>)</span>
+<span id="cb83-5"><a href="#cb83-5" aria-hidden="true" tabindex="-1"></a>  formatted_prompt <span class="op">=</span> promptE.<span class="bu">format</span>(question_text<span class="op">=</span>row[<span class="dv">2</span>:<span class="op">-</span><span class="dv">2</span>])</span>
+<span id="cb83-6"><a href="#cb83-6" aria-hidden="true" tabindex="-1"></a>  r <span class="op">=</span> chat(formatted_prompt)</span>
+<span id="cb83-7"><a href="#cb83-7" aria-hidden="true" tabindex="-1"></a>  keyword_results.append(r.content[<span class="dv">0</span>].text)</span>
+<span id="cb83-8"><a href="#cb83-8" aria-hidden="true" tabindex="-1"></a>  tokens <span class="op">+=</span> chat.use.total</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="52124e57-4ec7-40b0-fb58-74315b403525" data-execution_count="167">
+<div class="sourceCode cell-code" id="cb84"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb84-1"><a href="#cb84-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(keyword_results) <span class="op">==</span> <span class="dv">202</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="167">
+<pre><code>True</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="169">
+<div class="sourceCode cell-code" id="cb86"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb86-1"><a href="#cb86-1" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'keywords'</span>] <span class="op">=</span> keyword_results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="171">
+<div class="sourceCode cell-code" id="cb87"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb87-1"><a href="#cb87-1" aria-hidden="true" tabindex="-1"></a>questions.to_csv(<span class="st">'evals_promptE_keywords.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>Here are the results from this notebook. <strong>Answer Rate</strong> is the percentage of Chapter 1 Questionnaire questions answered using context retrieved from SQLite full-text search with Claude-generated keywords.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Prompt</th>
+<th style="text-align: center;">Answer Rate</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><a href="#prompt-a">A</a></td>
+<td style="text-align: center;">33%</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><a href="#prompt-b">B</a></td>
+<td style="text-align: center;">33%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><a href="#prompt-c">C</a></td>
+<td style="text-align: center;">36%</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><a href="#prompt-d">D</a></td>
+<td style="text-align: center;">33%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><a href="#prompt-e">E</a></td>
+<td style="text-align: center;"><strong>40%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>I learned a few important lessons in this work:</p>
+<ul>
+<li><strong>The implications of full text search using corpus-wide statistics</strong>: sqlite’s FTS5 retrieved different contexts for the same keywords when I used it on a database with 1 versus 7 chapters.</li>
+<li><strong>Claude will tell you how to prompt</strong>: I haven’t explored this as much as I should, but definitely benefited from asking Claude what prompt would be effective for generating keywords.</li>
+<li><strong>Claude will make mistakes:</strong> It’s sometimes easy to forget that even for relatively simple instructions (“follow this format”) Claude will incorrectly include extraneous text. A good reminder to add “no yapping” to the prompt when brevity is needed.</li>
+</ul>
+<p>I’m pretty excited about using these Claude-generated keywords as they resulted in the same answer rate (40%) as my manually generated keywords. That’s a promising start!</p>
+<p>I hope you enjoyed this blog post. Follow me on Twitter <a href="https://twitter.com/vishal_learner"><span class="citation" data-cites="vishal_learner">@vishal_learner</span></a>.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","openEffect":"zoom","descPosition":"bottom","selector":".lightbox","loop":true});</script>
+
+
+
+</body></html>
