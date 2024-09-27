@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2024-09-26">
+<meta name="description" content="In this blog post I repurpose the code provided in Lesson 9/10 of the fastai Part 2 course to generate an animation GIF transitioning from a picture of a skunk to a picture of a puppy.">
+
+<title>vishal bakshi - Generating a GIF Animation Using Stable Diffusion</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+<script src="https://unpkg.com/@jupyter-widgets/html-manager@*/dist/embed-amd.js" crossorigin="anonymous"></script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">vishal bakshi</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#mixing-and-replacing-text-embeddings" id="toc-mixing-and-replacing-text-embeddings" class="nav-link" data-scroll-target="#mixing-and-replacing-text-embeddings">Mixing and Replacing Text Embeddings</a></li>
+  <li><a href="#generating-a-mixed-puppyskunk-image" id="toc-generating-a-mixed-puppyskunk-image" class="nav-link" data-scroll-target="#generating-a-mixed-puppyskunk-image">Generating a Mixed Puppy/Skunk Image</a></li>
+  <li><a href="#transitioning-from-100-skunk-to-100-puppy" id="toc-transitioning-from-100-skunk-to-100-puppy" class="nav-link" data-scroll-target="#transitioning-from-100-skunk-to-100-puppy">Transitioning from 100% Skunk to 100% Puppy</a></li>
+  <li><a href="#making-the-skunk-to-puppy-transition-smoother" id="toc-making-the-skunk-to-puppy-transition-smoother" class="nav-link" data-scroll-target="#making-the-skunk-to-puppy-transition-smoother">Making the Skunk-to-Puppy Transition Smoother</a></li>
+  <li><a href="#final-thoughts" id="toc-final-thoughts" class="nav-link" data-scroll-target="#final-thoughts">Final Thoughts</a></li>
+  <li><a href="#bonus-additional-gifs" id="toc-bonus-additional-gifs" class="nav-link" data-scroll-target="#bonus-additional-gifs">Bonus: Additional GIFs</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Generating a GIF Animation Using Stable Diffusion</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">python</div>
+    <div class="quarto-category">stable diffusion</div>
+    <div class="quarto-category">fastai</div>
+    <div class="quarto-category">deep learning</div>
+    <div class="quarto-category">machine learning</div>
+    <div class="quarto-category">generative AI</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    In this blog post I repurpose the code provided in Lesson 9/10 of the fastai Part 2 course to generate an animation GIF transitioning from a picture of a skunk to a picture of a puppy.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">September 26, 2024</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-26T18:29:24.746220Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-26T18:29:24.745904Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-26T18:29:34.306095Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-26T18:29:34.305455Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-26T18:29:24.746162Z&quot;}">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>pip install <span class="op">-</span>q <span class="op">--</span>upgrade transformers<span class="op">==</span><span class="fl">4.25.1</span> diffusers ftfy accelerate</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:02:13.269161Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:02:13.268855Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:02:17.120110Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:02:17.119524Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:02:13.269104Z&quot;}" data-execution_count="1">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> base64 <span class="im">import</span> b64encode</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> diffusers <span class="im">import</span> AutoencoderKL, LMSDiscreteScheduler, UNet2DConditionModel</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> huggingface_hub <span class="im">import</span> notebook_login</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="co"># For video display:</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> IPython.display <span class="im">import</span> HTML</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> matplotlib <span class="im">import</span> pyplot <span class="im">as</span> plt</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> PIL <span class="im">import</span> Image</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> torch <span class="im">import</span> autocast</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> torchvision <span class="im">import</span> transforms <span class="im">as</span> tfms</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> tqdm.auto <span class="im">import</span> tqdm</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers <span class="im">import</span> CLIPTextModel, CLIPTokenizer, logging</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>torch.manual_seed(<span class="dv">1</span>)</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a><span class="co"># Supress some unnecessary warnings when loading the CLIPTextModel</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>logging.set_verbosity_error()</span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a><span class="co"># Set device</span></span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>torch_device <span class="op">=</span> <span class="st">"cuda"</span> <span class="cf">if</span> torch.cuda.is_available() <span class="cf">else</span> <span class="st">"cpu"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:02:17.121529Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:02:17.121148Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:02:20.984343Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:02:20.983806Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:02:17.121506Z&quot;}">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Load the autoencoder model which will be used to decode the latents into image space.</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>vae <span class="op">=</span> AutoencoderKL.from_pretrained(<span class="st">"CompVis/stable-diffusion-v1-4"</span>, subfolder<span class="op">=</span><span class="st">"vae"</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Load the tokenizer and text encoder to tokenize and encode the text.</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>tokenizer <span class="op">=</span> CLIPTokenizer.from_pretrained(<span class="st">"openai/clip-vit-large-patch14"</span>)</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>text_encoder <span class="op">=</span> CLIPTextModel.from_pretrained(<span class="st">"openai/clip-vit-large-patch14"</span>)</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co"># The UNet model for generating the latents.</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>unet <span class="op">=</span> UNet2DConditionModel.from_pretrained(<span class="st">"CompVis/stable-diffusion-v1-4"</span>, subfolder<span class="op">=</span><span class="st">"unet"</span>)</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="co"># The noise scheduler</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>scheduler <span class="op">=</span> LMSDiscreteScheduler(beta_start<span class="op">=</span><span class="fl">0.00085</span>, beta_end<span class="op">=</span><span class="fl">0.012</span>, beta_schedule<span class="op">=</span><span class="st">"scaled_linear"</span>, num_train_timesteps<span class="op">=</span><span class="dv">1000</span>)</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a><span class="co"># To the GPU we go!</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>vae <span class="op">=</span> vae.to(torch_device)</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>text_encoder <span class="op">=</span> text_encoder.to(torch_device)</span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>unet <span class="op">=</span> unet.to(torch_device)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In this notebook, I rearrange the code provided in the fastai course Part 2 notebook <a href="https://github.com/fastai/diffusion-nbs/blob/master/Stable%20Diffusion%20Deep%20Dive.ipynb">Stable Diffusion Deep Dive</a> to create a GIF transitioning from a picture of a skunk to a picture of a puppy in a relatively visually smooth and stable manner.</p>
+<p>I combine two concepts introduced in that notebook:</p>
+<ul>
+<li>The diffusion loop starting from a noised version of input (aka image2image)</li>
+<li>Replacing/mixing token embeddings to alter the generated image (for example a mixed skunk/puppy embeddings/image)</li>
+</ul>
+<p>I’ll reuse the helper functions provided in that notebook:</p>
+<ul>
+<li><code>set_timesteps</code>: uses the scheduler algorithm to generate the timesteps and noise for a given number of inference steps.</li>
+<li><code>pil_to_latent</code>: uses the VAE to encode a 512x512 pixel image into a 1x4x64x64 latent.</li>
+<li><code>latents_to_pil</code>: uses the VAE to decode a 1x4x64x64 latent into a 512x512 PIL Image.</li>
+<li><code>get_output_embeds</code>: uses (most of the) code from the <code>forward</code> pass of the <code>text_encoder.text_model</code> to encode token + position embeddings.</li>
+</ul>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:34.198480Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:34.197611Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:34.201831Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:34.201068Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:34.198453Z&quot;}" data-execution_count="3">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Prep Scheduler</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> set_timesteps(scheduler, num_inference_steps):</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    scheduler.set_timesteps(num_inference_steps)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    scheduler.timesteps <span class="op">=</span> scheduler.timesteps.to(torch.float32) <span class="co"># minor fix to ensure MPS compatibility, fixed in diffusers PR 3925</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:35.456554Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:35.455760Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:35.461903Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:35.461154Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:35.456536Z&quot;}" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> pil_to_latent(input_im):</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Single image -&gt; single latent in a batch (so size 1, 4, 64, 64)</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> torch.no_grad():</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>        latent <span class="op">=</span> vae.encode(tfms.ToTensor()(input_im).unsqueeze(<span class="dv">0</span>).to(torch_device)<span class="op">*</span><span class="dv">2</span><span class="op">-</span><span class="dv">1</span>) <span class="co"># Note scaling</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="fl">0.18215</span> <span class="op">*</span> latent.latent_dist.sample()</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> latents_to_pil(latents):</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    <span class="co"># bath of latents -&gt; list of images</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    latents <span class="op">=</span> (<span class="dv">1</span> <span class="op">/</span> <span class="fl">0.18215</span>) <span class="op">*</span> latents</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> torch.no_grad():</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>        image <span class="op">=</span> vae.decode(latents).sample</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>    image <span class="op">=</span> (image <span class="op">/</span> <span class="dv">2</span> <span class="op">+</span> <span class="fl">0.5</span>).clamp(<span class="dv">0</span>, <span class="dv">1</span>)</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>    image <span class="op">=</span> image.detach().cpu().permute(<span class="dv">0</span>, <span class="dv">2</span>, <span class="dv">3</span>, <span class="dv">1</span>).numpy()</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>    images <span class="op">=</span> (image <span class="op">*</span> <span class="dv">255</span>).<span class="bu">round</span>().astype(<span class="st">"uint8"</span>)</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>    pil_images <span class="op">=</span> [Image.fromarray(image) <span class="cf">for</span> image <span class="kw">in</span> images]</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> pil_images</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:36.699652Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:36.698871Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:36.704410Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:36.703564Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:36.699630Z&quot;}" data-execution_count="5">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_output_embeds(input_embeddings):</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># CLIP's text model uses causal mask, so we prepare it here:</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    bsz, seq_len <span class="op">=</span> input_embeddings.shape[:<span class="dv">2</span>]</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    causal_attention_mask <span class="op">=</span> text_encoder.text_model._build_causal_attention_mask(bsz, seq_len, dtype<span class="op">=</span>input_embeddings.dtype)</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Getting the output embeddings involves calling the model with passing output_hidden_states=True</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="co"># so that it doesn't just return the pooled final predictions:</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    encoder_outputs <span class="op">=</span> text_encoder.text_model.encoder(</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>        inputs_embeds<span class="op">=</span>input_embeddings,</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>        attention_mask<span class="op">=</span><span class="va">None</span>, <span class="co"># We aren't using an attention mask so that can be None</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>        causal_attention_mask<span class="op">=</span>causal_attention_mask.to(torch_device),</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>        output_attentions<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>        output_hidden_states<span class="op">=</span><span class="va">True</span>, <span class="co"># We want the output embs not the final output</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>        return_dict<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>    <span class="co"># We're interested in the output hidden state only</span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>    output <span class="op">=</span> encoder_outputs[<span class="dv">0</span>]</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>    <span class="co"># There is a final layer norm we need to pass these through</span></span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>    output <span class="op">=</span> text_encoder.text_model.final_layer_norm(output)</span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>    <span class="co"># And now they're ready!</span></span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> output</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I also prepare the <code>token_embedding</code> layer and <code>position_embedding</code> layer as done in the notebook:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:38.499855Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:38.498918Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:38.503542Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:38.502702Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:38.499820Z&quot;}" data-execution_count="6">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Access the embedding layer</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>token_emb_layer <span class="op">=</span> text_encoder.text_model.embeddings.token_embedding</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>pos_emb_layer <span class="op">=</span> text_encoder.text_model.embeddings.position_embedding</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:39.799868Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:39.799240Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:39.815454Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:39.814794Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:39.799838Z&quot;}" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>position_ids <span class="op">=</span> text_encoder.text_model.embeddings.position_ids[:, :<span class="dv">77</span>]</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>position_embeddings <span class="op">=</span> pos_emb_layer(position_ids)</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(position_embeddings.shape)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>torch.Size([1, 77, 768])</code></pre>
+</div>
+</div>
+</section>
+<section id="mixing-and-replacing-text-embeddings" class="level2">
+<h2 class="anchored" data-anchor-id="mixing-and-replacing-text-embeddings">Mixing and Replacing Text Embeddings</h2>
+<p>I start by taking a prompt, <code>A picture of a puppy</code>, tokenizing it, and creating its embeddings:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:42.060530Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:42.060269Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:42.064930Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:42.064416Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:42.060511Z&quot;}" data-execution_count="8">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>prompt <span class="op">=</span> <span class="st">'A picture of a puppy'</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Tokenize</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>text_input <span class="op">=</span> tokenizer(prompt, padding<span class="op">=</span><span class="st">"max_length"</span>, max_length<span class="op">=</span>tokenizer.model_max_length, truncation<span class="op">=</span><span class="va">True</span>, return_tensors<span class="op">=</span><span class="st">"pt"</span>)</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>input_ids <span class="op">=</span> text_input.input_ids.to(torch_device)</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Get token embeddings</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>token_embeddings <span class="op">=</span> token_emb_layer(input_ids)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Next, I want to replace the token embeddings for <code>puppy</code> with an averaged embedding of <code>skunk</code> and <code>puppy</code>. I start (as the course notebook does) by first generating embeddings for the <code>puppy</code> (<code>6829</code>) and <code>skunk</code> (<code>42194</code>) tokens:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:43.516260Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:43.515730Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:43.520038Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:43.519330Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:43.516242Z&quot;}" data-execution_count="9">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># The new embedding. Which is now a mixture of the token embeddings for 'puppy' and 'skunk'</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>puppy_token_embedding <span class="op">=</span> token_emb_layer(torch.tensor(<span class="dv">6829</span>, device<span class="op">=</span>torch_device))</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>skunk_token_embedding <span class="op">=</span> token_emb_layer(torch.tensor(<span class="dv">42194</span>, device<span class="op">=</span>torch_device))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I then choose a weighting factor (I’ll start with 50% <code>puppy</code> and 50% <code>skunk</code>) to mix the two token embeddings:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:44.976783Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:44.976076Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:44.981094Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:44.980121Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:44.976754Z&quot;}" data-execution_count="10">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>puppy_factor <span class="op">=</span> <span class="fl">0.5</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>replacement_token_embedding <span class="op">=</span> puppy_factor<span class="op">*</span>puppy_token_embedding <span class="op">+</span> (<span class="dv">1</span><span class="op">-</span>puppy_factor)<span class="op">*</span>skunk_token_embedding</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Now for the replacement operation: using <code>where</code>, we swap out the 100% <code>puppy</code> token embeddings with the mixed <code>puppy/skunk</code> embeddings:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:46.940027Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:46.939750Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:46.944191Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:46.943615Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:46.940009Z&quot;}" data-execution_count="11">
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>token_embeddings[<span class="dv">0</span>, torch.where(input_ids[<span class="dv">0</span>]<span class="op">==</span><span class="dv">6829</span>)] <span class="op">=</span> replacement_token_embedding.to(torch_device)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>We then combine the full set of token embeddings with position embeddings and pass it through the <code>forward</code> pass of the text encoder:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:47.703355Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:47.702854Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:48.482255Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:48.481456Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:47.703332Z&quot;}" data-execution_count="12">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Combine with pos embs</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>input_embeddings <span class="op">=</span> token_embeddings <span class="op">+</span> position_embeddings</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="co">#  Feed through to get final output embs</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>modified_output_embeddings <span class="op">=</span> get_output_embeds(input_embeddings)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="generating-a-mixed-puppyskunk-image" class="level2">
+<h2 class="anchored" data-anchor-id="generating-a-mixed-puppyskunk-image">Generating a Mixed Puppy/Skunk Image</h2>
+<p>With the text embeddings in hand, we can now generate a puppy/skunk hybrid image using the U-Net: first we set some constants (I’ll use the same ones as the course notebook):</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:50.640075Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:50.639452Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:50.643526Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:50.642979Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:50.640053Z&quot;}" data-execution_count="13">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>height <span class="op">=</span> <span class="dv">512</span>                        <span class="co"># default height of Stable Diffusion</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>width <span class="op">=</span> <span class="dv">512</span>                         <span class="co"># default width of Stable Diffusion</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>num_inference_steps <span class="op">=</span> <span class="dv">30</span>            <span class="co"># Number of denoising steps</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>guidance_scale <span class="op">=</span> <span class="fl">7.5</span>                <span class="co"># Scale for classifier-free guidance</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>generator <span class="op">=</span> torch.manual_seed(<span class="dv">32</span>)   <span class="co"># Seed generator to create the inital latent noise</span></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>batch_size <span class="op">=</span> <span class="dv">1</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Next we create embeddings for an empty prompt (aka the <em>unconditioned</em> input) and concatenate it to the puppy/skunk hybrid token embeddings:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:52.375421Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:52.374875Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:52.387227Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:52.386554Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:52.375402Z&quot;}" data-execution_count="14">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>max_length <span class="op">=</span> modified_output_embeddings.shape[<span class="op">-</span><span class="dv">2</span>]</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>uncond_input <span class="op">=</span> tokenizer(</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>  [<span class="st">""</span>] <span class="op">*</span> batch_size, padding<span class="op">=</span><span class="st">"max_length"</span>, max_length<span class="op">=</span>max_length, return_tensors<span class="op">=</span><span class="st">"pt"</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> torch.no_grad():</span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>    uncond_embeddings <span class="op">=</span> text_encoder(uncond_input.input_ids.to(torch_device))[<span class="dv">0</span>]</span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>text_embeddings <span class="op">=</span> torch.cat([uncond_embeddings, modified_output_embeddings])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>We initialize the <code>scheduler</code> with the given number of inference steps:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:52.996593Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:52.995763Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:53.000465Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:52.999579Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:52.996564Z&quot;}" data-execution_count="15">
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Prep Scheduler</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>set_timesteps(scheduler, num_inference_steps)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>And initialize a random set of latents as the starting point for the image generation. Note that this one of the main things I’ll change later on when I want to create a smooth GIF transition from 100% skunk to 100% puppy (where I’ll start with a noisy image’s latents instead of fully random noisy latents):</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:54.605886Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:54.605314Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:54.610206Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:54.609554Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:54.605865Z&quot;}" data-execution_count="16">
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Prep latents</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>latents <span class="op">=</span> torch.randn(</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>(batch_size, unet.in_channels, height <span class="op">//</span> <span class="dv">8</span>, width <span class="op">//</span> <span class="dv">8</span>),</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>generator<span class="op">=</span>generator,</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>latents <span class="op">=</span> latents.to(torch_device)</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>latents <span class="op">=</span> latents <span class="op">*</span> scheduler.init_noise_sigma</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_2631/4273587132.py:3: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  (batch_size, unet.in_channels, height // 8, width // 8),</code></pre>
+</div>
+</div>
+<p>Finally, we can run the diffusion loop, where we generate U-Net predictions for both conditioned and unconditioned (empty) text embeddings, using the <code>guidance_scale</code> to guide the diffusion process towards the conditioned text embeddings.</p>
+<p>The result is a creature that looks like both a skunk and a puppy—a skunk/puppy hybrid!</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:57.281473Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:57.280537Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:05:05.605928Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:05:05.605206Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:57.281430Z&quot;}" data-execution_count="17">
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Loop</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i, t <span class="kw">in</span> tqdm(<span class="bu">enumerate</span>(scheduler.timesteps), total<span class="op">=</span><span class="bu">len</span>(scheduler.timesteps)):</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    <span class="co"># expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>    latent_model_input <span class="op">=</span> torch.cat([latents] <span class="op">*</span> <span class="dv">2</span>)</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>    sigma <span class="op">=</span> scheduler.sigmas[i]</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>    latent_model_input <span class="op">=</span> scheduler.scale_model_input(latent_model_input, t)</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>    <span class="co"># predict the noise residual</span></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> torch.no_grad():</span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>        noise_pred <span class="op">=</span> unet(latent_model_input, t, encoder_hidden_states<span class="op">=</span>text_embeddings)[<span class="st">"sample"</span>]</span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>    <span class="co"># perform guidance</span></span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>    noise_pred_uncond, noise_pred_text <span class="op">=</span> noise_pred.chunk(<span class="dv">2</span>)</span>
+<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a>    noise_pred <span class="op">=</span> noise_pred_uncond <span class="op">+</span> guidance_scale <span class="op">*</span> (noise_pred_text <span class="op">-</span> noise_pred_uncond)</span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-16"><a href="#cb20-16" aria-hidden="true" tabindex="-1"></a>    <span class="co"># compute the previous noisy sample x_t -&gt; x_t-1</span></span>
+<span id="cb20-17"><a href="#cb20-17" aria-hidden="true" tabindex="-1"></a>    latents <span class="op">=</span> scheduler.step(noise_pred, t, latents).prev_sample</span>
+<span id="cb20-18"><a href="#cb20-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-19"><a href="#cb20-19" aria-hidden="true" tabindex="-1"></a>latents_to_pil(latents)[<span class="dv">0</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"e3c20840257e4eaa8484cdfc58299860","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="17">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-19-output-2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="index_files/figure-html/cell-19-output-2.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="transitioning-from-100-skunk-to-100-puppy" class="level2">
+<h2 class="anchored" data-anchor-id="transitioning-from-100-skunk-to-100-puppy">Transitioning from 100% Skunk to 100% Puppy</h2>
+<p>I’ll now modify the above process so that I can use the previous image as a starting point for the next image’s generation. Why would I want to do that? Well, to illustrate why, I’ll generate 11 images that each start out with random noisy latents. The first image will be generated with 100% <code>skunk</code> and 0% <code>puppy</code> token embeddings, incrementing by 10% until the last image is 0% <code>skunk</code> and 100% <code>puppy</code> token embeddings. I’ll then combine the images into a GIF and show how it has a choppy transition between frame since each image starts at a random spot in the latent space.</p>
+<p>I’ll use the <code>generate_with_embs</code> function from the course notebook which takes the code above and wraps it into a function:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:05:11.316644Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:05:11.316392Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:05:11.322739Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:05:11.322092Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:05:11.316625Z&quot;}" data-execution_count="18">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> generate_with_embs(text_embeddings, seed):</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    height <span class="op">=</span> <span class="dv">512</span>                        <span class="co"># default height of Stable Diffusion</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    width <span class="op">=</span> <span class="dv">512</span>                         <span class="co"># default width of Stable Diffusion</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>    num_inference_steps <span class="op">=</span> <span class="dv">30</span>            <span class="co"># Number of denoising steps</span></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>    guidance_scale <span class="op">=</span> <span class="fl">7.5</span>                <span class="co"># Scale for classifier-free guidance</span></span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>    generator <span class="op">=</span> torch.manual_seed(seed)   <span class="co"># Seed generator to create the inital latent noise</span></span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>    batch_size <span class="op">=</span> <span class="dv">1</span></span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>    max_length <span class="op">=</span> text_input.input_ids.shape[<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a>    uncond_input <span class="op">=</span> tokenizer(</span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a>      [<span class="st">""</span>] <span class="op">*</span> batch_size, padding<span class="op">=</span><span class="st">"max_length"</span>, max_length<span class="op">=</span>max_length, return_tensors<span class="op">=</span><span class="st">"pt"</span></span>
+<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> torch.no_grad():</span>
+<span id="cb21-14"><a href="#cb21-14" aria-hidden="true" tabindex="-1"></a>        uncond_embeddings <span class="op">=</span> text_encoder(uncond_input.input_ids.to(torch_device))[<span class="dv">0</span>]</span>
+<span id="cb21-15"><a href="#cb21-15" aria-hidden="true" tabindex="-1"></a>    text_embeddings <span class="op">=</span> torch.cat([uncond_embeddings, text_embeddings])</span>
+<span id="cb21-16"><a href="#cb21-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-17"><a href="#cb21-17" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Prep Scheduler</span></span>
+<span id="cb21-18"><a href="#cb21-18" aria-hidden="true" tabindex="-1"></a>    set_timesteps(scheduler, num_inference_steps)</span>
+<span id="cb21-19"><a href="#cb21-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-20"><a href="#cb21-20" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Prep latents</span></span>
+<span id="cb21-21"><a href="#cb21-21" aria-hidden="true" tabindex="-1"></a>    latents <span class="op">=</span> torch.randn(</span>
+<span id="cb21-22"><a href="#cb21-22" aria-hidden="true" tabindex="-1"></a>    (batch_size, unet.in_channels, height <span class="op">//</span> <span class="dv">8</span>, width <span class="op">//</span> <span class="dv">8</span>),</span>
+<span id="cb21-23"><a href="#cb21-23" aria-hidden="true" tabindex="-1"></a>    generator<span class="op">=</span>generator,</span>
+<span id="cb21-24"><a href="#cb21-24" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb21-25"><a href="#cb21-25" aria-hidden="true" tabindex="-1"></a>    latents <span class="op">=</span> latents.to(torch_device)</span>
+<span id="cb21-26"><a href="#cb21-26" aria-hidden="true" tabindex="-1"></a>    latents <span class="op">=</span> latents <span class="op">*</span> scheduler.init_noise_sigma</span>
+<span id="cb21-27"><a href="#cb21-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-28"><a href="#cb21-28" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Loop</span></span>
+<span id="cb21-29"><a href="#cb21-29" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i, t <span class="kw">in</span> tqdm(<span class="bu">enumerate</span>(scheduler.timesteps), total<span class="op">=</span><span class="bu">len</span>(scheduler.timesteps)):</span>
+<span id="cb21-30"><a href="#cb21-30" aria-hidden="true" tabindex="-1"></a>        <span class="co"># expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.</span></span>
+<span id="cb21-31"><a href="#cb21-31" aria-hidden="true" tabindex="-1"></a>        latent_model_input <span class="op">=</span> torch.cat([latents] <span class="op">*</span> <span class="dv">2</span>)</span>
+<span id="cb21-32"><a href="#cb21-32" aria-hidden="true" tabindex="-1"></a>        sigma <span class="op">=</span> scheduler.sigmas[i]</span>
+<span id="cb21-33"><a href="#cb21-33" aria-hidden="true" tabindex="-1"></a>        latent_model_input <span class="op">=</span> scheduler.scale_model_input(latent_model_input, t)</span>
+<span id="cb21-34"><a href="#cb21-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-35"><a href="#cb21-35" aria-hidden="true" tabindex="-1"></a>        <span class="co"># predict the noise residual</span></span>
+<span id="cb21-36"><a href="#cb21-36" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> torch.no_grad():</span>
+<span id="cb21-37"><a href="#cb21-37" aria-hidden="true" tabindex="-1"></a>            noise_pred <span class="op">=</span> unet(latent_model_input, t, encoder_hidden_states<span class="op">=</span>text_embeddings)[<span class="st">"sample"</span>]</span>
+<span id="cb21-38"><a href="#cb21-38" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-39"><a href="#cb21-39" aria-hidden="true" tabindex="-1"></a>        <span class="co"># perform guidance</span></span>
+<span id="cb21-40"><a href="#cb21-40" aria-hidden="true" tabindex="-1"></a>        noise_pred_uncond, noise_pred_text <span class="op">=</span> noise_pred.chunk(<span class="dv">2</span>)</span>
+<span id="cb21-41"><a href="#cb21-41" aria-hidden="true" tabindex="-1"></a>        noise_pred <span class="op">=</span> noise_pred_uncond <span class="op">+</span> guidance_scale <span class="op">*</span> (noise_pred_text <span class="op">-</span> noise_pred_uncond)</span>
+<span id="cb21-42"><a href="#cb21-42" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-43"><a href="#cb21-43" aria-hidden="true" tabindex="-1"></a>        <span class="co"># compute the previous noisy sample x_t -&gt; x_t-1</span></span>
+<span id="cb21-44"><a href="#cb21-44" aria-hidden="true" tabindex="-1"></a>        latents <span class="op">=</span> scheduler.step(noise_pred, t, latents).prev_sample</span>
+<span id="cb21-45"><a href="#cb21-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-46"><a href="#cb21-46" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> latents_to_pil(latents)[<span class="dv">0</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I’ll iterate between a <code>puppy_factor</code> of <code>0</code> to <code>1.0</code>, generating new mixed token embeddings at each step and corresponding image.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:05:13.414065Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:05:13.413774Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:06:30.165078Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:06:30.164329Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:05:13.414045Z&quot;}">
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>imgs <span class="op">=</span> []</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>seed <span class="op">=</span> <span class="dv">4</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>n <span class="op">=</span> <span class="dv">10</span></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(n <span class="op">+</span> <span class="dv">1</span>):</span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>  puppy_factor <span class="op">=</span> i <span class="op">*</span> <span class="fl">1.</span> <span class="op">/</span> n </span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>  <span class="co"># replace puppy embeddings with weighted average of puppy and skunk embeddings</span></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>  replacement_token_embedding <span class="op">=</span> puppy_factor<span class="op">*</span>puppy_token_embedding <span class="op">+</span> (<span class="dv">1</span><span class="op">-</span>puppy_factor)<span class="op">*</span>skunk_token_embedding</span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Insert this into the token embeddings (</span></span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a>  token_embeddings[<span class="dv">0</span>, torch.where(input_ids[<span class="dv">0</span>]<span class="op">==</span><span class="dv">6829</span>)] <span class="op">=</span> replacement_token_embedding.to(torch_device)</span>
+<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Combine with pos embs</span></span>
+<span id="cb22-14"><a href="#cb22-14" aria-hidden="true" tabindex="-1"></a>  input_embeddings <span class="op">=</span> token_embeddings <span class="op">+</span> position_embeddings</span>
+<span id="cb22-15"><a href="#cb22-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-16"><a href="#cb22-16" aria-hidden="true" tabindex="-1"></a>  <span class="co">#  Feed through to get final output embs</span></span>
+<span id="cb22-17"><a href="#cb22-17" aria-hidden="true" tabindex="-1"></a>  modified_output_embeddings <span class="op">=</span> get_output_embeds(input_embeddings)</span>
+<span id="cb22-18"><a href="#cb22-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-19"><a href="#cb22-19" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Generate an image with these</span></span>
+<span id="cb22-20"><a href="#cb22-20" aria-hidden="true" tabindex="-1"></a>  img <span class="op">=</span> generate_with_embs(modified_output_embeddings, seed<span class="op">=</span>seed)</span>
+<span id="cb22-21"><a href="#cb22-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-22"><a href="#cb22-22" aria-hidden="true" tabindex="-1"></a>  imgs.append(img)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I’ll use this nifty one-liner provided by Claude to generate a GIF:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:06:38.871813Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:06:38.871553Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:06:40.277054Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:06:40.276515Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:06:38.871794Z&quot;}" data-execution_count="20">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>imgs[<span class="dv">0</span>].save(<span class="ss">f'/notebooks/skunk-to-puppy_random_</span><span class="sc">{</span>seed<span class="sc">}</span><span class="ss">.gif'</span>, save_all<span class="op">=</span><span class="va">True</span>, append_images<span class="op">=</span>imgs[<span class="dv">1</span>:], duration<span class="op">=</span><span class="dv">200</span>, loop<span class="op">=</span><span class="dv">0</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>As you can see in the GIF below, the transition from image to the next, especially once it goes from mostly-skunk to mostly-puppy, is choppy. Notice especially how the pose of the creature, as well as the background, significantly change from the start to finish of the animation.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="skunk-to-puppy_random_4.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-2" title="Skunk to Puppy animation where each subsequent image starts from a random noisy latent"><img src="skunk-to-puppy_random_4.gif" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Skunk to Puppy animation where each subsequent image starts from a random noisy latent</figcaption><p></p>
+</figure>
+</div>
+</section>
+<section id="making-the-skunk-to-puppy-transition-smoother" class="level2">
+<h2 class="anchored" data-anchor-id="making-the-skunk-to-puppy-transition-smoother">Making the Skunk-to-Puppy Transition Smoother</h2>
+<p>I’ll now modify the generation loop by doing the following:</p>
+<ul>
+<li>On the first step of the <code>puppy_factor</code> loop, start with a random noisy latent.</li>
+<li>On all subsequent steps, start with a latent of the previous step’s image with some “delayed” timestep noise added to it.</li>
+</ul>
+<p>To accomplish this (and reuse as much course notebook code as possible), I’ll modify <code>generate_with_embs</code>. First off, I’ll walk through the updated parameters to this function:</p>
+<ul>
+<li><code>text_embeddings</code>: same as before, these are the mixed text embeddings (with some ratio of skunk-to-puppy)</li>
+<li><code>encoded</code>: this is the latent of the previous step’s image, created using <code>pil_to_latent</code> as we’ll see later on.</li>
+<li><code>start_step=10</code>: this is the “delayed” timestep that we want to start with. The default is <code>10</code>, which means that it will add noise using the scheduler starting at step <code>10</code>.</li>
+<li><code>num_inference_steps=30</code>: the total number of inference steps. I found that 30 works pretty well (as is used in the course notebook).</li>
+<li><code>height=512</code>: the height of the image in pixels.</li>
+<li><code>width=512</code>: the width of the image in pixels.</li>
+<li><code>batch_size=1</code>: the batch size.</li>
+<li><code>guidance_scale</code>: the guidance scale to use when guiding the image away from unconditioned to conditioned generation.</li>
+<li><code>generator</code>: maintaining the random state between images.</li>
+</ul>
+<p>In addition to the function signature, the following two sections of <code>generate_with_embs</code> deviate from the course notebook to achieve a “smoother” transition between <code>skunk</code> and <code>puppy</code>.</p>
+<p>In the code below, if the <code>start_step</code> is greater than 0 (meaning anything other than the very first image), the <code>latents</code> are generated by adding <code>noise</code> to the <code>encoded</code> image from the previous step using <code>scheduler.noise</code> and the given <code>start_step</code>.</p>
+<p>If <code>start_step==0</code> then we’re at the very first image and we just use the random noise <code>latents</code> (passed through as the <code>encoded</code> parameter).</p>
+<div class="sourceCode" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Prep latents</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> start_step <span class="op">&gt;</span> <span class="dv">0</span> :</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>      noise <span class="op">=</span> torch.randn_like(encoded)</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>      latents <span class="op">=</span> scheduler.add_noise(encoded, noise, timesteps<span class="op">=</span>torch.tensor([scheduler.timesteps[start_step]]))</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>      latents <span class="op">=</span> latents.to(torch_device).<span class="bu">float</span>()</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>      latents <span class="op">=</span> encoded</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The following condition is added to the diffusion loop, so that the U-Net inference starts at the given <code>start_step</code>:</p>
+<div class="sourceCode" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> i <span class="op">&gt;=</span> start_step: </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:06:53.566813Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:06:53.566470Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:06:53.576976Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:06:53.576021Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:06:53.566788Z&quot;}" data-execution_count="21">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="co">#Generating an image with these modified embeddings</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> generate_with_embs(</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>    text_embeddings, </span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>    encoded, </span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>    start_step<span class="op">=</span><span class="dv">10</span>, </span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>    num_inference_steps<span class="op">=</span><span class="dv">30</span>, </span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a>    height<span class="op">=</span><span class="dv">512</span>, </span>
+<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a>    width<span class="op">=</span><span class="dv">512</span>, </span>
+<span id="cb26-10"><a href="#cb26-10" aria-hidden="true" tabindex="-1"></a>    batch_size<span class="op">=</span><span class="dv">1</span>,</span>
+<span id="cb26-11"><a href="#cb26-11" aria-hidden="true" tabindex="-1"></a>    guidance_scale<span class="op">=</span><span class="dv">5</span>, </span>
+<span id="cb26-12"><a href="#cb26-12" aria-hidden="true" tabindex="-1"></a>    generator<span class="op">=</span>torch.manual_seed(<span class="dv">32</span>)):</span>
+<span id="cb26-13"><a href="#cb26-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-14"><a href="#cb26-14" aria-hidden="true" tabindex="-1"></a>    max_length <span class="op">=</span> text_embeddings.shape[<span class="op">-</span><span class="dv">2</span>]</span>
+<span id="cb26-15"><a href="#cb26-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> max_length <span class="op">==</span> <span class="dv">77</span></span>
+<span id="cb26-16"><a href="#cb26-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-17"><a href="#cb26-17" aria-hidden="true" tabindex="-1"></a>    uncond_input <span class="op">=</span> tokenizer(</span>
+<span id="cb26-18"><a href="#cb26-18" aria-hidden="true" tabindex="-1"></a>      [<span class="st">""</span>] <span class="op">*</span> batch_size, padding<span class="op">=</span><span class="st">"max_length"</span>, max_length<span class="op">=</span>max_length, return_tensors<span class="op">=</span><span class="st">"pt"</span></span>
+<span id="cb26-19"><a href="#cb26-19" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb26-20"><a href="#cb26-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> torch.no_grad():</span>
+<span id="cb26-21"><a href="#cb26-21" aria-hidden="true" tabindex="-1"></a>        uncond_embeddings <span class="op">=</span> text_encoder(uncond_input.input_ids.to(torch_device))[<span class="dv">0</span>]</span>
+<span id="cb26-22"><a href="#cb26-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-23"><a href="#cb26-23" aria-hidden="true" tabindex="-1"></a>    text_embeddings <span class="op">=</span> torch.cat([uncond_embeddings, text_embeddings])</span>
+<span id="cb26-24"><a href="#cb26-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-25"><a href="#cb26-25" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Prep Scheduler</span></span>
+<span id="cb26-26"><a href="#cb26-26" aria-hidden="true" tabindex="-1"></a>    set_timesteps(scheduler, num_inference_steps)</span>
+<span id="cb26-27"><a href="#cb26-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-28"><a href="#cb26-28" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Prep latents</span></span>
+<span id="cb26-29"><a href="#cb26-29" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> start_step <span class="op">&gt;</span> <span class="dv">0</span> :</span>
+<span id="cb26-30"><a href="#cb26-30" aria-hidden="true" tabindex="-1"></a>      noise <span class="op">=</span> torch.randn_like(encoded)</span>
+<span id="cb26-31"><a href="#cb26-31" aria-hidden="true" tabindex="-1"></a>      latents <span class="op">=</span> scheduler.add_noise(encoded, noise, timesteps<span class="op">=</span>torch.tensor([scheduler.timesteps[start_step]]))</span>
+<span id="cb26-32"><a href="#cb26-32" aria-hidden="true" tabindex="-1"></a>      latents <span class="op">=</span> latents.to(torch_device).<span class="bu">float</span>()</span>
+<span id="cb26-33"><a href="#cb26-33" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb26-34"><a href="#cb26-34" aria-hidden="true" tabindex="-1"></a>      latents <span class="op">=</span> encoded</span>
+<span id="cb26-35"><a href="#cb26-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-36"><a href="#cb26-36" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Loop</span></span>
+<span id="cb26-37"><a href="#cb26-37" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i, t <span class="kw">in</span> tqdm(<span class="bu">enumerate</span>(scheduler.timesteps), total<span class="op">=</span><span class="bu">len</span>(scheduler.timesteps)):</span>
+<span id="cb26-38"><a href="#cb26-38" aria-hidden="true" tabindex="-1"></a>      <span class="cf">if</span> i <span class="op">&gt;=</span> start_step: </span>
+<span id="cb26-39"><a href="#cb26-39" aria-hidden="true" tabindex="-1"></a>        <span class="co"># expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.</span></span>
+<span id="cb26-40"><a href="#cb26-40" aria-hidden="true" tabindex="-1"></a>        latent_model_input <span class="op">=</span> torch.cat([latents] <span class="op">*</span> <span class="dv">2</span>)</span>
+<span id="cb26-41"><a href="#cb26-41" aria-hidden="true" tabindex="-1"></a>        sigma <span class="op">=</span> scheduler.sigmas[i]</span>
+<span id="cb26-42"><a href="#cb26-42" aria-hidden="true" tabindex="-1"></a>        latent_model_input <span class="op">=</span> scheduler.scale_model_input(latent_model_input, t)</span>
+<span id="cb26-43"><a href="#cb26-43" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-44"><a href="#cb26-44" aria-hidden="true" tabindex="-1"></a>        <span class="co"># predict the noise residual</span></span>
+<span id="cb26-45"><a href="#cb26-45" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> torch.no_grad():</span>
+<span id="cb26-46"><a href="#cb26-46" aria-hidden="true" tabindex="-1"></a>            noise_pred <span class="op">=</span> unet(latent_model_input, t, encoder_hidden_states<span class="op">=</span>text_embeddings)[<span class="st">"sample"</span>]</span>
+<span id="cb26-47"><a href="#cb26-47" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-48"><a href="#cb26-48" aria-hidden="true" tabindex="-1"></a>        <span class="co"># perform guidance</span></span>
+<span id="cb26-49"><a href="#cb26-49" aria-hidden="true" tabindex="-1"></a>        noise_pred_uncond, noise_pred_text <span class="op">=</span> noise_pred.chunk(<span class="dv">2</span>)</span>
+<span id="cb26-50"><a href="#cb26-50" aria-hidden="true" tabindex="-1"></a>        noise_pred <span class="op">=</span> noise_pred_uncond <span class="op">+</span> guidance_scale <span class="op">*</span> (noise_pred_text <span class="op">-</span> noise_pred_uncond)</span>
+<span id="cb26-51"><a href="#cb26-51" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-52"><a href="#cb26-52" aria-hidden="true" tabindex="-1"></a>        <span class="co"># compute the previous noisy sample x_t -&gt; x_t-1</span></span>
+<span id="cb26-53"><a href="#cb26-53" aria-hidden="true" tabindex="-1"></a>        latents <span class="op">=</span> scheduler.step(noise_pred, t, latents).prev_sample</span>
+<span id="cb26-54"><a href="#cb26-54" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-55"><a href="#cb26-55" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> latents_to_pil(latents)[<span class="dv">0</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The next change necessary to adapt to this new <code>generate_with_embs</code> function is in the <code>puppy_factor</code>-incrementing <code>for-loop</code>.</p>
+<p>First, let’s get the unchanged constants out of the way:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:06:55.979680Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:06:55.979397Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:06:55.983307Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:06:55.982506Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:06:55.979661Z&quot;}" data-execution_count="22">
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>height <span class="op">=</span> <span class="dv">512</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>width <span class="op">=</span> <span class="dv">512</span></span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>num_inference_steps <span class="op">=</span> <span class="dv">30</span>          </span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>guidance_scale <span class="op">=</span> <span class="fl">7.5</span>                  </span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>batch_size <span class="op">=</span> <span class="dv">1</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Now, in the for-loop below, when <code>i==0</code> (i.e we’re generating the first image), <code>encoded</code> is just random noise and <code>start_step</code> is <code>0</code>.</p>
+<div class="sourceCode" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> i <span class="op">==</span> <span class="dv">0</span>: </span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>    encoded <span class="op">=</span> torch.randn(</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>        (batch_size, unet.in_channels, height <span class="op">//</span> <span class="dv">8</span>, width <span class="op">//</span> <span class="dv">8</span>),</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>        generator<span class="op">=</span>generator,</span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>    encoded <span class="op">=</span> encoded.to(torch_device)</span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>    encoded <span class="op">=</span> encoded <span class="op">*</span> scheduler.init_noise_sigma</span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>    start_step<span class="op">=</span><span class="dv">0</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>For all other <code>i</code>’s (i.e.&nbsp;subsequent images after the first one), <code>encoded</code> is created by converting the previous step’s <code>img</code> to latents using <code>pil_to_latents</code>, and <code>start_step</code> is set to <code>10</code>:</p>
+<div class="sourceCode" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>encoded <span class="op">=</span> pil_to_latent(img)</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>start_step<span class="op">=</span><span class="dv">10</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>After that, we pass the necessary arguments to <code>generate_with_embs</code> and it generates the 512x512 image that we tack onto the <code>imgs</code> list:</p>
+<div class="sourceCode" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>img <span class="op">=</span> generate_with_embs(</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>      text_embeddings<span class="op">=</span>modified_output_embeddings, </span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>      encoded<span class="op">=</span>encoded, </span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>      start_step<span class="op">=</span>start_step, </span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>      num_inference_steps<span class="op">=</span>num_inference_steps, </span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>      height<span class="op">=</span>height, </span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>      width<span class="op">=</span>width, </span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a>      batch_size<span class="op">=</span>batch_size,</span>
+<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a>      guidance_scale<span class="op">=</span>guidance_scale, </span>
+<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a>      generator<span class="op">=</span>generator)</span>
+<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a>  imgs.append(img)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>I’ll now generate 20 images using this new approach, going from 100% <code>skunk</code> to 100% <code>puppy</code>.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:06:59.580265Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:06:59.579999Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:06:59.586045Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:06:59.585377Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:06:59.580247Z&quot;}" data-execution_count="23">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> mk_imgs(seed, n):</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>    generator <span class="op">=</span> torch.manual_seed(seed)</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>    imgs <span class="op">=</span> []</span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(n <span class="op">+</span> <span class="dv">1</span>):</span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>        puppy_factor <span class="op">=</span> i <span class="op">*</span> <span class="fl">1.</span> <span class="op">/</span> n</span>
+<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a>        <span class="co"># replace puppy embeddings with weighted average of puppy and skunk embeddings</span></span>
+<span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a>        replacement_token_embedding <span class="op">=</span> puppy_factor<span class="op">*</span>puppy_token_embedding <span class="op">+</span> (<span class="dv">1</span><span class="op">-</span>puppy_factor)<span class="op">*</span>skunk_token_embedding</span>
+<span id="cb31-9"><a href="#cb31-9" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb31-10"><a href="#cb31-10" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Insert this into the token embeddings</span></span>
+<span id="cb31-11"><a href="#cb31-11" aria-hidden="true" tabindex="-1"></a>        token_embeddings[<span class="dv">0</span>, torch.where(input_ids[<span class="dv">0</span>]<span class="op">==</span><span class="dv">6829</span>)] <span class="op">=</span> replacement_token_embedding.to(torch_device)</span>
+<span id="cb31-12"><a href="#cb31-12" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb31-13"><a href="#cb31-13" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Combine with pos embs</span></span>
+<span id="cb31-14"><a href="#cb31-14" aria-hidden="true" tabindex="-1"></a>        input_embeddings <span class="op">=</span> token_embeddings <span class="op">+</span> position_embeddings</span>
+<span id="cb31-15"><a href="#cb31-15" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb31-16"><a href="#cb31-16" aria-hidden="true" tabindex="-1"></a>        <span class="co">#  Feed through to get final output embs</span></span>
+<span id="cb31-17"><a href="#cb31-17" aria-hidden="true" tabindex="-1"></a>        modified_output_embeddings <span class="op">=</span> get_output_embeds(input_embeddings)</span>
+<span id="cb31-18"><a href="#cb31-18" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb31-19"><a href="#cb31-19" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Generate an image with these</span></span>
+<span id="cb31-20"><a href="#cb31-20" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> i <span class="op">==</span> <span class="dv">0</span>: </span>
+<span id="cb31-21"><a href="#cb31-21" aria-hidden="true" tabindex="-1"></a>            encoded <span class="op">=</span> torch.randn(</span>
+<span id="cb31-22"><a href="#cb31-22" aria-hidden="true" tabindex="-1"></a>                (batch_size, unet.in_channels, height <span class="op">//</span> <span class="dv">8</span>, width <span class="op">//</span> <span class="dv">8</span>),</span>
+<span id="cb31-23"><a href="#cb31-23" aria-hidden="true" tabindex="-1"></a>                generator<span class="op">=</span>generator,</span>
+<span id="cb31-24"><a href="#cb31-24" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb31-25"><a href="#cb31-25" aria-hidden="true" tabindex="-1"></a>            encoded <span class="op">=</span> encoded.to(torch_device)</span>
+<span id="cb31-26"><a href="#cb31-26" aria-hidden="true" tabindex="-1"></a>            encoded <span class="op">=</span> encoded <span class="op">*</span> scheduler.init_noise_sigma</span>
+<span id="cb31-27"><a href="#cb31-27" aria-hidden="true" tabindex="-1"></a>            start_step<span class="op">=</span><span class="dv">0</span></span>
+<span id="cb31-28"><a href="#cb31-28" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>: </span>
+<span id="cb31-29"><a href="#cb31-29" aria-hidden="true" tabindex="-1"></a>            encoded <span class="op">=</span> pil_to_latent(img)</span>
+<span id="cb31-30"><a href="#cb31-30" aria-hidden="true" tabindex="-1"></a>            start_step<span class="op">=</span><span class="dv">10</span></span>
+<span id="cb31-31"><a href="#cb31-31" aria-hidden="true" tabindex="-1"></a>            </span>
+<span id="cb31-32"><a href="#cb31-32" aria-hidden="true" tabindex="-1"></a>        img <span class="op">=</span> generate_with_embs(</span>
+<span id="cb31-33"><a href="#cb31-33" aria-hidden="true" tabindex="-1"></a>                text_embeddings<span class="op">=</span>modified_output_embeddings, </span>
+<span id="cb31-34"><a href="#cb31-34" aria-hidden="true" tabindex="-1"></a>                encoded<span class="op">=</span>encoded, </span>
+<span id="cb31-35"><a href="#cb31-35" aria-hidden="true" tabindex="-1"></a>                start_step<span class="op">=</span>start_step, </span>
+<span id="cb31-36"><a href="#cb31-36" aria-hidden="true" tabindex="-1"></a>                num_inference_steps<span class="op">=</span>num_inference_steps, </span>
+<span id="cb31-37"><a href="#cb31-37" aria-hidden="true" tabindex="-1"></a>                height<span class="op">=</span>height, </span>
+<span id="cb31-38"><a href="#cb31-38" aria-hidden="true" tabindex="-1"></a>                width<span class="op">=</span>width, </span>
+<span id="cb31-39"><a href="#cb31-39" aria-hidden="true" tabindex="-1"></a>                batch_size<span class="op">=</span>batch_size,</span>
+<span id="cb31-40"><a href="#cb31-40" aria-hidden="true" tabindex="-1"></a>                guidance_scale<span class="op">=</span>guidance_scale, </span>
+<span id="cb31-41"><a href="#cb31-41" aria-hidden="true" tabindex="-1"></a>                generator<span class="op">=</span>generator)</span>
+<span id="cb31-42"><a href="#cb31-42" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb31-43"><a href="#cb31-43" aria-hidden="true" tabindex="-1"></a>        imgs.append(img)</span>
+<span id="cb31-44"><a href="#cb31-44" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb31-45"><a href="#cb31-45" aria-hidden="true" tabindex="-1"></a>    imgs[<span class="dv">0</span>].save(<span class="ss">f'/notebooks/skunk-to-puppy_smoother_</span><span class="sc">{</span>seed<span class="sc">}</span><span class="ss">.gif'</span>, save_all<span class="op">=</span><span class="va">True</span>, append_images<span class="op">=</span>imgs[<span class="dv">1</span>:], duration<span class="op">=</span><span class="dv">200</span>, loop<span class="op">=</span><span class="dv">0</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:07:02.348681Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:07:02.348396Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:08:49.660813Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:08:49.660177Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:07:02.348663Z&quot;}">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>mk_imgs(seed<span class="op">=</span><span class="dv">4</span>, n<span class="op">=</span><span class="dv">20</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I find the resulting GIF to be smoother: notice how the skunk and the puppy have the same pose/perspective and the background stays more constant throughout the animation.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="skunk-to-puppy_smoother_4.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-3" title="Skunk to Puppy animation where each subsequent image starts from a noisy latent of the previous step"><img src="skunk-to-puppy_smoother_4.gif" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Skunk to Puppy animation where each subsequent image starts from a noisy latent of the previous step</figcaption><p></p>
+</figure>
+</div>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<ul>
+<li><strong>Repurposing existing code is a great way to learn!</strong> I learned more about each line of code from the original course notebook because I was trying to do something different with it. This process really solidified my understanding of the course notebook.</li>
+<li><strong>Generating images is finnicky.</strong> It took me 100 different seeds to find a handful of animations that I was satisfied with. Some of this variability might be because my prompt is simple and I didn’t iterate on it. For example, I could have added language about the pose and background of the skunk/puppy to yield more stable results. I also experimented a bit with the number of total inference steps and the starting step for each image and found that 30 and 10 (respectively) yielded decent results.</li>
+<li><strong>I feel like I have only scratched the surface.</strong> There’s of course much more experimentation, including with different models, that I didn’t do. I’m still building my intuition around image generation, so I’m trying to take my experience with this small project with a large grain of salt.</li>
+</ul>
+<p>I hope you enjoyed this blog post! Follow me on Twitter <a href="https://twitter.com/vishal_learner"><span class="citation" data-cites="vishal_learner">@vishal_learner</span></a>.</p>
+</section>
+<section id="bonus-additional-gifs" class="level2">
+<h2 class="anchored" data-anchor-id="bonus-additional-gifs">Bonus: Additional GIFs</h2>
+<p>I tried 101 different random seeds to capture the best possible examples to use in this notebook. I’ll drop some of the GIFs I created here (and their random seeds) since they look cute/pretty, and in case you want to try to recreate them.</p>
+<p><code>seed=10</code></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="skunk-to-puppy_smoother_10.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-4"><img src="skunk-to-puppy_smoother_10.gif" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+<hr>
+<p><code>seed=19</code></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="skunk-to-puppy_smoother_19.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-5"><img src="skunk-to-puppy_smoother_19.gif" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+<hr>
+<p><code>seed=42</code></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="skunk-to-puppy_smoother_42.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-6"><img src="skunk-to-puppy_smoother_42.gif" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+<hr>
+<p><code>seed=50</code></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="skunk-to-puppy_smoother_50.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-7"><img src="skunk-to-puppy_smoother_50.gif" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+<hr>
+<p><code>seed=59</code></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="skunk-to-puppy_smoother_59.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-8"><img src="skunk-to-puppy_smoother_59.gif" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+<hr>
+<p><code>seed=65</code></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="skunk-to-puppy_smoother_65.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-9"><img src="skunk-to-puppy_smoother_65.gif" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+<hr>
+<p><code>seed=73</code></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="skunk-to-puppy_smoother_73.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-10"><img src="skunk-to-puppy_smoother_73.gif" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+<hr>
+<p><code>seed=77</code></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="skunk-to-puppy_smoother_77.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-11"><img src="skunk-to-puppy_smoother_77.gif" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+<hr>
+<p><code>seed=79</code></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="skunk-to-puppy_smoother_79.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-12"><img src="skunk-to-puppy_smoother_79.gif" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+<hr>
+<p><code>seed=88</code></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="skunk-to-puppy_smoother_88.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-13"><img src="skunk-to-puppy_smoother_88.gif" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+<hr>
+<p><code>seed=98</code></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="skunk-to-puppy_smoother_98.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-14"><img src="skunk-to-puppy_smoother_98.gif" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+<hr>
+<p><code>seed=99</code></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="skunk-to-puppy_smoother_99.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-15"><img src="skunk-to-puppy_smoother_99.gif" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","selector":".lightbox","openEffect":"zoom","loop":true,"descPosition":"bottom"});</script>
+
+
+
+</body></html>
