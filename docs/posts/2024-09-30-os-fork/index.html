@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2024-09-30">
+<meta name="description" content="In this blog post I work through four examples provided by Claude to understand some key concepts related to os.fork, and observe different behaviors when using os.fork in a notebook environment or the shell.">
+
+<title>vishal bakshi - Experimenting with os.fork</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">vishal bakshi</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#os.fork-experiments" id="toc-os.fork-experiments" class="nav-link" data-scroll-target="#os.fork-experiments"><code>os.fork</code> Experiments</a>
+  <ul class="collapse">
+  <li><a href="#basic-os.fork-example" id="toc-basic-os.fork-example" class="nav-link" data-scroll-target="#basic-os.fork-example">Basic <code>os.fork()</code> example</a></li>
+  <li><a href="#memory-independence-example" id="toc-memory-independence-example" class="nav-link" data-scroll-target="#memory-independence-example">Memory Independence Example</a></li>
+  <li><a href="#file-descriptor-inheritance" id="toc-file-descriptor-inheritance" class="nav-link" data-scroll-target="#file-descriptor-inheritance">File Descriptor Inheritance</a></li>
+  <li><a href="#exit-status" id="toc-exit-status" class="nav-link" data-scroll-target="#exit-status">Exit Status</a></li>
+  </ul></li>
+  <li><a href="#final-thoughts" id="toc-final-thoughts" class="nav-link" data-scroll-target="#final-thoughts">Final Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Experimenting with <code>os.fork</code></h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">python</div>
+    <div class="quarto-category">fastai</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    In this blog post I work through four examples provided by Claude to understand some key concepts related to <code>os.fork</code>, and observe different behaviors when using <code>os.fork</code> in a notebook environment or the shell.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">September 30, 2024</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In Lesson 10 of the fastai course (Part 2) we’re introduced to <code>os.fork</code>, specifically in the context of random number generation. In this notebook I’ll get some more reps working with <code>os.fork</code>.</p>
+<p>In the Lesson, Jeremy shows how random number generation in different libraries is handled across parent and child processes, as shown below (using <code>seed</code> and <code>rand</code> as defined in the lesson):</p>
+<div class="cell" data-execution_count="1">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> random</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> fcntl</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> time</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> signal</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> sys</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>rnd_state <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> seed(a):</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">global</span> rnd_state</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    a, x <span class="op">=</span> <span class="bu">divmod</span>(a, <span class="dv">30268</span>)</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    a, y <span class="op">=</span> <span class="bu">divmod</span>(a, <span class="dv">30306</span>)</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    a, z <span class="op">=</span> <span class="bu">divmod</span>(a, <span class="dv">30322</span>)</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    rnd_state <span class="op">=</span> <span class="bu">int</span>(x)<span class="op">+</span><span class="dv">1</span>, <span class="bu">int</span>(y)<span class="op">+</span><span class="dv">1</span>, <span class="bu">int</span>(z)<span class="op">+</span><span class="dv">1</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="2552ec0e-148c-40b3-f92e-56c5f5a299a2">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>seed(<span class="dv">457428938475</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>rnd_state</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>(4976, 20238, 499)</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> rand():</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">global</span> rnd_state</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    x, y, z <span class="op">=</span> rnd_state</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    x <span class="op">=</span> (<span class="dv">171</span> <span class="op">*</span> x) <span class="op">%</span> <span class="dv">30269</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    y <span class="op">=</span> (<span class="dv">172</span> <span class="op">*</span> y) <span class="op">%</span> <span class="dv">30307</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    z <span class="op">=</span> (<span class="dv">170</span> <span class="op">*</span> z) <span class="op">%</span> <span class="dv">30323</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    rnd_state <span class="op">=</span> x,y,z</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> (x<span class="op">/</span><span class="dv">30269</span> <span class="op">+</span> y<span class="op">/</span><span class="dv">30307</span> <span class="op">+</span> z<span class="op">/</span><span class="dv">30323</span>) <span class="op">%</span> <span class="fl">1.0</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The from-scratch <code>rand</code> function generates the same random number in both parent and child processes because they share the same random state:</p>
+<div class="cell" data-outputid="36b2eba4-4a77-494d-a85f-dfe9320bccc7">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> os.fork(): <span class="bu">print</span>(<span class="ss">f'In parent: </span><span class="sc">{</span>rand()<span class="sc">,</span> rnd_state<span class="sc">}</span><span class="ss">'</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f'In child: </span><span class="sc">{</span>rand()<span class="sc">,</span> rnd_state<span class="sc">}</span><span class="ss">'</span>)</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    os._exit(os.EX_OK)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>In parent: (0.7645251082582081, (3364, 25938, 24184))
+In child: (0.7645251082582081, (3364, 25938, 24184))</code></pre>
+</div>
+</div>
+<p><code>torch</code> does the same:</p>
+<div class="cell" data-outputid="84bd9b2c-751e-4463-abef-12dc1812f318">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> os.fork(): <span class="bu">print</span>(<span class="ss">f'In parent: </span><span class="sc">{</span>torch<span class="sc">.</span>rand(<span class="dv">1</span>)<span class="sc">.</span>item()<span class="sc">,</span> torch<span class="sc">.</span>get_rng_state()<span class="sc">.</span><span class="bu">sum</span>()<span class="sc">.</span>item()<span class="sc">}</span><span class="ss">'</span>)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f'In child: </span><span class="sc">{</span>torch<span class="sc">.</span>rand(<span class="dv">1</span>)<span class="sc">.</span>item()<span class="sc">,</span> torch<span class="sc">.</span>get_rng_state()<span class="sc">.</span><span class="bu">sum</span>()<span class="sc">.</span>item()<span class="sc">}</span><span class="ss">'</span>)</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    os._exit(os.EX_OK)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>In parent: (0.0692816972732544, 325580)
+In child: (0.0692816972732544, 325580)</code></pre>
+</div>
+</div>
+<p>As does NumPy:</p>
+<div class="cell" data-outputid="efd0261b-27fc-4d7c-ad41-4240c2d169d0">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> os.fork(): <span class="bu">print</span>(<span class="ss">f'In parent: </span><span class="sc">{</span>np<span class="sc">.</span>random<span class="sc">.</span>rand(<span class="dv">1</span>)[<span class="dv">0</span>]<span class="sc">,</span> np<span class="sc">.</span>random<span class="sc">.</span>get_state()[<span class="dv">1</span>]<span class="sc">.</span><span class="bu">sum</span>()<span class="sc">}</span><span class="ss">'</span>)</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f'In child: </span><span class="sc">{</span>np<span class="sc">.</span>random<span class="sc">.</span>rand(<span class="dv">1</span>)[<span class="dv">0</span>]<span class="sc">,</span> np<span class="sc">.</span>random<span class="sc">.</span>get_state()[<span class="dv">1</span>]<span class="sc">.</span><span class="bu">sum</span>()<span class="sc">}</span><span class="ss">'</span>)</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    os._exit(os.EX_OK)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>In child: (0.8234897720205184, 1375830894290)
+In parent: (0.8234897720205184, 1375830894290)</code></pre>
+</div>
+</div>
+<p>The Python standard library generates different random numbers in the parent and the child, indicating that the random state has changed:</p>
+<div class="cell" data-outputid="023a4721-a66d-45f0-c076-9f49d3d901b9">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> os.fork(): <span class="bu">print</span>(<span class="ss">f'In parent: </span><span class="sc">{</span>random<span class="sc">.</span>random()<span class="sc">,</span> <span class="bu">sum</span>(random.getstate()[<span class="dv">1</span>])<span class="sc">}</span><span class="ss">'</span>)</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f'In child: </span><span class="sc">{</span>random<span class="sc">.</span>random()<span class="sc">,</span> <span class="bu">sum</span>(random.getstate()[<span class="dv">1</span>])<span class="sc">}</span><span class="ss">'</span>)</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    os._exit(os.EX_OK)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>In parent: (0.7978973512537335, 1327601590235)
+In child: (0.5603922565589059, 1333438682830)</code></pre>
+</div>
+</div>
+<p>Jeremy also mentioned in the video that there used to be a bug in fastai related to this <code>os.fork</code> behavior which resulted in incorrectly handling data augmentations across multiple processes. I poked around the fastai repo and found <a href="https://github.com/fastai/fastai/issues/215">this issue</a> and <a href="https://github.com/fastai/fastai/pull/234">corresponding PR</a> which might have been the ones he was referring to? I’m not sure, but it did lead me down an interesting rabbit hole in the fastai repo and I learned a couple of new things that I’ll share.</p>
+<p>In the PR, they introduce the following line:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="va">self</span>.store <span class="op">=</span> threading.local()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><code>self.store</code> is reference throughout the PR, for example:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> set_state(<span class="va">self</span>):</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.store.rand_r <span class="op">=</span> random.uniform(<span class="dv">0</span>, <span class="dv">1</span>)</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.store.rand_c <span class="op">=</span> random.uniform(<span class="dv">0</span>, <span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The corresponding GitHub issue linked to <a href="https://stackoverflow.com/questions/1408171/thread-local-storage-in-python">this StackOverflow post</a> which talks about <code>threading.local()</code>. I didn’t quite follow the post so I copy/pasted its text as a prompt to Claude and asked it to create an example to illustrate the core concepts of <code>threading.local</code>. It gave me the following example:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> threading</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> multiprocessing</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> time</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> random</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>First, <code>threading.local</code> is instantiated as a global variable:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Thread-local storage for threading module</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>thread_local <span class="op">=</span> threading.local()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Next, we have a function that creates a worker. Claude defines a worker as follows (I found similar definitions with Google searches):</p>
+<blockquote class="blockquote">
+<p>a unit of execution that performs a specific task or job. In the context of concurrent programming, a worker is typically implemented as either a thread or a process, depending on the chosen concurrency model.</p>
+</blockquote>
+<p><code>threading_worker</code> adds a <code>count</code> attribute to <code>thread_local</code> (if it doesn’t have it already) or increments <code>count</code> by 1 if it exists.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> threading_worker(worker_id):</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="kw">not</span> <span class="bu">hasattr</span>(thread_local, <span class="st">'count'</span>):</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f'</span><span class="ch">\n\t</span><span class="ss">Worker </span><span class="sc">{</span>worker_id<span class="sc">}</span><span class="ss">: instantiating `count`'</span>)</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>        thread_local.count <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>    thread_local.count <span class="op">+=</span> <span class="dv">1</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"Threading: Worker </span><span class="sc">{</span>worker_id<span class="sc">}</span><span class="ss">, Count: </span><span class="sc">{</span>thread_local<span class="sc">.</span>count<span class="sc">}</span><span class="ch">\n</span><span class="ss">"</span>)</span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>    time.sleep(random.random())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>To illustrate, we create 5 threads and pass <code>threading_worker</code> to each one. The result is that each worker has its own “private view” to the global <code>thread_local</code>, as exhibited by <code>thread_local.count</code> for each <code>worker_id</code> having the same value of <code>1</code>.</p>
+<p>Finally, Claude explains that the purpose of <code>thread.join()</code> is to complete the action in the thread before returning to the main thread. Note that the final print statement, <code>print("Threading example finished.")</code> is run after all threads finish executing.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> run_threading_example():</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>    threads <span class="op">=</span> []</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">5</span>):</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>        thread <span class="op">=</span> threading.Thread(target<span class="op">=</span>threading_worker, args<span class="op">=</span>(i,))</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>        threads.append(thread)</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>        thread.start()</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> thread <span class="kw">in</span> threads:</span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>        thread.join()</span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"Threading example finished."</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>It’s interesting to note that each Worker instantiates <code>count</code> before adding <code>1</code> to it (as expected), but the order of each thread instantiating <code>count</code> (0, 1, 2, 3, 4) is not the same order of each thread adding <code>1</code> (0, 1, 3, 4, 2; which I didn’t expect).</p>
+<div class="cell" data-outputid="b6c733ed-9081-4749-9e3c-0000d29aa849">
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>run_threading_example()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+    Worker 0: instantiating `count`
+Threading: Worker 0, Count: 1
+
+
+    Worker 1: instantiating `count`
+Threading: Worker 1, Count: 1
+
+
+    Worker 2: instantiating `count`
+
+    Worker 3: instantiating `count`
+Threading: Worker 3, Count: 1
+
+
+    Worker 4: instantiating `count`
+Threading: Worker 4, Count: 1
+
+Threading: Worker 2, Count: 1
+
+Threading example finished.</code></pre>
+</div>
+</div>
+<p>There is much to learn when it comes to threading and multiprocessing, but I’ll exit this rabbit hole for now.</p>
+<p>The second thing I learned was this clever way to index into a tuple using a boolean expression:</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="at">@property</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> multi_processing_context(<span class="va">self</span>): <span class="cf">return</span> (<span class="va">None</span>,multiprocessing)[<span class="va">self</span>.num_workers<span class="op">&gt;</span><span class="dv">0</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>I commented about this on Twitter and Jeremy replied:</p>
+<blockquote class="twitter-tweet blockquote">
+<p lang="en" dir="ltr">
+Alternatively you can use <code>a if pred else b</code> btw. (Most people seem to hate both options ;) )
+</p>
+— Jeremy Howard (<span class="citation" data-cites="jeremyphoward">@jeremyphoward</span>) <a href="https://twitter.com/jeremyphoward/status/1839864334073376786?ref_src=twsrc%5Etfw">September 28, 2024</a>
+</blockquote>
+<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+<p>Years back when I getting into web development, one of the patterns in JavaScript I enjoyed was the <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Conditional_operator">ternary operator</a>:</p>
+<div class="sourceCode" id="cb23"><pre class="sourceCode javascript code-with-copy"><code class="sourceCode javascript"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>a <span class="op">=</span> is_true <span class="op">?</span> val_if_true <span class="op">:</span> val_if_false</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>From what I understand, Python doesn’t have such an operator so anytime I come across a concise way to execute logic using a boolean expression, I’m excited to see it.</p>
+<p>With that short interlude out of the way, I’ll now dig in to <code>os.fork</code>.</p>
+</section>
+<section id="os.fork-experiments" class="level2">
+<h2 class="anchored" data-anchor-id="os.fork-experiments"><code>os.fork</code> Experiments</h2>
+<p>I prompted Claude to give me some examples using <code>os.fork</code> with the following prompt:</p>
+<blockquote class="blockquote">
+<p>I want to better understand what <code>os.fork</code> does. what’s a good set of experiments I can run to understand it’s functionality?</p>
+</blockquote>
+<p>Claude with responded with four experiments, which I’ll run through next.</p>
+<section id="basic-os.fork-example" class="level3">
+<h3 class="anchored" data-anchor-id="basic-os.fork-example">Basic <code>os.fork()</code> example</h3>
+<p>I’ll start with a definition from the “fork” Wikipedia page:</p>
+<blockquote class="blockquote">
+<p>In computing, particularly in the context of the Unix operating system and its workalikes, fork is an operation whereby a process creates a copy of itself. It is an interface which is required for compliance with the POSIX and Single UNIX Specification standards. It is usually implemented as a C standard library wrapper to the fork, clone, or other system calls of the kernel. Fork is the primary method of process creation on Unix-like operating systems.</p>
+</blockquote>
+<blockquote class="blockquote">
+<p>In multitasking operating systems, processes (running programs) need a way to create new processes, e.g.&nbsp;to run other programs. Fork and its variants are typically the only way of doing so in Unix-like systems. For a process to start the execution of a different program, it first forks to create a copy of itself. Then, the copy, called the “child process”, calls the exec system call to overlay itself with the other program: it ceases execution of its former program in favor of the other.</p>
+</blockquote>
+<p>Next, I’ll look at the definition of <code>os.getpid</code> from the docs before using it:</p>
+<blockquote class="blockquote">
+<p>Return the parent’s process id. When the parent process has exited, on Unix the id returned is the one of the init process (1), on Windows it is still the same id, which may be already reused by another process.</p>
+</blockquote>
+<div class="cell" data-outputid="b5b8d001-e4d8-4ad3-e3b1-a2761cd7cc00" data-execution_count="2">
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Main process PID: </span><span class="sc">{</span>os<span class="sc">.</span>getpid()<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Main process PID: 436</code></pre>
+</div>
+</div>
+<p>Next, I’ll call <code>os.fork</code>:</p>
+<blockquote class="blockquote">
+<p>Fork a child process. Return 0 in the child and the child’s process id in the parent. If an error occurs OSError is raised.</p>
+<p>Note that some platforms including FreeBSD &lt;= 6.3 and Cygwin have known issues when using fork() from a thread.</p>
+</blockquote>
+<div class="cell" data-outputid="970f2d58-f685-455a-993f-0fd49416407f" data-execution_count="3">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> os.fork(): <span class="bu">print</span>(<span class="ss">f'In parent: </span><span class="sc">{</span>os<span class="sc">.</span>getpid()<span class="sc">}</span><span class="ss">'</span>)</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f'In child: </span><span class="sc">{</span>os<span class="sc">.</span>getpid()<span class="sc">}</span><span class="ss">'</span>)</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>    os._exit(os.EX_OK)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>In parent: 436
+In child: 580</code></pre>
+</div>
+</div>
+<p>It’s important to note that I took the above code straight from Lesson’s 10’s <a href="https://github.com/fastai/course22p2/blob/master/nbs/01_matmul.ipynb">01_matmul.ipynb</a>.</p>
+<p>When I tried to run the following in Colab, the cell wouldn’t execute and would just hang:</p>
+<div class="sourceCode" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>pid <span class="op">=</span> os.fork()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>When I tried to run that locally on my MacBook, I got the following error:</p>
+<pre><code>OSError: [Errno 9] Bad file descriptor</code></pre>
+<p>I found <a href="https://stackoverflow.com/questions/76238761/why-does-running-the-following-code-with-os-fork-in-a-jupyter-notebook-cause-t">this StackOverflow post</a> which talks about similar issues, and that <code>os.fork</code> doesn’t play nice with Jupyter Notebooks. Claude also seemed to agree, recommending that I either use the <code>os._exit</code> approach from Lesson 10, or put my <code>os.fork</code>-related code in a separate <code>.py</code> script outside the notebook.</p>
+<p>I asked Claude to rewrite the <code>os.fork</code> experiments using that if/else approach.</p>
+<p>When I run the following code block, it’s interesting to note that the child process runs before the parent process. I wonder if that means <code>os.fork</code> returneed <code>0</code>? Claude says no:</p>
+<blockquote class="blockquote">
+<p>The reason it might seem like the child process runs first is due to how process scheduling works in operating systems. When os.fork() is called, both the parent and child processes are ready to run, and the operating system’s scheduler decides which one to execute first. In this case, the child process got scheduled to run before the parent continued.</p>
+</blockquote>
+<p>It adds the following context:</p>
+<blockquote class="blockquote">
+<p>This behavior - where the child might run before the parent continues - is normal and expected in multi-process programming. It’s one of the reasons why synchronization mechanisms are often needed when working with multiple processes.</p>
+</blockquote>
+<div class="cell" data-outputid="3b16b5c1-d59f-4867-fa5b-c5141720a17b" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"</span><span class="ch">\n</span><span class="ss">Main process PID: </span><span class="sc">{</span>os<span class="sc">.</span>getpid()<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> os.fork():</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"</span><span class="ch">\n</span><span class="ss">In parent: </span><span class="sc">{</span>os<span class="sc">.</span>getpid()<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"</span><span class="ch">\n</span><span class="ss">In child: </span><span class="sc">{</span>os<span class="sc">.</span>getpid()<span class="sc">}</span><span class="ss">, Parent PID: </span><span class="sc">{</span>os<span class="sc">.</span>getppid()<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>    os._exit(os.EX_OK)</span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"</span><span class="ch">\n</span><span class="ss">This will be printed only by the parent process. PID: </span><span class="sc">{</span>os<span class="sc">.</span>getpid()<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+Main process PID: 436
+
+In child: 853, Parent PID: 436
+Main process PID: 436
+
+In parent: 436
+
+This will be printed only by the parent process. PID: 436
+</code></pre>
+</div>
+</div>
+</section>
+<section id="memory-independence-example" class="level3">
+<h3 class="anchored" data-anchor-id="memory-independence-example">Memory Independence Example</h3>
+<p>The following example illustrates how “forked processes have independent memory spaces and that changes to variables in one process don’t affect the other process” as Claude states it.</p>
+<p>The global <code>shared_variable</code> maintains its global value of <code>0</code> in the child process, before <code>1</code> is added to it to give it a final value of <code>1</code> in the child process. Meanwhile, in the parent process, it’s final value is <code>2</code>. This reminds me of the <code>threading.local</code> behavior.</p>
+<div class="cell" data-outputid="2c0c29e9-c3ca-4fa5-cb86-485ab6cf7ab6" data-execution_count="5">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>shared_variable <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> os.fork():</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Parent process</span></span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>    shared_variable <span class="op">+=</span>  <span class="dv">2</span></span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"</span><span class="ch">\n</span><span class="ss">In parent: </span><span class="sc">{</span>os<span class="sc">.</span>getpid()<span class="sc">}</span><span class="ss">, shared_variable = </span><span class="sc">{</span>shared_variable<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
+<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Child process</span></span>
+<span id="cb32-9"><a href="#cb32-9" aria-hidden="true" tabindex="-1"></a>    shared_variable <span class="op">+=</span> <span class="dv">1</span></span>
+<span id="cb32-10"><a href="#cb32-10" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"</span><span class="ch">\n</span><span class="ss">In child: </span><span class="sc">{</span>os<span class="sc">.</span>getpid()<span class="sc">}</span><span class="ss">, shared_variable = </span><span class="sc">{</span>shared_variable<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb32-11"><a href="#cb32-11" aria-hidden="true" tabindex="-1"></a>    os._exit(os.EX_OK)</span>
+<span id="cb32-12"><a href="#cb32-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-13"><a href="#cb32-13" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Final shared_variable in parent: </span><span class="sc">{</span>shared_variable<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+In parent: 436, shared_variable = 2
+Final shared_variable in parent: 2
+
+In child: 902, shared_variable = 1</code></pre>
+</div>
+</div>
+</section>
+<section id="file-descriptor-inheritance" class="level3">
+<h3 class="anchored" data-anchor-id="file-descriptor-inheritance">File Descriptor Inheritance</h3>
+<p>Claude then provided the following code to illustrate how to write to the same file different data from the parent and child process. However, this code resulted in only the parent writing to the file:</p>
+<div class="cell" data-outputid="8a3b6a28-af29-480b-eac3-623d6d16fe58" data-execution_count="30">
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> <span class="bu">open</span>(<span class="st">"test.txt"</span>, <span class="st">"w"</span>) <span class="im">as</span> f:</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> os.fork():</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>        <span class="co"># parent process</span></span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>        f.write(<span class="st">"Written by parent</span><span class="ch">\n</span><span class="st">"</span>)</span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>        <span class="co"># child process</span></span>
+<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a>        f.write(<span class="st">"Written by child</span><span class="ch">\n</span><span class="st">"</span>)</span>
+<span id="cb34-8"><a href="#cb34-8" aria-hidden="true" tabindex="-1"></a>        os._exit(os.EX_OK)</span>
+<span id="cb34-9"><a href="#cb34-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-10"><a href="#cb34-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Run this after the script to see the contents:</span></span>
+<span id="cb34-11"><a href="#cb34-11" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="bu">open</span>(<span class="st">"test.txt"</span>, <span class="st">"r"</span>).read())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Written by parent
+</code></pre>
+</div>
+</div>
+<p>Claude then suggested using “file locking” and “flushing” to ensure the writing happens before process execution has ended, but this didn’t help. Sometimes it wrote from both processes, sometimes just from one. I’ve illustrated both examples below:</p>
+<div class="cell" data-execution_count="34">
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> do_write():</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">with</span> <span class="bu">open</span>(<span class="st">"test.txt"</span>, <span class="st">"w"</span>) <span class="im">as</span> f:</span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>      <span class="cf">if</span> os.fork():</span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>          <span class="co"># parent process</span></span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a>          fcntl.flock(f, fcntl.LOCK_EX)</span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>          f.write(<span class="st">"Written by parent</span><span class="ch">\n</span><span class="st">"</span>)</span>
+<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>          f.flush()</span>
+<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a>          fcntl.flock(f, fcntl.LOCK_UN)</span>
+<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a>      <span class="cf">else</span>:</span>
+<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a>          <span class="co"># child process</span></span>
+<span id="cb36-11"><a href="#cb36-11" aria-hidden="true" tabindex="-1"></a>          fcntl.flock(f, fcntl.LOCK_EX)</span>
+<span id="cb36-12"><a href="#cb36-12" aria-hidden="true" tabindex="-1"></a>          f.write(<span class="st">"Written by child</span><span class="ch">\n</span><span class="st">"</span>)</span>
+<span id="cb36-13"><a href="#cb36-13" aria-hidden="true" tabindex="-1"></a>          f.flush()</span>
+<span id="cb36-14"><a href="#cb36-14" aria-hidden="true" tabindex="-1"></a>          fcntl.flock(f, fcntl.LOCK_UN)</span>
+<span id="cb36-15"><a href="#cb36-15" aria-hidden="true" tabindex="-1"></a>          os._exit(os.EX_OK)</span>
+<span id="cb36-16"><a href="#cb36-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-17"><a href="#cb36-17" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Run this after the script to see the contents:</span></span>
+<span id="cb36-18"><a href="#cb36-18" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(<span class="bu">open</span>(<span class="st">"test.txt"</span>, <span class="st">"r"</span>).read())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="1d3d8637-3d27-4e2f-cf75-bce8d9cdc9d2" data-execution_count="35">
+<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>do_write()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Written by parent
+</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="dc38ab69-53c3-4bb5-b436-632280801d52" data-execution_count="37">
+<div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>do_write()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Written by child
+Written by parent
+</code></pre>
+</div>
+</div>
+<p>I wanted something deterministic so I prompted Claude again. It responded with the following solution where “the child writes first and then signals the parent”. A couple of things to note:</p>
+<ul>
+<li>The child sends a <code>SIGUSR1</code> signal to the parent pid. (SIGUSR1 stands for “User-defined signal 1”)</li>
+<li>Inside <code>parent_process</code>, the file is opened in “append mode”.</li>
+</ul>
+<div class="cell" data-execution_count="56">
+<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> child_process(parent_pid):</span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>  time.sleep(<span class="fl">0.1</span>)  <span class="co"># Small delay to ensure parent is waiting</span></span>
+<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">with</span> <span class="bu">open</span>(<span class="st">"test.txt"</span>, <span class="st">"w"</span>) <span class="im">as</span> f:</span>
+<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a>    f.write(<span class="st">"Written by child</span><span class="ch">\n</span><span class="st">"</span>)</span>
+<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a>    f.flush()</span>
+<span id="cb41-6"><a href="#cb41-6" aria-hidden="true" tabindex="-1"></a>  os.kill(parent_pid, signal.SIGUSR1) <span class="co"># this is where the child sends a signal to the parent</span></span>
+<span id="cb41-7"><a href="#cb41-7" aria-hidden="true" tabindex="-1"></a>  os._exit(os.EX_OK)</span>
+<span id="cb41-8"><a href="#cb41-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-9"><a href="#cb41-9" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> parent_process(signum, frame):</span>
+<span id="cb41-10"><a href="#cb41-10" aria-hidden="true" tabindex="-1"></a>  <span class="cf">with</span> <span class="bu">open</span>(<span class="st">"test.txt"</span>, <span class="st">"a"</span>) <span class="im">as</span> f: <span class="co"># notice the "a" for "append mode"</span></span>
+<span id="cb41-11"><a href="#cb41-11" aria-hidden="true" tabindex="-1"></a>      f.write(<span class="st">"Written by parent</span><span class="ch">\n</span><span class="st">"</span>)</span>
+<span id="cb41-12"><a href="#cb41-12" aria-hidden="true" tabindex="-1"></a>      f.flush()</span>
+<span id="cb41-13"><a href="#cb41-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-14"><a href="#cb41-14" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> do_write2():</span>
+<span id="cb41-15"><a href="#cb41-15" aria-hidden="true" tabindex="-1"></a>  signal.signal(signal.SIGUSR1, parent_process)</span>
+<span id="cb41-16"><a href="#cb41-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-17"><a href="#cb41-17" aria-hidden="true" tabindex="-1"></a>  parent_pid <span class="op">=</span> os.getpid()</span>
+<span id="cb41-18"><a href="#cb41-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-19"><a href="#cb41-19" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> os.fork() <span class="op">==</span> <span class="dv">0</span>:</span>
+<span id="cb41-20"><a href="#cb41-20" aria-hidden="true" tabindex="-1"></a>      child_process(parent_pid)</span>
+<span id="cb41-21"><a href="#cb41-21" aria-hidden="true" tabindex="-1"></a>  <span class="cf">else</span>:</span>
+<span id="cb41-22"><a href="#cb41-22" aria-hidden="true" tabindex="-1"></a>      signal.pause()  <span class="co"># Wait for signal from child</span></span>
+<span id="cb41-23"><a href="#cb41-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-24"><a href="#cb41-24" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Read and print the file contents</span></span>
+<span id="cb41-25"><a href="#cb41-25" aria-hidden="true" tabindex="-1"></a>  <span class="cf">with</span> <span class="bu">open</span>(<span class="st">"test.txt"</span>, <span class="st">"r"</span>) <span class="im">as</span> f:</span>
+<span id="cb41-26"><a href="#cb41-26" aria-hidden="true" tabindex="-1"></a>    res <span class="op">=</span> f.read()</span>
+<span id="cb41-27"><a href="#cb41-27" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> res</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>This works as expected! At least for the 1000 times that I ran it:</p>
+<div class="cell" data-execution_count="55">
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">1000</span>):</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>  res <span class="op">=</span> do_write2()</span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">assert</span> res <span class="op">==</span> <span class="st">'Written by child</span><span class="ch">\n</span><span class="st">Written by parent</span><span class="ch">\n</span><span class="st">'</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>I noticed that <code>parent_process</code> is passed <code>signum</code> and <code>frame</code>. I asked Claude to define these:</p>
+<blockquote class="blockquote">
+<p><code>signum</code>: This parameter represents the signal number that was caught. In this case, it will be <code>signal.SIGUSR1</code>, which is the signal sent by the child process to the parent. The <code>signum</code> allows the signal handler to identify which signal triggered it, which can be useful if the same handler is used for multiple signals. <code>frame</code>: This parameter is a frame object representing the stack frame of the interrupted code when the signal was received. It contains information about the program’s execution state at the time the signal was caught, such as the current line number and local variables.</p>
+</blockquote>
+<p>I’ll print out <code>signum</code> and <code>frame</code> to see what they look like here:</p>
+<div class="cell" data-execution_count="58">
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> parent_process(signum, frame):</span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(signum, frame)</span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">with</span> <span class="bu">open</span>(<span class="st">"test.txt"</span>, <span class="st">"a"</span>) <span class="im">as</span> f: <span class="co"># notice the "a" for "append mode"</span></span>
+<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a>      f.write(<span class="st">"Written by parent</span><span class="ch">\n</span><span class="st">"</span>)</span>
+<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a>      f.flush()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p><code>signum</code> has a value of <code>10</code> and <code>frame</code> has the additional information as Claude described.</p>
+<div class="cell" data-outputid="4effc089-5cf3-4ec9-b188-162db1b74a02" data-execution_count="59">
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>do_write2()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>10 &lt;frame at 0x56005af01c30, file '&lt;ipython-input-56-0f16beee5172&gt;', line 22, code do_write2&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="59">
+<pre><code>'Written by child\nWritten by parent\n'</code></pre>
+</div>
+</div>
+</section>
+<section id="exit-status" class="level3">
+<h3 class="anchored" data-anchor-id="exit-status">Exit Status</h3>
+<p>Claude describes the following code as a way to illustrate how “the parent can wait for the child to finish and retrieve its exit status.” I added a couple of print statements to see more clearly that the parent process waits for the child process to exit.</p>
+<p>Claude describes the <code>-1</code> in <code>os.waitpid(-1, 0)</code> as follows:</p>
+<blockquote class="blockquote">
+<p>When <code>-1</code> is used as the first argument to <code>os.waitpid()</code>, it tells the function to wait for any child process to terminate.</p>
+</blockquote>
+<p>The <code>0</code> in <code>os.waitpid(-1, 0)</code> is explained in the docs:</p>
+<blockquote class="blockquote">
+<p>The semantics of the call are affected by the value of the integer options, which should be 0 for normal operation.</p>
+</blockquote>
+<div class="cell" data-execution_count="40">
+<div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> do_exit():</span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> os.fork():</span>
+<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Parent process</span></span>
+<span id="cb47-4"><a href="#cb47-4" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"Parent waiting..."</span>)</span>
+<span id="cb47-5"><a href="#cb47-5" aria-hidden="true" tabindex="-1"></a>        child_pid, status <span class="op">=</span> os.waitpid(<span class="op">-</span><span class="dv">1</span>, <span class="dv">0</span>)</span>
+<span id="cb47-6"><a href="#cb47-6" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"Parent done waiting!"</span>)</span>
+<span id="cb47-7"><a href="#cb47-7" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"In parent: </span><span class="sc">{</span>os<span class="sc">.</span>getpid()<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb47-8"><a href="#cb47-8" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"Child process (PID </span><span class="sc">{</span>child_pid<span class="sc">}</span><span class="ss">) exited with status </span><span class="sc">{</span>os<span class="sc">.</span>WEXITSTATUS(status)<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb47-9"><a href="#cb47-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb47-10"><a href="#cb47-10" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Child process</span></span>
+<span id="cb47-11"><a href="#cb47-11" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"In child: </span><span class="sc">{</span>os<span class="sc">.</span>getpid()<span class="sc">}</span><span class="ss">, exiting with status 5"</span>)</span>
+<span id="cb47-12"><a href="#cb47-12" aria-hidden="true" tabindex="-1"></a>        os._exit(<span class="dv">5</span>)  <span class="co"># Use os._exit to avoid affecting the notebook process</span></span>
+<span id="cb47-13"><a href="#cb47-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb47-14"><a href="#cb47-14" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"This will be printed only by the parent process. PID: </span><span class="sc">{</span>os<span class="sc">.</span>getpid()<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>However, when I run <code>do_exit</code>, based on the child pid’s shown, it creates two different child processes (<code>4475</code> and <code>4448</code>):</p>
+<div class="cell" data-outputid="c87b6f20-90c7-4ad4-a1ea-b0c737019e06" data-execution_count="45">
+<div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a>do_exit()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>In child: 4475, exiting with status 5Parent waiting...
+Parent done waiting!
+In parent: 436
+Child process (PID 4448) exited with status 5
+This will be printed only by the parent process. PID: 436
+</code></pre>
+</div>
+</div>
+<p>And note that <code>do_exit</code> print statements don’t always run in that order, indicating that the child process is not running first even though we have used <code>waitpid</code>:</p>
+<div class="cell" data-outputid="8b1e05a6-2e59-4a30-bb58-518435ff3728" data-execution_count="8">
+<div class="sourceCode cell-code" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a>do_exit()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Parent waiting...
+Parent done waiting!
+In parent: 436
+Child process (PID 902) exited with status 0
+This will be printed only by the parent process. PID: 436
+In child: 1249, exiting with status 5</code></pre>
+</div>
+</div>
+<p>When I put that code into a <code>.py</code> file and run it from the shell, it behaves as expected (there is only one child process created, <code>5221</code>, and it runs first while the parent process waits):</p>
+<div class="cell" data-outputid="57f8fa14-f0b9-47e1-c89a-03fa56a2ee81" data-execution_count="48">
+<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>python3 do_exit.py</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Parent waiting...
+In child: 5221, exiting with status 5
+Parent done waiting!
+In parent: 5216
+Child process (PID 5221) exited with status 5
+This will be printed only by the parent process. PID: 5216</code></pre>
+</div>
+</div>
+</section>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>Working with <code>os.fork</code> was tougher than I expected. I assumed it would be plug-and-play, but I encountered non-deterministic behavior, which seems to be common when working with multiple processes.</p>
+<p>I also learned that <code>os.fork</code> behaves (or misbehaves) differently when running inside a notebook cell compared to running in the shell. For instance, executing <code>pid = os.fork</code> in a notebook cell causes the execution to hang when trying to return the child’s process ID, or spawns multiple child processes when using the <code>if os_fork:/else:</code> pattern.</p>
+<p>There are some ways to make <code>os.fork</code> behave in a notebook environment, as we saw when synchronizing work between the child and parent by having the child signal the parent before both wrote to the same file.</p>
+<p>Another key concept I observed was memory independence— even in a notebook environment, the parent and child processes have their own private access to global variables, allowing you to assign different values to the same variable in each process.</p>
+<p>Future work: I want to run a similar set of experiments with the <code>multiprocessing</code> library, as I see it used more often (for example, in the fastai repo).</p>
+<p>I hope you enjoyed this blog post. Follow me on Twitter <a href="https://twitter.com/vishal_learner"><span class="citation" data-cites="vishal_learner">@vishal_learner</span></a>.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>
