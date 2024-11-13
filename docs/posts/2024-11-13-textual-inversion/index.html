@@ -105,6 +105,9 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -230,13 +233,11 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="background" class="level2">
 <h2 class="anchored" data-anchor-id="background">Background</h2>
 <p>In Lesson 9 of the fastai course (Part 2) we are introduced to the concept of <em>textual inversion</em>, where you train an embedding on a new set of images the model hasn’t seen before, and then use that embedding during inference to have the model adapt its style (or object) in the generated image. To get some experience with training and inference, I decided to train a textual inversion embeddings on six pencil/pen drawings I made of one of my favorite childhood cartoons: Samurai Jack.</p>
-<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; max-width: 60%; margin: auto;">
-<pre><code>&lt;img src="samurai-jack-6.png" alt="Image 1" style="width: 100%; height: auto;"&gt;
-&lt;img src="samurai-jack-1.png" alt="Image 2" style="width: 100%; height: auto;"&gt;
-&lt;img src="samurai-jack-4.png" alt="Image 3" style="width: 100%; height: auto;"&gt;
-&lt;img src="samurai-jack-5.png" alt="Image 4" style="width: 100%; height: auto;"&gt;
-&lt;img src="samurai-jack-2.png" alt="Image 5" style="width: 100%; height: auto;"&gt;
-&lt;img src="samurai-jack-3.png" alt="Image 6" style="width: 100%; height: auto;"&gt;</code></pre>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="drawings.png" class="lightbox" title="Samurai Jack pencil/pen drawings" data-gallery="quarto-lightbox-gallery-1"><img src="drawings.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Samurai Jack pencil/pen drawings</figcaption><p></p>
+</figure>
 </div>
 <p>I have uploaded the trained embeddings to Huggingface: <a href="https://huggingface.co/sd-concepts-library/samurai-jack">sd-concepts-library/samurai-jack</a>. I have created <a href="https://colab.research.google.com/drive/1UXrBTMM4DkBijETN-_tRV5cQ6kE_Yy5G?usp=sharing">this minimal Colab demo</a> for inference.</p>
 </section>
@@ -244,22 +245,27 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <h2 class="anchored" data-anchor-id="version-1-initial-training">Version 1: Initial Training</h2>
 <p>I used the Huggingface-provided <a href="https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_textual_inversion_training.ipynb">notebook</a> to train my textual inversion embeddings.</p>
 <p>I used the default hyperparameters for the first version of the embeddings I trained, which took about 45 minutes to train with a Free-A4000 on Paperspace:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>hyperparameters <span class="op">=</span> {</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"learning_rate"</span>: <span class="fl">5e-04</span>,</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"scale_lr"</span>: <span class="va">True</span>,</span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"max_train_steps"</span>: <span class="dv">2000</span>,</span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"save_steps"</span>: <span class="dv">250</span>,</span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"train_batch_size"</span>: <span class="dv">2</span>,</span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"gradient_accumulation_steps"</span>: <span class="dv">1</span>,</span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"gradient_checkpointing"</span>: <span class="va">True</span>,</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"mixed_precision"</span>: <span class="st">"fp16"</span>,</span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"seed"</span>: <span class="dv">42</span>,</span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"output_dir"</span>: <span class="st">"sd-concept-output"</span></span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>hyperparameters <span class="op">=</span> {</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"learning_rate"</span>: <span class="fl">5e-04</span>,</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"scale_lr"</span>: <span class="va">True</span>,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"max_train_steps"</span>: <span class="dv">2000</span>,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"save_steps"</span>: <span class="dv">250</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"train_batch_size"</span>: <span class="dv">2</span>,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"gradient_accumulation_steps"</span>: <span class="dv">1</span>,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"gradient_checkpointing"</span>: <span class="va">True</span>,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"mixed_precision"</span>: <span class="st">"fp16"</span>,</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"seed"</span>: <span class="dv">42</span>,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"output_dir"</span>: <span class="st">"sd-concept-output"</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Here are some images I generated using the trained embeddings with the prompts displayed in the caption:</p>
 <section id="inference-steps" class="level3">
 <h3 class="anchored" data-anchor-id="inference-steps">30 Inference Steps</h3>
-<p><img src="a-man-v1-30.png" alt="prompt: &quot;a man in the style of <samurai-jack>&quot;" width="60%"></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="a-man-v1-30.png" class="lightbox" title="prompt: “a man in the style of ”" data-gallery="quarto-lightbox-gallery-2"><img src="a-man-v1-30.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">prompt: “a man in the style of <samurai-jack>”</samurai-jack></figcaption><p></p>
+</figure>
+</div>
 <p><img src="a-woman-v1-30.png" alt="prompt: &quot;a woman in the style of <samurai-jack>&quot;" width="60%"></p>
 <p><img src="a-person-v1-30.png" alt="prompt: &quot;a person in the style of <samurai-jack>&quot;" width="60%"></p>
 <p><img src="a-cat-v1-30.png" alt="prompt: &quot;a cat in the style of <samurai-jack>&quot;" width="60%"></p>
@@ -285,18 +291,18 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="version-2-longer-training" class="level2">
 <h2 class="anchored" data-anchor-id="version-2-longer-training">Version 2: Longer Training</h2>
 <p>I provided my code and 5 generated images to Claude, asking it for feedback on what hyperparameters I could try to improve my embeddings. It suggested to increase the number of training steps, batch size and gradient accumulation steps, and lower the learning rate to yield a training that learned more details from my input images. While I couldn’t increase the batch size without getting an OOM error, I applied the rest of its suggestions in my training script:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>hyperparameters <span class="op">=</span> {</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"learning_rate"</span>: <span class="fl">1e-04</span>,</span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"scale_lr"</span>: <span class="va">True</span>,</span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"max_train_steps"</span>: <span class="dv">4000</span>,</span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"save_steps"</span>: <span class="dv">2000</span>,</span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"train_batch_size"</span>: <span class="dv">2</span>,</span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"gradient_accumulation_steps"</span>: <span class="dv">4</span>,</span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"gradient_checkpointing"</span>: <span class="va">True</span>,</span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"mixed_precision"</span>: <span class="st">"fp16"</span>,</span>
-<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"seed"</span>: <span class="dv">42</span>,</span>
-<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"output_dir"</span>: <span class="st">"sd-concept-output-2"</span></span>
-<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>hyperparameters <span class="op">=</span> {</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"learning_rate"</span>: <span class="fl">1e-04</span>,</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"scale_lr"</span>: <span class="va">True</span>,</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"max_train_steps"</span>: <span class="dv">4000</span>,</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"save_steps"</span>: <span class="dv">2000</span>,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"train_batch_size"</span>: <span class="dv">2</span>,</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"gradient_accumulation_steps"</span>: <span class="dv">4</span>,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"gradient_checkpointing"</span>: <span class="va">True</span>,</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"mixed_precision"</span>: <span class="st">"fp16"</span>,</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"seed"</span>: <span class="dv">42</span>,</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"output_dir"</span>: <span class="st">"sd-concept-output-2"</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>The resulting training took about 6 hours to run (with seconds to spare before Paperspace’s auto-shutdown!).</p>
 <p>Here are some images I generated using the trained embeddings with the prompts displayed in the caption. Note that I only used 50 inference steps as I like the resulting generations more than the 30-step ones.</p>
 <section id="inference-steps-2" class="level3">
@@ -479,6 +485,7 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
 });
 </script>
 </div> <!-- /content -->
+<script>var lightboxQuarto = GLightbox({"descPosition":"bottom","selector":".lightbox","openEffect":"zoom","closeEffect":"zoom","loop":true});</script>
 
 
 
