@@ -8,8 +8,8 @@ filters:
    - lightbox
 lightbox: auto
 categories:
-    - python
-    - fastai
+    - AnswerAI
+    - WebGPU
 ---
 
 ## Background
