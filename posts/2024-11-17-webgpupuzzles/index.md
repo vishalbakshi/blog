@@ -1,7 +1,7 @@
 
 ---
 title: WebGPG Puzzles&#58; Walk through of Official Solutions
-date: "2024-09-30"
+date: "2024-11-17"
 author: Vishal Bakshi
 description: This blog post contains my walkthrough of the official AnswerAI WebGPU Puzzle solutions that I found challenging to understand and/or critical in helping me understand core concepts of GPU programming.
 filters:
