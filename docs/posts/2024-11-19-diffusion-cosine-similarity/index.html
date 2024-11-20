@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2024-11-19">
+<meta name="description" content="In this blog post I explore cosine similarity between conditioned and unconditioned UNet predictions and the sensitivity of UNet predictions in latent space!">
+
+<title>Vishal Bakshi’s Blog - Exploring Cosine Similarity in Stable Diffusion’s Latent Space</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+<script src="https://unpkg.com/@jupyter-widgets/html-manager@*/dist/embed-amd.js" crossorigin="anonymous"></script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Vishal Bakshi’s Blog</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#generating-images" id="toc-generating-images" class="nav-link" data-scroll-target="#generating-images">Generating Images</a></li>
+  <li><a href="#classifier-free-guidance" id="toc-classifier-free-guidance" class="nav-link" data-scroll-target="#classifier-free-guidance">Classifier-Free Guidance</a></li>
+  <li><a href="#cosine-similarity-between-u-and-t" id="toc-cosine-similarity-between-u-and-t" class="nav-link" data-scroll-target="#cosine-similarity-between-u-and-t">Cosine Similarity Between <code>u</code> and <code>t</code></a></li>
+  <li><a href="#perturbations-in-pred" id="toc-perturbations-in-pred" class="nav-link" data-scroll-target="#perturbations-in-pred">Perturbations in <code>pred</code></a></li>
+  <li><a href="#final-thoughts" id="toc-final-thoughts" class="nav-link" data-scroll-target="#final-thoughts">Final Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Exploring Cosine Similarity in Stable Diffusion’s Latent Space</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">stable diffusion</div>
+    <div class="quarto-category">generative AI</div>
+    <div class="quarto-category">python</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    In this blog post I explore cosine similarity between conditioned and unconditioned UNet predictions and the sensitivity of UNet predictions in latent space!
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">November 19, 2024</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:12:32.655053Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:12:32.654499Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:13:33.272143Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:13:33.271300Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:12:32.654986Z&quot;}">
+<details>
+<summary>Show setup code</summary>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>pip install <span class="op">-</span>qq diffusers transformers<span class="op">==</span><span class="fl">4.46.2</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>pip install <span class="op">-</span>qq pillow<span class="op">==</span><span class="fl">11.0.0</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> diffusers <span class="im">import</span> LMSDiscreteScheduler, AutoencoderKL, UNet2DConditionModel, StableDiffusionPipeline</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers <span class="im">import</span> CLIPTextModel, CLIPTokenizer</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> PIL <span class="im">import</span> Image</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> tqdm.auto <span class="im">import</span> tqdm</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> IPython.display <span class="im">import</span> display</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch, math</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>tokenizer <span class="op">=</span> CLIPTokenizer.from_pretrained(<span class="st">"openai/clip-vit-large-patch14"</span>, torch_dtype<span class="op">=</span>torch.float16)</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>text_encoder <span class="op">=</span> CLIPTextModel.from_pretrained(<span class="st">"openai/clip-vit-large-patch14"</span>, torch_dtype<span class="op">=</span>torch.float16).to(<span class="st">"cuda"</span>)</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>vae <span class="op">=</span> AutoencoderKL.from_pretrained(<span class="st">"stabilityai/sd-vae-ft-ema"</span>, torch_dtype<span class="op">=</span>torch.float16).to(<span class="st">"cuda"</span>)</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>unet <span class="op">=</span> UNet2DConditionModel.from_pretrained(<span class="st">"CompVis/stable-diffusion-v1-4"</span>, subfolder<span class="op">=</span><span class="st">"unet"</span>, torch_dtype<span class="op">=</span>torch.float16).to(<span class="st">"cuda"</span>)</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>beta_start,beta_end <span class="op">=</span> <span class="fl">0.00085</span>,<span class="fl">0.012</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>scheduler <span class="op">=</span> LMSDiscreteScheduler(beta_start<span class="op">=</span>beta_start, beta_end<span class="op">=</span>beta_end, beta_schedule<span class="op">=</span><span class="st">"scaled_linear"</span>, num_train_timesteps<span class="op">=</span><span class="dv">1000</span>)</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>height <span class="op">=</span> <span class="dv">512</span></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>width <span class="op">=</span> <span class="dv">512</span></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>num_inference_steps <span class="op">=</span> <span class="dv">70</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>guidance_scale <span class="op">=</span> <span class="fl">7.5</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>batch_size <span class="op">=</span> <span class="dv">1</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In this notebook, I’ll explore the question: how different are UNet predictions (in latent space) for the conditioned and unconditioned (empty) prompts? The code used in this notebook comes from the <a href="https://github.com/fastai/diffusion-nbs/blob/master/stable_diffusion.ipynb">“Stable Diffusion with Diffusers”</a> from part 2 of the fastai course.</p>
+</section>
+<section id="generating-images" class="level2">
+<h2 class="anchored" data-anchor-id="generating-images">Generating Images</h2>
+<p>I’ll start by running the code below to generate an image using stable diffusion:</p>
+<ul>
+<li><code>text_enc</code> tokenizes the given prompt and converts it to text embeddings using the <code>text_encoder</code>(“openai/clip-vit-large-patch14”).</li>
+<li><code>mk_img</code> converts a Tensor to a PIL Image.</li>
+<li><code>mk_samples</code> takes the prompt, guidance scale, seed, and number of inference steps to run the diffusion loop and generate a image using the <code>scheduler</code> (<code>LMSDiscreteScheduler</code>), UNet (<code>"CompVis/stable-diffusion-v1-4"</code>) and VAE (<code>"stabilityai/sd-vae-ft-ema"</code>).</li>
+</ul>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:20:33.918929Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:20:33.918110Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:20:33.923266Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:20:33.922680Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:20:33.918904Z&quot;}" data-execution_count="2">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> text_enc(prompts, maxlen<span class="op">=</span><span class="va">None</span>):</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> maxlen <span class="kw">is</span> <span class="va">None</span>: maxlen <span class="op">=</span> tokenizer.model_max_length</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    inp <span class="op">=</span> tokenizer(prompts, padding<span class="op">=</span><span class="st">"max_length"</span>, max_length<span class="op">=</span>maxlen, truncation<span class="op">=</span><span class="va">True</span>, return_tensors<span class="op">=</span><span class="st">"pt"</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> text_encoder(inp.input_ids.to(<span class="st">"cuda"</span>))[<span class="dv">0</span>].half()</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> mk_img(t):</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    image <span class="op">=</span> (t<span class="op">/</span><span class="dv">2</span><span class="op">+</span><span class="fl">0.5</span>).clamp(<span class="dv">0</span>,<span class="dv">1</span>).detach().cpu().permute(<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">0</span>).numpy()</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> Image.fromarray((image<span class="op">*</span><span class="dv">255</span>).<span class="bu">round</span>().astype(<span class="st">"uint8"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:20:35.090161Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:20:35.089669Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:20:35.161702Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:20:35.161085Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:20:35.090140Z&quot;}" data-execution_count="3">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> mk_samples(prompts, g<span class="op">=</span><span class="fl">7.5</span>, seed<span class="op">=</span><span class="dv">100</span>, steps<span class="op">=</span><span class="dv">70</span>):</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    bs <span class="op">=</span> <span class="bu">len</span>(prompts)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    text <span class="op">=</span> text_enc(prompts)</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    uncond <span class="op">=</span> text_enc([<span class="st">""</span>] <span class="op">*</span> bs, text.shape[<span class="dv">1</span>])</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    emb <span class="op">=</span> torch.cat([uncond, text])</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> seed: torch.manual_seed(seed)</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    latents <span class="op">=</span> torch.randn((bs, unet.in_channels, height<span class="op">//</span><span class="dv">8</span>, width<span class="op">//</span><span class="dv">8</span>))</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    scheduler.set_timesteps(steps)</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    latents <span class="op">=</span> latents.to(<span class="st">"cuda"</span>).half() <span class="op">*</span> <span class="dv">15</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i,ts <span class="kw">in</span> <span class="bu">enumerate</span>(tqdm(scheduler.timesteps)):</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>        inp <span class="op">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op">*</span> <span class="dv">2</span>), ts)</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> torch.no_grad(): u,t <span class="op">=</span> unet(inp, ts, encoder_hidden_states<span class="op">=</span>emb).sample.chunk(<span class="dv">2</span>)</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>        pred <span class="op">=</span> u <span class="op">+</span> g<span class="op">*</span>(t<span class="op">-</span>u)</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>        latents <span class="op">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> torch.no_grad(): <span class="cf">return</span> vae.decode(<span class="dv">1</span> <span class="op">/</span> <span class="fl">0.18215</span> <span class="op">*</span> latents).sample</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:21:14.748393Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:21:14.747871Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:21:31.511294Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:21:31.510669Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:21:14.748372Z&quot;}" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>prompts <span class="op">=</span> [</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'a photograph of an astronaut riding a horse'</span>,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">'an oil painting of an astronaut riding a horse in the style of grant wood'</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>images <span class="op">=</span> mk_samples(prompts)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> img <span class="kw">in</span> images: display(mk_img(img))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_34/2926544816.py:8: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"d2512caa5d4d487492325fd186bb4ee7","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-5-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="index_files/figure-html/cell-5-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-5-output-4.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2"><img src="index_files/figure-html/cell-5-output-4.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>The two images are generated as expected!</p>
+</section>
+<section id="classifier-free-guidance" class="level2">
+<h2 class="anchored" data-anchor-id="classifier-free-guidance">Classifier-Free Guidance</h2>
+<p>The lines of code I’m most interested in for this notebook are:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> torch.no_grad(): u,t <span class="op">=</span> unet(inp, ts, encoder_hidden_states<span class="op">=</span>emb).sample.chunk(<span class="dv">2</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>pred <span class="op">=</span> u <span class="op">+</span> g<span class="op">*</span>(t<span class="op">-</span>u)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>In the first line, the <code>unet</code> takes the noisy input latents <code>inp</code>, timestep <code>ts</code> and text embeddings <code>emb</code> to predict the noise in the noisy latent. In the second line, the “final” prediction is taken as <code>u + g*(t-u)</code> where <code>t</code> and <code>u</code> are both predictions form the same UNet:</p>
+<ul>
+<li><code>u</code> is the predicted noise corresponding to the unconditioned prompt (<code>""</code>).</li>
+<li><code>t</code> is the predicted noise corresponding to the conditioned prompt (e.g., <code>'a photograph of an astronaut riding a horse'</code>),</li>
+<li><code>g</code> is the <em>guidance scale</em> which is the amount we want to weight the prediction towards <code>t</code> and away from <code>u</code>.</li>
+</ul>
+<p>Expanding this equation we get: <code>pred = u + gt - gu = gt - (g-1)u</code>. We amplify <code>t</code> by <code>g</code> and then subtract <code>(g-1)</code> times <code>u</code>. Conceptually, we are moving away from the empty prompt and toward the desired prompt. My understanding of why we need <code>u</code> is that we need a baseline or reference point to which we compare <code>t</code> so that we can guide the generation process to learn specific features of <code>t</code> in comparison to general noisy features of of <code>u</code>. This “comparison” is done with the <code>t-u</code> term.</p>
+</section>
+<section id="cosine-similarity-between-u-and-t" class="level2">
+<h2 class="anchored" data-anchor-id="cosine-similarity-between-u-and-t">Cosine Similarity Between <code>u</code> and <code>t</code></h2>
+<p>I’m going to modify <code>mk_samples</code> so that at each timestep, it calculates and stores the cosine similarity betwern <code>t</code> and <code>u</code>:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:35:41.642698Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:35:41.642141Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:35:41.648612Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:35:41.647843Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:35:41.642675Z&quot;}" data-execution_count="6">
+<details>
+<summary>Show modified <code>mk_samples</code> function</summary>
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> mk_samples(prompts, g<span class="op">=</span><span class="fl">7.5</span>, seed<span class="op">=</span><span class="dv">100</span>, steps<span class="op">=</span><span class="dv">70</span>):</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    cs <span class="op">=</span> []</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    bs <span class="op">=</span> <span class="bu">len</span>(prompts)</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    text <span class="op">=</span> text_enc(prompts)</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    uncond <span class="op">=</span> text_enc([<span class="st">""</span>] <span class="op">*</span> bs, text.shape[<span class="dv">1</span>])</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    emb <span class="op">=</span> torch.cat([uncond, text])</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> seed: torch.manual_seed(seed)</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>    latents <span class="op">=</span> torch.randn((bs, unet.in_channels, height<span class="op">//</span><span class="dv">8</span>, width<span class="op">//</span><span class="dv">8</span>))</span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>    scheduler.set_timesteps(steps)</span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    latents <span class="op">=</span> latents.to(<span class="st">"cuda"</span>).half() <span class="op">*</span> <span class="dv">15</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i,ts <span class="kw">in</span> <span class="bu">enumerate</span>(tqdm(scheduler.timesteps)):</span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>        inp <span class="op">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op">*</span> <span class="dv">2</span>), ts)</span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> torch.no_grad(): u,t <span class="op">=</span> unet(inp, ts, encoder_hidden_states<span class="op">=</span>emb).sample.chunk(<span class="dv">2</span>)</span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>       </span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>        cs.append(torch.nn.functional.cosine_similarity(t, u).mean().item())</span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>        pred <span class="op">=</span> u <span class="op">+</span> g<span class="op">*</span>(t<span class="op">-</span>u)</span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a>        latents <span class="op">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
+<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-22"><a href="#cb7-22" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> torch.no_grad(): </span>
+<span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> vae.decode(<span class="dv">1</span> <span class="op">/</span> <span class="fl">0.18215</span> <span class="op">*</span> latents).sample, cs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:36:05.207475Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:36:05.206940Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:36:12.111986Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:36:12.111308Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:36:05.207453Z&quot;}" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>prompts <span class="op">=</span> [</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'a photograph of an astronaut riding a horse'</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>images, cs <span class="op">=</span> mk_samples(prompts)</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> img <span class="kw">in</span> images: display(mk_img(img))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_34/1126956742.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"e500b98a0014449caa9ae37f28d0706b","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-7-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3"><img src="index_files/figure-html/cell-7-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>I was shocked to find that the cosine similarity between the unconditioned and the conditioned UNet predictions is so high! Essentially 1.0!!</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:36:36.840095Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:36:36.839390Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:36:36.861610Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:36:36.860857Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:36:36.840066Z&quot;}" data-execution_count="8">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>pd.Series(cs).describe()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<pre><code>count    70.000000
+mean      0.999616
+std       0.000261
+min       0.998535
+25%       0.999512
+50%       0.999512
+75%       0.999878
+max       1.000000
+dtype: float64</code></pre>
+</div>
+</div>
+<p>The two predictions start out basically exactly the same (cosine similarity = 1) and diverge as the diffusion process goes on, reaching the lowest cosine similarity at the 70 inference steps.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:37:53.376327Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:37:53.375586Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:37:53.483031Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:37:53.482459Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:37:53.376298Z&quot;}" data-execution_count="10">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>plt.scatter(<span class="bu">range</span>(<span class="bu">len</span>(cs)),cs)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-9-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4"><img src="index_files/figure-html/cell-9-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>This trend of high mean similarity between <code>t</code> and <code>u</code> overall and decreasing cosine similarity over time holds for other prompts as well:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:40:26.602907Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:40:26.602237Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:40:33.501365Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:40:33.500908Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:40:26.602885Z&quot;}" data-execution_count="11">
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>prompts <span class="op">=</span> [</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'a painting of a dog in the style of Picasso'</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>images, cs <span class="op">=</span> mk_samples(prompts)</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> img <span class="kw">in</span> images: display(mk_img(img))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_34/1126956742.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"4143e33405e242c4b5f50b2d893176e9","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-10-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-5"><img src="index_files/figure-html/cell-10-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:40:39.007007Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:40:39.006346Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:40:39.013248Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:40:39.012819Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:40:39.006983Z&quot;}" data-execution_count="12">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>pd.Series(cs).describe()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<pre><code>count    70.000000
+mean      0.999923
+std       0.000197
+min       0.999023
+25%       1.000000
+50%       1.000000
+75%       1.000000
+max       1.000000
+dtype: float64</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:40:41.651568Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:40:41.651118Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:40:41.723498Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:40:41.723084Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:40:41.651543Z&quot;}" data-execution_count="13">
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>plt.scatter(<span class="bu">range</span>(<span class="bu">len</span>(cs)),cs)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-12-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-6"><img src="index_files/figure-html/cell-12-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:41:38.173642Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:41:38.172961Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:41:45.086500Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:41:45.085913Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:41:38.173618Z&quot;}" data-execution_count="14">
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>prompts <span class="op">=</span> [</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'a drawing of a woman sitting on a park bench'</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>images, cs <span class="op">=</span> mk_samples(prompts)</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> img <span class="kw">in</span> images: display(mk_img(img))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_34/1126956742.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"3f0969eaf26e484ca8635aa5d3ac201e","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-13-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-7"><img src="index_files/figure-html/cell-13-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:41:51.700463Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:41:51.700200Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:41:51.707822Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:41:51.706892Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:41:51.700444Z&quot;}" data-execution_count="15">
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>pd.Series(cs).describe()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<pre><code>count    70.000000
+mean      0.999679
+std       0.000233
+min       0.999512
+25%       0.999512
+50%       0.999512
+75%       1.000000
+max       1.000000
+dtype: float64</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:41:59.939540Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:41:59.939271Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:42:00.016233Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:42:00.015750Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:41:59.939522Z&quot;}" data-execution_count="16">
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>plt.scatter(<span class="bu">range</span>(<span class="bu">len</span>(cs)),cs)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-15-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-8"><img src="index_files/figure-html/cell-15-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="perturbations-in-pred" class="level2">
+<h2 class="anchored" data-anchor-id="perturbations-in-pred">Perturbations in <code>pred</code></h2>
+<p>My takeaway from the high cosine similarity between conditioned and unconditioned predictions is that the diffusion process is sensitive to small perturbations. However, I found that this wasn’t <em>always</em> the case. To illustrate, I’ll first add a large amount of noise to <code>pred</code> at each timestep and see how that impacts the resulting image.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:00:31.574085Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:00:31.573468Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:00:31.579689Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:00:31.579216Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:00:31.574062Z&quot;}" data-execution_count="63">
+<details>
+<summary>Show modified <code>mk_samples</code> function</summary>
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> mk_samples(prompts, g<span class="op">=</span><span class="fl">7.5</span>, seed<span class="op">=</span><span class="dv">100</span>, steps<span class="op">=</span><span class="dv">70</span>):</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>    cs <span class="op">=</span> []</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    bs <span class="op">=</span> <span class="bu">len</span>(prompts)</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    text <span class="op">=</span> text_enc(prompts)</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>    uncond <span class="op">=</span> text_enc([<span class="st">""</span>] <span class="op">*</span> bs, text.shape[<span class="dv">1</span>])</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>    emb <span class="op">=</span> torch.cat([uncond, text])</span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> seed: torch.manual_seed(seed)</span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>    latents <span class="op">=</span> torch.randn((bs, unet.in_channels, height<span class="op">//</span><span class="dv">8</span>, width<span class="op">//</span><span class="dv">8</span>))</span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>    scheduler.set_timesteps(steps)</span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>    latents <span class="op">=</span> latents.to(<span class="st">"cuda"</span>).half() <span class="op">*</span> <span class="dv">15</span></span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i,ts <span class="kw">in</span> <span class="bu">enumerate</span>(tqdm(scheduler.timesteps)):</span>
+<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a>        inp <span class="op">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op">*</span> <span class="dv">2</span>), ts)</span>
+<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> torch.no_grad(): u,t <span class="op">=</span> unet(inp, ts, encoder_hidden_states<span class="op">=</span>emb).sample.chunk(<span class="dv">2</span>)</span>
+<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a>       </span>
+<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>        cs.append(torch.nn.functional.cosine_similarity(t, u).mean().item())</span>
+<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>        r <span class="op">=</span> <span class="fl">0.1</span><span class="op">*</span>torch.randn_like(t)</span>
+<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a>        orig_pred <span class="op">=</span> u <span class="op">+</span> g<span class="op">*</span>(t<span class="op">-</span>u)</span>
+<span id="cb23-21"><a href="#cb23-21" aria-hidden="true" tabindex="-1"></a>        pred <span class="op">=</span> u <span class="op">+</span> g<span class="op">*</span>(t<span class="op">-</span>u) <span class="op">+</span> r</span>
+<span id="cb23-22"><a href="#cb23-22" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb23-23"><a href="#cb23-23" aria-hidden="true" tabindex="-1"></a>        latents <span class="op">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
+<span id="cb23-24"><a href="#cb23-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-25"><a href="#cb23-25" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> torch.no_grad(): </span>
+<span id="cb23-26"><a href="#cb23-26" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> vae.decode(<span class="dv">1</span> <span class="op">/</span> <span class="fl">0.18215</span> <span class="op">*</span> latents).sample, cs, orig_pred, r</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:00:32.023341Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:00:32.022722Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:00:38.989202Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:00:38.988575Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:00:32.023319Z&quot;}" data-execution_count="64">
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>prompts <span class="op">=</span> [</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'a photograph of an astronaut riding a horse'</span></span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>images, cs, orig_pred, r <span class="op">=</span> mk_samples(prompts)</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> img <span class="kw">in</span> images: display(mk_img(img))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_34/2326634756.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"a6f29010668b409ba26b9da46c9595f4","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-17-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-9"><img src="index_files/figure-html/cell-17-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:00:42.604558Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:00:42.604291Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:00:42.609986Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:00:42.609483Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:00:42.604540Z&quot;}" data-execution_count="65">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>orig_pred.norm(), r.norm()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="65">
+<pre><code>(tensor(27.3281, device='cuda:0', dtype=torch.float16),
+ tensor(12.6328, device='cuda:0', dtype=torch.float16))</code></pre>
+</div>
+</div>
+<p>Adding a noise tensor with about half of the magnitude as the full noise prediction did not prevent the diffusion loop from generating a high quality image! At what point does random noise impact generation?</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:17:59.512567Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:17:59.512304Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:17:59.518575Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:17:59.518021Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:17:59.512548Z&quot;}" data-execution_count="81">
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> mk_samples(prompts, g<span class="op">=</span><span class="fl">7.5</span>, seed<span class="op">=</span><span class="dv">100</span>, steps<span class="op">=</span><span class="dv">70</span>):</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>    cs <span class="op">=</span> []</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>    bs <span class="op">=</span> <span class="bu">len</span>(prompts)</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>    text <span class="op">=</span> text_enc(prompts)</span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>    uncond <span class="op">=</span> text_enc([<span class="st">""</span>] <span class="op">*</span> bs, text.shape[<span class="dv">1</span>])</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>    emb <span class="op">=</span> torch.cat([uncond, text])</span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> seed: torch.manual_seed(seed)</span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>    latents <span class="op">=</span> torch.randn((bs, unet.in_channels, height<span class="op">//</span><span class="dv">8</span>, width<span class="op">//</span><span class="dv">8</span>))</span>
+<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a>    scheduler.set_timesteps(steps)</span>
+<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a>    latents <span class="op">=</span> latents.to(<span class="st">"cuda"</span>).half() <span class="op">*</span> <span class="dv">15</span></span>
+<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-13"><a href="#cb28-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i,ts <span class="kw">in</span> <span class="bu">enumerate</span>(tqdm(scheduler.timesteps)):</span>
+<span id="cb28-14"><a href="#cb28-14" aria-hidden="true" tabindex="-1"></a>        inp <span class="op">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op">*</span> <span class="dv">2</span>), ts)</span>
+<span id="cb28-15"><a href="#cb28-15" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> torch.no_grad(): u,t <span class="op">=</span> unet(inp, ts, encoder_hidden_states<span class="op">=</span>emb).sample.chunk(<span class="dv">2</span>)</span>
+<span id="cb28-16"><a href="#cb28-16" aria-hidden="true" tabindex="-1"></a>       </span>
+<span id="cb28-17"><a href="#cb28-17" aria-hidden="true" tabindex="-1"></a>        cs.append(torch.nn.functional.cosine_similarity(t, u).mean().item())</span>
+<span id="cb28-18"><a href="#cb28-18" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb28-19"><a href="#cb28-19" aria-hidden="true" tabindex="-1"></a>        r <span class="op">=</span> <span class="fl">0.2</span><span class="op">*</span>torch.randn_like(t)</span>
+<span id="cb28-20"><a href="#cb28-20" aria-hidden="true" tabindex="-1"></a>        orig_pred <span class="op">=</span> u <span class="op">+</span> g<span class="op">*</span>(t<span class="op">-</span>u)</span>
+<span id="cb28-21"><a href="#cb28-21" aria-hidden="true" tabindex="-1"></a>        pred <span class="op">=</span> u <span class="op">+</span> g<span class="op">*</span>(t<span class="op">-</span>u) <span class="op">+</span> r</span>
+<span id="cb28-22"><a href="#cb28-22" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb28-23"><a href="#cb28-23" aria-hidden="true" tabindex="-1"></a>        latents <span class="op">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
+<span id="cb28-24"><a href="#cb28-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-25"><a href="#cb28-25" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> torch.no_grad(): </span>
+<span id="cb28-26"><a href="#cb28-26" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> vae.decode(<span class="dv">1</span> <span class="op">/</span> <span class="fl">0.18215</span> <span class="op">*</span> latents).sample, cs, orig_pred, r</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:18:00.929515Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:18:00.928822Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:18:07.809671Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:18:07.809194Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:18:00.929490Z&quot;}" data-execution_count="82">
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>prompts <span class="op">=</span> [</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'a photograph of an astronaut riding a horse'</span></span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>images, cs, orig_pred, r <span class="op">=</span> mk_samples(prompts)</span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> img <span class="kw">in</span> images: display(mk_img(img))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_34/2882368180.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"a149fb4c97b84b9aa738bb080babf4a2","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-20-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-10"><img src="index_files/figure-html/cell-20-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:18:10.238779Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:18:10.238107Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:18:10.243530Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:18:10.243177Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:18:10.238730Z&quot;}" data-execution_count="83">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>orig_pred.norm(), r.norm()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="83">
+<pre><code>(tensor(26.2188, device='cuda:0', dtype=torch.float16),
+ tensor(25.2656, device='cuda:0', dtype=torch.float16))</code></pre>
+</div>
+</div>
+<p>Adding random noise equal in magnitude to the guided prediction does visibly affect the quality of the generated image, though it still maintains its main structural components (earth, astronaut, horse).</p>
+<p>What happens if instead of random noise, I add a UNet prediction based on some other unrelated prompt?</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:06:40.034353Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:06:40.033717Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:06:40.039798Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:06:40.039293Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:06:40.034330Z&quot;}" data-execution_count="73">
+<details>
+<summary>Show modified <code>mk_samples</code> function</summary>
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> mk_samples(prompts, g<span class="op">=</span><span class="fl">7.5</span>, seed<span class="op">=</span><span class="dv">100</span>, steps<span class="op">=</span><span class="dv">70</span>):</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>    cs <span class="op">=</span> []</span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    bs <span class="op">=</span> <span class="bu">len</span>(prompts)</span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>    text <span class="op">=</span> text_enc(prompts)</span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a>    uncond <span class="op">=</span> text_enc([<span class="st">""</span>] <span class="op">*</span> bs, text.shape[<span class="dv">1</span>])</span>
+<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>    other <span class="op">=</span> text_enc([<span class="st">"a toad riding a bicycle"</span>] <span class="op">*</span> bs, text.shape[<span class="dv">1</span>])</span>
+<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>    emb <span class="op">=</span> torch.cat([uncond, text, other])</span>
+<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> seed: torch.manual_seed(seed)</span>
+<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a>    latents <span class="op">=</span> torch.randn((bs, unet.in_channels, height<span class="op">//</span><span class="dv">8</span>, width<span class="op">//</span><span class="dv">8</span>))</span>
+<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a>    scheduler.set_timesteps(steps)</span>
+<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a>    latents <span class="op">=</span> latents.to(<span class="st">"cuda"</span>).half() <span class="op">*</span> <span class="dv">15</span></span>
+<span id="cb33-14"><a href="#cb33-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-15"><a href="#cb33-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i,ts <span class="kw">in</span> <span class="bu">enumerate</span>(tqdm(scheduler.timesteps)):</span>
+<span id="cb33-16"><a href="#cb33-16" aria-hidden="true" tabindex="-1"></a>        inp <span class="op">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op">*</span> <span class="dv">3</span>), ts)</span>
+<span id="cb33-17"><a href="#cb33-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> torch.no_grad(): u,t,o<span class="op">=</span> unet(inp, ts, encoder_hidden_states<span class="op">=</span>emb).sample.chunk(<span class="dv">3</span>)</span>
+<span id="cb33-18"><a href="#cb33-18" aria-hidden="true" tabindex="-1"></a>       </span>
+<span id="cb33-19"><a href="#cb33-19" aria-hidden="true" tabindex="-1"></a>        cs.append(torch.nn.functional.cosine_similarity(t, u).mean().item())</span>
+<span id="cb33-20"><a href="#cb33-20" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb33-21"><a href="#cb33-21" aria-hidden="true" tabindex="-1"></a>        orig_pred <span class="op">=</span> u <span class="op">+</span> g<span class="op">*</span>(t<span class="op">-</span>u)</span>
+<span id="cb33-22"><a href="#cb33-22" aria-hidden="true" tabindex="-1"></a>        pred <span class="op">=</span> u <span class="op">+</span> g<span class="op">*</span>(t<span class="op">-</span>u) <span class="op">+</span> <span class="fl">0.2</span><span class="op">*</span>o</span>
+<span id="cb33-23"><a href="#cb33-23" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb33-24"><a href="#cb33-24" aria-hidden="true" tabindex="-1"></a>        latents <span class="op">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
+<span id="cb33-25"><a href="#cb33-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-26"><a href="#cb33-26" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> torch.no_grad(): </span>
+<span id="cb33-27"><a href="#cb33-27" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> vae.decode(<span class="dv">1</span> <span class="op">/</span> <span class="fl">0.18215</span> <span class="op">*</span> latents).sample, cs, orig_pred, o</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:06:40.697288Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:06:40.696550Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:06:50.405769Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:06:50.405209Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:06:40.697264Z&quot;}" data-execution_count="74">
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>prompts <span class="op">=</span> [</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'a photograph of an astronaut riding a horse'</span></span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>images, cs, orig_pred, o <span class="op">=</span> mk_samples(prompts)</span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> img <span class="kw">in</span> images: display(mk_img(img))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_34/70226676.py:11: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"b5ea457b2b5e4de1b0920c602d2c1f0c","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-23-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-11"><img src="index_files/figure-html/cell-23-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:09:38.686134Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:09:38.685604Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:09:38.697326Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:09:38.696874Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:09:38.686112Z&quot;}" data-execution_count="77">
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>orig_pred.norm(), (<span class="fl">0.2</span><span class="op">*</span>o).norm()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="77">
+<pre><code>(tensor(98.5625, device='cuda:0', dtype=torch.float16),
+ tensor(19.9688, device='cuda:0', dtype=torch.float16))</code></pre>
+</div>
+</div>
+<p>Now that I’ve introduced text embeddings related to a real prompt with a similar magnitude as the random noise, it’s significantly impacting the image generation result! Which by the way looks super cool.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:11:32.752244Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:11:32.751970Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:11:42.393102Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:11:42.392538Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:11:32.752224Z&quot;}" data-execution_count="78">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>prompts <span class="op">=</span> [</span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'a drawing of a woman sitting on a park bench'</span></span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>images, cs, orig_pred, o <span class="op">=</span> mk_samples(prompts)</span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> img <span class="kw">in</span> images: display(mk_img(img))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_34/70226676.py:11: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"21adc3fa9c3945539e06f12484ec10c4","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-25-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-12"><img src="index_files/figure-html/cell-25-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:11:42.396726Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:11:42.396427Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:11:42.403700Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:11:42.402900Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:11:42.396701Z&quot;}" data-execution_count="79">
+<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>orig_pred.norm(), (<span class="fl">0.2</span><span class="op">*</span>o).norm()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="79">
+<pre><code>(tensor(110.1250, device='cuda:0', dtype=torch.float16),
+ tensor(22.0625, device='cuda:0', dtype=torch.float16))</code></pre>
+</div>
+</div>
+<p>I get a similar result using a different prompt.</p>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>I hesitate to make any strong conclusions about the diffusion process as I’ve spent only a couple dozen hours experimenting with stable diffusion, but do want to summarize my observations from these experiments:</p>
+<ul>
+<li><strong>Unconditioned and conditioned prompt UNet predictions are similar</strong>: this was seen by the (very) high cosine similarity between the two at each time step, with cosine similarity decreasing as the time step increased.</li>
+<li><strong>Small amounts of random noise doesn’t impact image generation</strong>: while the term “small” is relative, adding random noise that was 50% of the original guided prediction’s norm did not visibly alter the image. Even after adding random noise with the same magnitude as the original guided prediction, the generated image still maintained its core composition and structure.</li>
+<li><strong>Adding another prompt’s UNet predictions drastically changes the generated image</strong>: while random noise of the same magnitude did not impact the output image, adding UNet predictions for an unrelated prompt completely changes the color, features and structure of the image (while still maintaining some thematic elements).</li>
+</ul>
+<p>These observations make me wonder the following questions, that I’ll keep in mind throughout part 2 of the fastai course:</p>
+<ul>
+<li>Is the small difference in direction between <code>t</code> and <code>u</code> the reason we need relatively large guidance scale values? Is it also the reason why if the guidance scale is too large, we start losing structural features of the desired prompt/image?</li>
+<li>Does the fact that structured UNet predictions (as opposed to random noise) impact image generation significantly mean that UNet’s are not sensitive to random noise but are generally susceptible to structured data in the latent space? Why is that?</li>
+</ul>
+<p>I hope you enjoyed this blog post!</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<script>var lightboxQuarto = GLightbox({"selector":".lightbox","closeEffect":"zoom","descPosition":"bottom","openEffect":"zoom","loop":true});</script>
+
+
+
+</body></html>
