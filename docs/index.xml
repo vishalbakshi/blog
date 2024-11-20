@@ -10,7 +10,762 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.2.335</generator>
-<lastBuildDate>Tue, 19 Nov 2024 08:00:00 GMT</lastBuildDate>
+<lastBuildDate>Wed, 20 Nov 2024 08:00:00 GMT</lastBuildDate>
+<item>
+  <title>Implementing Negative Prompting for Stable Diffusion</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In Lesson 10 of the fastai course (Part 2) Jeremy assigns us the following homework assignment:</p>
+<blockquote class="blockquote">
+<p>try picking one of the extra tricks we learned about like image-to-image, or negative prompts; see if you can implement negative prompt in your version of this; or try doing image-to-image; try adding callbacks</p>
+</blockquote>
+<p>In this blog post I’ll implement negative prompting using the diffusion loop code provided in the course’s <a href="https://github.com/fastai/diffusion-nbs/blob/master/stable_diffusion.ipynb">Stable Diffusion with Diffusers</a> notebook.</p>
+<p>I’ll start by copy/pasting all of the boilerplate code provided in that notebook, and running it to make sure we get the desired images.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T13:14:20.374652Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T13:14:20.373985Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T13:14:36.112519Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T13:14:36.111792Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T13:14:20.374573Z&quot;}" data-execution_count="1">
+<details>
+<summary>Show setup</summary>
+<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="op" style="color: #5E5E5E;">!</span>pip install <span class="op" style="color: #5E5E5E;">-</span>qq diffusers transformers<span class="op" style="color: #5E5E5E;">==</span><span class="fl" style="color: #AD0000;">4.46.2</span></span>
+<span id="cb1-2"><span class="op" style="color: #5E5E5E;">!</span>pip install <span class="op" style="color: #5E5E5E;">-</span>qq pillow<span class="op" style="color: #5E5E5E;">==</span><span class="fl" style="color: #AD0000;">11.0.0</span></span>
+<span id="cb1-3"></span>
+<span id="cb1-4"><span class="im" style="color: #00769E;">from</span> diffusers <span class="im" style="color: #00769E;">import</span> LMSDiscreteScheduler, AutoencoderKL, UNet2DConditionModel, StableDiffusionPipeline</span>
+<span id="cb1-5"><span class="im" style="color: #00769E;">from</span> transformers <span class="im" style="color: #00769E;">import</span> CLIPTextModel, CLIPTokenizer</span>
+<span id="cb1-6"><span class="im" style="color: #00769E;">from</span> PIL <span class="im" style="color: #00769E;">import</span> Image</span>
+<span id="cb1-7"><span class="im" style="color: #00769E;">from</span> tqdm.auto <span class="im" style="color: #00769E;">import</span> tqdm</span>
+<span id="cb1-8"><span class="im" style="color: #00769E;">from</span> IPython.display <span class="im" style="color: #00769E;">import</span> display</span>
+<span id="cb1-9"><span class="im" style="color: #00769E;">import</span> torch, math</span>
+<span id="cb1-10"></span>
+<span id="cb1-11">tokenizer <span class="op" style="color: #5E5E5E;">=</span> CLIPTokenizer.from_pretrained(<span class="st" style="color: #20794D;">"openai/clip-vit-large-patch14"</span>, torch_dtype<span class="op" style="color: #5E5E5E;">=</span>torch.float16)</span>
+<span id="cb1-12">text_encoder <span class="op" style="color: #5E5E5E;">=</span> CLIPTextModel.from_pretrained(<span class="st" style="color: #20794D;">"openai/clip-vit-large-patch14"</span>, torch_dtype<span class="op" style="color: #5E5E5E;">=</span>torch.float16).to(<span class="st" style="color: #20794D;">"cuda"</span>)</span>
+<span id="cb1-13">vae <span class="op" style="color: #5E5E5E;">=</span> AutoencoderKL.from_pretrained(<span class="st" style="color: #20794D;">"stabilityai/sd-vae-ft-ema"</span>, torch_dtype<span class="op" style="color: #5E5E5E;">=</span>torch.float16).to(<span class="st" style="color: #20794D;">"cuda"</span>)</span>
+<span id="cb1-14">unet <span class="op" style="color: #5E5E5E;">=</span> UNet2DConditionModel.from_pretrained(<span class="st" style="color: #20794D;">"CompVis/stable-diffusion-v1-4"</span>, subfolder<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"unet"</span>, torch_dtype<span class="op" style="color: #5E5E5E;">=</span>torch.float16).to(<span class="st" style="color: #20794D;">"cuda"</span>)</span>
+<span id="cb1-15"></span>
+<span id="cb1-16">beta_start,beta_end <span class="op" style="color: #5E5E5E;">=</span> <span class="fl" style="color: #AD0000;">0.00085</span>,<span class="fl" style="color: #AD0000;">0.012</span></span>
+<span id="cb1-17">scheduler <span class="op" style="color: #5E5E5E;">=</span> LMSDiscreteScheduler(beta_start<span class="op" style="color: #5E5E5E;">=</span>beta_start, beta_end<span class="op" style="color: #5E5E5E;">=</span>beta_end, beta_schedule<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"scaled_linear"</span>, num_train_timesteps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1000</span>)</span>
+<span id="cb1-18"></span>
+<span id="cb1-19">height <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">512</span></span>
+<span id="cb1-20">width <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">512</span></span>
+<span id="cb1-21">num_inference_steps <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">70</span></span>
+<span id="cb1-22">guidance_scale <span class="op" style="color: #5E5E5E;">=</span> <span class="fl" style="color: #AD0000;">7.5</span></span>
+<span id="cb1-23">batch_size <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">1</span></span></code></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T13:15:35.161888Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T13:15:35.161676Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T13:15:35.166774Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T13:15:35.166240Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T13:15:35.161868Z&quot;}" data-execution_count="6">
+<details>
+<summary>Show stable diffusion implementation functions</summary>
+<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="kw" style="color: #003B4F;">def</span> text_enc(prompts, maxlen<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb2-2">    <span class="cf" style="color: #003B4F;">if</span> maxlen <span class="kw" style="color: #003B4F;">is</span> <span class="va" style="color: #111111;">None</span>: maxlen <span class="op" style="color: #5E5E5E;">=</span> tokenizer.model_max_length</span>
+<span id="cb2-3">    inp <span class="op" style="color: #5E5E5E;">=</span> tokenizer(prompts, padding<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"max_length"</span>, max_length<span class="op" style="color: #5E5E5E;">=</span>maxlen, truncation<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>, return_tensors<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"pt"</span>)</span>
+<span id="cb2-4">    <span class="cf" style="color: #003B4F;">return</span> text_encoder(inp.input_ids.to(<span class="st" style="color: #20794D;">"cuda"</span>))[<span class="dv" style="color: #AD0000;">0</span>].half()</span>
+<span id="cb2-5"></span>
+<span id="cb2-6"><span class="kw" style="color: #003B4F;">def</span> mk_img(t):</span>
+<span id="cb2-7">    image <span class="op" style="color: #5E5E5E;">=</span> (t<span class="op" style="color: #5E5E5E;">/</span><span class="dv" style="color: #AD0000;">2</span><span class="op" style="color: #5E5E5E;">+</span><span class="fl" style="color: #AD0000;">0.5</span>).clamp(<span class="dv" style="color: #AD0000;">0</span>,<span class="dv" style="color: #AD0000;">1</span>).detach().cpu().permute(<span class="dv" style="color: #AD0000;">1</span>, <span class="dv" style="color: #AD0000;">2</span>, <span class="dv" style="color: #AD0000;">0</span>).numpy()</span>
+<span id="cb2-8">    <span class="cf" style="color: #003B4F;">return</span> Image.fromarray((image<span class="op" style="color: #5E5E5E;">*</span><span class="dv" style="color: #AD0000;">255</span>).<span class="bu" style="color: null;">round</span>().astype(<span class="st" style="color: #20794D;">"uint8"</span>))</span>
+<span id="cb2-9"></span>
+<span id="cb2-10"><span class="kw" style="color: #003B4F;">def</span> mk_samples(prompts, g<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">7.5</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">100</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>):</span>
+<span id="cb2-11">    bs <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(prompts)</span>
+<span id="cb2-12">    text <span class="op" style="color: #5E5E5E;">=</span> text_enc(prompts)</span>
+<span id="cb2-13">    uncond <span class="op" style="color: #5E5E5E;">=</span> text_enc([<span class="st" style="color: #20794D;">""</span>] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
+<span id="cb2-14">    emb <span class="op" style="color: #5E5E5E;">=</span> torch.cat([uncond, text])</span>
+<span id="cb2-15">    <span class="cf" style="color: #003B4F;">if</span> seed: torch.manual_seed(seed)</span>
+<span id="cb2-16"></span>
+<span id="cb2-17">    latents <span class="op" style="color: #5E5E5E;">=</span> torch.randn((bs, unet.in_channels, height<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>, width<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>))</span>
+<span id="cb2-18">    scheduler.set_timesteps(steps)</span>
+<span id="cb2-19">    latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(<span class="st" style="color: #20794D;">"cuda"</span>).half() <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">15</span></span>
+<span id="cb2-20"></span>
+<span id="cb2-21">    <span class="cf" style="color: #003B4F;">for</span> i,ts <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">enumerate</span>(tqdm(scheduler.timesteps)):</span>
+<span id="cb2-22">        inp <span class="op" style="color: #5E5E5E;">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">2</span>), ts)</span>
+<span id="cb2-23">        <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): u,t <span class="op" style="color: #5E5E5E;">=</span> unet(inp, ts, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>emb).sample.chunk(<span class="dv" style="color: #AD0000;">2</span>)</span>
+<span id="cb2-24">        pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u)</span>
+<span id="cb2-25">        latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
+<span id="cb2-26"></span>
+<span id="cb2-27">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): <span class="cf" style="color: #003B4F;">return</span> vae.decode(<span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="fl" style="color: #AD0000;">0.18215</span> <span class="op" style="color: #5E5E5E;">*</span> latents).sample</span></code></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T13:15:35.284336Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T13:15:35.283889Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T13:15:35.286531Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T13:15:35.286084Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T13:15:35.284317Z&quot;}" data-execution_count="9">
+<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [</span>
+<span id="cb3-2">    <span class="st" style="color: #20794D;">'a photograph of an astronaut riding a horse'</span>,</span>
+<span id="cb3-3">    <span class="st" style="color: #20794D;">'an oil painting of an astronaut riding a horse in the style of grant wood'</span></span>
+<span id="cb3-4">]</span></code></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-19T12:34:39.165916Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-19T12:34:39.165708Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-19T12:34:39.658773Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-19T12:34:39.657968Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-19T12:34:39.165900Z&quot;}" data-outputid="860be359-1360-4bd1-d749-eb0c7e2d560e" data-execution_count="11">
+<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1">images <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts)</span>
+<span id="cb4-2"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-5-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-5-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-5-output-2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-5-output-2.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Looks good! These are the same two images generated in the course notebook.</p>
+</section>
+<section id="negative-prompting" class="level2">
+<h2 class="anchored" data-anchor-id="negative-prompting">Negative Prompting</h2>
+<p>What is negative prompting? I’ll illustrate an example using a stable diffusion pipeline:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T13:18:38.116844Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T13:18:38.116258Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T13:18:54.478222Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T13:18:54.477498Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T13:18:38.116822Z&quot;}" data-outputid="aa3bdd84-0d51-4564-e822-b8773ea00a8c">
+<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1">pipe <span class="op" style="color: #5E5E5E;">=</span> StableDiffusionPipeline.from_pretrained(<span class="st" style="color: #20794D;">"CompVis/stable-diffusion-v1-4"</span>, variant<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"fp16"</span>, torch_dtype<span class="op" style="color: #5E5E5E;">=</span>torch.float16).to(<span class="st" style="color: #20794D;">"cuda"</span>)</span></code></pre></div>
+</div>
+<p>Here is the generated image for the prompt “Labrador in the style of Vermeer”.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T13:19:15.442983Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T13:19:15.442422Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T13:19:24.962680Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T13:19:24.961826Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T13:19:15.442962Z&quot;}" data-outputid="938c2d81-ecf7-4107-f608-05c88a2bacc5" data-execution_count="14">
+<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1">torch.manual_seed(<span class="dv" style="color: #AD0000;">1000</span>)</span>
+<span id="cb6-2">prompt <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">"Labrador in the style of Vermeer"</span></span>
+<span id="cb6-3">pipe(prompt).images[<span class="dv" style="color: #AD0000;">0</span>]</span></code></pre></div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"7089c967c16241ecab32c9bfdcdffa4e","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-7-output-2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-7-output-2.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>And here’s the result after passing a negative prompt: “blue”</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-19T17:03:58.822479Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-19T17:03:58.822214Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-19T17:04:03.745114Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-19T17:04:03.744354Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-19T17:03:58.822462Z&quot;}" data-outputid="c8b56e58-436f-4284-b79f-bba36d2dcc93" data-execution_count="247">
+<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1">torch.manual_seed(<span class="dv" style="color: #AD0000;">1000</span>)</span>
+<span id="cb7-2">pipe(prompt, negative_prompt<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"blue"</span>).images[<span class="dv" style="color: #AD0000;">0</span>]</span></code></pre></div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"040efa5a85944f77b5b56cd8c9f0217c","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="247">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-8-output-2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-8-output-2.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Looking at these images side-by-side, without the negative prompt (left) and with the negative prompt (right) we see that with negative prompting, the blue hat and scarf are replaced with black ones. Additionally, the labrador’s eyes, snout, nose, ears and other features have also slightly changed.</p>
+<p>It’s important to note that not all seeds return such desired results. For example, here is another lab in the style of Vermeer, notice the blue head scarf.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T13:19:30.585836Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T13:19:30.585153Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T13:19:35.465990Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T13:19:35.465321Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T13:19:30.585812Z&quot;}" data-execution_count="15">
+<div class="sourceCode cell-code" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1">torch.manual_seed(<span class="dv" style="color: #AD0000;">100</span>)</span>
+<span id="cb8-2">pipe(prompt).images[<span class="dv" style="color: #AD0000;">0</span>]</span></code></pre></div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"64b2bb959946478a8d3edc51ab2884d8","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-9-output-2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-5"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-9-output-2.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>The negative prompt result does remove the blue from the image, but it also considerably changes other features of the image.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T13:21:03.285468Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T13:21:03.284801Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T13:21:08.145216Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T13:21:08.144417Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T13:21:03.285444Z&quot;}" data-execution_count="16">
+<div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1">torch.manual_seed(<span class="dv" style="color: #AD0000;">100</span>)</span>
+<span id="cb9-2">pipe(prompt, negative_prompt<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"blue"</span>).images[<span class="dv" style="color: #AD0000;">0</span>]</span></code></pre></div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"b959add04fd2484284ae01b7de41ea43","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="16">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-10-output-2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-6"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-10-output-2.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<section id="original-image" class="level3">
+<h3 class="anchored" data-anchor-id="original-image">Original Image</h3>
+<p>I’ll choose the following generated image as the baseline image, using the same prompt and number of steps as the stable diffusion <code>pipe</code> generation, but now using the code from Lesson 10:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-19T12:35:44.474000Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-19T12:35:44.473813Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-19T12:35:51.093056Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-19T12:35:51.092293Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-19T12:35:44.473985Z&quot;}" data-outputid="5e0e1e59-e350-41b5-aeeb-761f7123d87d" data-execution_count="15">
+<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [<span class="st" style="color: #20794D;">"Labrador in the style of Vermeer"</span>]</span>
+<span id="cb10-2">images <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">18</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>)</span>
+<span id="cb10-3"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_75/2343166050.py:8: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"410eca32d3a24bd8b803bb0b0b08d99d","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-11-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-7"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-11-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+</section>
+<section id="working-implementation-replace-u-with-n" class="level2">
+<h2 class="anchored" data-anchor-id="working-implementation-replace-u-with-n">Working Implementation: Replace <code>u</code> with <code>n</code></h2>
+<p>I tried out four different implementations of negative prompting. Three of them did not succeed but I did learn a lot from implementing them. I’ll go into detail into those approaches later on in this post. The working solution I came up with was relatively simpler than the first two implementations I attempted.</p>
+<p>In the diffusion loop, the following line of code is key:</p>
+<div class="sourceCode" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1">pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u)</span></code></pre></div>
+<p><code>u</code> is the “starting point” or “reference point” for our predicted noise. It represents some general noisy-image features. <code>t</code> is our desired direction, and <code>g</code> is the <em>guidance scale</em>, amplifying the difference between <code>t</code> and <code>u</code>. Overall, we are moving <em>away</em> from <code>u</code> and <em>towards</em> <code>t</code>.</p>
+<p>In this case, <code>u</code> is the UNet noise prediction given the unconditioned (empty string) prompt, and <code>t</code> is the UNet noise prediction given the desired prompt. Moving away from one prompt and moving towards another prompt sounded to me exactly like the goal of negative prompting. We want to move away from our negative prompt and towards our desired prompt. To implement this, I simply added a <code>negative_prompt</code> that defaults to an empty string (our unconditioned prompt scenario), passed this string to <code>text_enc</code> in the following line:</p>
+<div class="sourceCode" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1">uncond <span class="op" style="color: #5E5E5E;">=</span> text_enc([negative_prompt] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span></code></pre></div>
+<p>And otherwise kept the <code>mk_samples</code> code unchanged.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T13:42:35.080250Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T13:42:35.079703Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T13:42:35.085893Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T13:42:35.085160Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T13:42:35.080226Z&quot;}" data-execution_count="17">
+<details>
+<summary>Show modified <code>mk_samples</code> function</summary>
+<div class="sourceCode cell-code" id="cb14" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><span class="kw" style="color: #003B4F;">def</span> mk_samples(prompts, negative_prompt <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">""</span>, g<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">7.5</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">100</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>):</span>
+<span id="cb14-2">    bs <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(prompts)</span>
+<span id="cb14-3">    text <span class="op" style="color: #5E5E5E;">=</span> text_enc(prompts)</span>
+<span id="cb14-4">    uncond <span class="op" style="color: #5E5E5E;">=</span> text_enc([negative_prompt] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
+<span id="cb14-5">    emb <span class="op" style="color: #5E5E5E;">=</span> torch.cat([uncond, text])</span>
+<span id="cb14-6">    <span class="cf" style="color: #003B4F;">if</span> seed: torch.manual_seed(seed)</span>
+<span id="cb14-7"></span>
+<span id="cb14-8">    latents <span class="op" style="color: #5E5E5E;">=</span> torch.randn((bs, unet.in_channels, height<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>, width<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>))</span>
+<span id="cb14-9">    scheduler.set_timesteps(steps)</span>
+<span id="cb14-10">    latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(<span class="st" style="color: #20794D;">"cuda"</span>).half() <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">15</span></span>
+<span id="cb14-11"></span>
+<span id="cb14-12">    <span class="cf" style="color: #003B4F;">for</span> i,ts <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">enumerate</span>(tqdm(scheduler.timesteps)):</span>
+<span id="cb14-13">        inp <span class="op" style="color: #5E5E5E;">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">2</span>), ts)</span>
+<span id="cb14-14">        <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): u,t <span class="op" style="color: #5E5E5E;">=</span> unet(inp, ts, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>emb).sample.chunk(<span class="dv" style="color: #AD0000;">2</span>)</span>
+<span id="cb14-15">        pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u)</span>
+<span id="cb14-16">        latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
+<span id="cb14-17"></span>
+<span id="cb14-18">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): <span class="cf" style="color: #003B4F;">return</span> vae.decode(<span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="fl" style="color: #AD0000;">0.18215</span> <span class="op" style="color: #5E5E5E;">*</span> latents).sample</span></code></pre></div>
+</details>
+</div>
+<p>Here is the output of <code>mk_samples</code> with no <code>negative_prompt</code> specific, this is essentially our normal classifier-free guidance implementation:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T13:43:15.206765Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T13:43:15.205853Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T13:43:21.724905Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T13:43:21.724396Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T13:43:15.206740Z&quot;}" data-execution_count="18">
+<div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [<span class="st" style="color: #20794D;">"Labrador in the style of Vermeer"</span>]</span>
+<span id="cb15-2">images <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">18</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>)</span>
+<span id="cb15-3"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_52/3351458932.py:8: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"990740786383407cb2ab19c9a2788214","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-13-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-8"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-13-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>And here is the output with a <code>negative_prompt</code> provided:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T13:43:56.250945Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T13:43:56.250058Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T13:44:02.787863Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T13:44:02.787057Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T13:43:56.250913Z&quot;}" data-execution_count="19">
+<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [<span class="st" style="color: #20794D;">"Labrador in the style of Vermeer"</span>]</span>
+<span id="cb17-2">images <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts, negative_prompt<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"blue"</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">18</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>)</span>
+<span id="cb17-3"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_52/3351458932.py:8: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"ce08e817060046e2b88e3964f1f71f73","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-14-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-9"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-14-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>This results in a (somewhat) desired image: ✅ the blue clothing has been removed (and changed to black) but ❌ the image structure and composition has <em>considerably</em> changed.</p>
+<p>I found a seed (<code>20</code>) which performs better. Here is the original unconditioned prompt result:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T13:48:00.375698Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T13:48:00.375138Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T13:48:06.924758Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T13:48:06.924141Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T13:48:00.375676Z&quot;}" data-execution_count="21">
+<div class="sourceCode cell-code" id="cb19" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [<span class="st" style="color: #20794D;">"Labrador in the style of Vermeer"</span>]</span>
+<span id="cb19-2">images <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">20</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>)</span>
+<span id="cb19-3"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_52/3351458932.py:8: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"5a8d452064ff456fafbb283f050f10af","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-15-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-10"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-15-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>And here is the result after replacing the unconditioned prompt with the negative prompt <code>"blue"</code>:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T13:48:23.732941Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T13:48:23.732206Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T13:48:30.352189Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T13:48:30.350608Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T13:48:23.732910Z&quot;}" data-execution_count="22">
+<div class="sourceCode cell-code" id="cb21" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [<span class="st" style="color: #20794D;">"Labrador in the style of Vermeer"</span>]</span>
+<span id="cb21-2">images <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts, negative_prompt<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"blue"</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">20</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>)</span>
+<span id="cb21-3"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_52/3351458932.py:8: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"133d776d198f424cb8a2b93a73128c89","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-16-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-11"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-16-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>That’s much better! The dog does have a different pose (though a similar perspective), but the blue has been removed from the image.</p>
+<p>As a sanity check, I wanted to see how Huggingface implements negative prompting in the <code>diffusers</code> library. I was thrilled (and relieved) to see that they implement it similarly! In the <a href="https://github.com/huggingface/diffusers/blob/89e4d6219805975bd7d253a267e1951badc9f1c0/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py#L454"><code>StableDiffusionPipeline.encode_prompt</code> method</a> they simply assign the negative prompt tokens to the <code>uncond_tokens</code> variable:</p>
+<div class="sourceCode" id="cb23" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><span class="cf" style="color: #003B4F;">elif</span> <span class="bu" style="color: null;">isinstance</span>(negative_prompt, <span class="bu" style="color: null;">str</span>):</span>
+<span id="cb23-2">                uncond_tokens <span class="op" style="color: #5E5E5E;">=</span> [negative_prompt]</span></code></pre></div>
+<p>then they embed these tokens:</p>
+<div class="sourceCode" id="cb24" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"></span>
+<span id="cb24-2">negative_prompt_embeds <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.text_encoder(</span>
+<span id="cb24-3">                uncond_input.input_ids.to(device),</span>
+<span id="cb24-4">                attention_mask<span class="op" style="color: #5E5E5E;">=</span>attention_mask,</span>
+<span id="cb24-5">            )</span></code></pre></div>
+<p>And return them along with the desired prompt embeddings:</p>
+<div class="sourceCode" id="cb25" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><span class="cf" style="color: #003B4F;">return</span> prompt_embeds, negative_prompt_embeds</span></code></pre></div>
+<p>They then concatenate the desired and negative prompt embeddings:</p>
+<div class="sourceCode" id="cb26" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1">prompt_embeds <span class="op" style="color: #5E5E5E;">=</span> torch.cat([negative_prompt_embeds, prompt_embeds])</span></code></pre></div>
+<p>And in the diffusion loop they get the UNet predictions:</p>
+<div class="sourceCode" id="cb27" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1">noise_pred <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.unet(</span>
+<span id="cb27-2">    latent_model_input,</span>
+<span id="cb27-3">    t,</span>
+<span id="cb27-4">    encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>prompt_embeds,</span>
+<span id="cb27-5">    timestep_cond<span class="op" style="color: #5E5E5E;">=</span>timestep_cond,</span>
+<span id="cb27-6">    cross_attention_kwargs<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">self</span>.cross_attention_kwargs,</span>
+<span id="cb27-7">    added_cond_kwargs<span class="op" style="color: #5E5E5E;">=</span>added_cond_kwargs,</span>
+<span id="cb27-8">    return_dict<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">False</span>,</span>
+<span id="cb27-9">)[<span class="dv" style="color: #AD0000;">0</span>]</span></code></pre></div>
+<p>and perform classifier-free guidance (where <code>noise_pred_uncond</code> are the UNet predictions for the negative prompt):</p>
+<div class="sourceCode" id="cb28" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><span class="cf" style="color: #003B4F;">if</span> <span class="va" style="color: #111111;">self</span>.do_classifier_free_guidance:</span>
+<span id="cb28-2">    noise_pred_uncond, noise_pred_text <span class="op" style="color: #5E5E5E;">=</span> noise_pred.chunk(<span class="dv" style="color: #AD0000;">2</span>)</span>
+<span id="cb28-3">    noise_pred <span class="op" style="color: #5E5E5E;">=</span> noise_pred_uncond <span class="op" style="color: #5E5E5E;">+</span> <span class="va" style="color: #111111;">self</span>.guidance_scale <span class="op" style="color: #5E5E5E;">*</span> (noise_pred_text <span class="op" style="color: #5E5E5E;">-</span> noise_pred_uncond)</span></code></pre></div>
+</section>
+<section id="implementation-1-pred-u-gt-u-n" class="level2">
+<h2 class="anchored" data-anchor-id="implementation-1-pred-u-gt-u-n">Implementation 1: <code>pred = u + g*(t-u-n)</code></h2>
+<p>The first approach I tried was to modify the classifier-free guidance code from this:</p>
+<div class="sourceCode" id="cb29" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1">pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u)</span></code></pre></div>
+<p>to this:</p>
+<div class="sourceCode" id="cb30" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1">pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u<span class="op" style="color: #5E5E5E;">-</span>n)</span></code></pre></div>
+<p>My motivation for this was that this subtraction was analogous to “moving away from <code>n</code>”. In hindsight, this was a good first attempt and eventually led to (somewhat accidentally) implementing the correct solution as I was throwing things at the wall to see if they stuck.</p>
+<p>I modified <code>mk_samples</code> with the following changes:</p>
+<ul>
+<li>Create a separate text embeddings (<code>n_embs</code>) for the negative prompt.</li>
+<li>Concatenate <code>n_embs</code> to <code>uncond</code> and <code>text</code>.</li>
+<li>Multiply <code>[latents]</code> by <code>3</code> when passing it to the <code>scheduler</code> as we now have three embeddings.</li>
+<li><code>chunk</code> the UNet predictions into <code>3</code> instead of <code>2</code>.</li>
+<li>Replace <code>pred = u + g*(t-u-n)</code> with <code>pred = u + g*(t-u-n)</code>.</li>
+</ul>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T14:08:42.623455Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T14:08:42.623180Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T14:08:42.629180Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T14:08:42.628407Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T14:08:42.623435Z&quot;}" data-execution_count="23">
+<details>
+<summary>Show modified <code>mk_samples</code> function</summary>
+<div class="sourceCode cell-code" id="cb31" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><span class="kw" style="color: #003B4F;">def</span> mk_samples(prompts, negative_prompt <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">""</span>, g<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">7.5</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">100</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>):</span>
+<span id="cb31-2">    bs <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(prompts)</span>
+<span id="cb31-3">    text <span class="op" style="color: #5E5E5E;">=</span> text_enc(prompts)</span>
+<span id="cb31-4">    uncond <span class="op" style="color: #5E5E5E;">=</span> text_enc([<span class="st" style="color: #20794D;">""</span>] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
+<span id="cb31-5">    n_embs <span class="op" style="color: #5E5E5E;">=</span> text_enc([negative_prompt] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
+<span id="cb31-6">    emb <span class="op" style="color: #5E5E5E;">=</span> torch.cat([uncond, text, n_embs])</span>
+<span id="cb31-7">    <span class="cf" style="color: #003B4F;">if</span> seed: torch.manual_seed(seed)</span>
+<span id="cb31-8"></span>
+<span id="cb31-9">    latents <span class="op" style="color: #5E5E5E;">=</span> torch.randn((bs, unet.in_channels, height<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>, width<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>))</span>
+<span id="cb31-10">    scheduler.set_timesteps(steps)</span>
+<span id="cb31-11">    latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(<span class="st" style="color: #20794D;">"cuda"</span>).half() <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">15</span></span>
+<span id="cb31-12"></span>
+<span id="cb31-13">    <span class="cf" style="color: #003B4F;">for</span> i,ts <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">enumerate</span>(tqdm(scheduler.timesteps)):</span>
+<span id="cb31-14">        inp <span class="op" style="color: #5E5E5E;">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">3</span>), ts)</span>
+<span id="cb31-15">        <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): u,t,n <span class="op" style="color: #5E5E5E;">=</span> unet(inp, ts, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>emb).sample.chunk(<span class="dv" style="color: #AD0000;">3</span>)</span>
+<span id="cb31-16">        pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u<span class="op" style="color: #5E5E5E;">-</span>n)</span>
+<span id="cb31-17">        latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
+<span id="cb31-18"></span>
+<span id="cb31-19">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): <span class="cf" style="color: #003B4F;">return</span> vae.decode(<span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="fl" style="color: #AD0000;">0.18215</span> <span class="op" style="color: #5E5E5E;">*</span> latents).sample</span></code></pre></div>
+</details>
+</div>
+<p>Unfortunately, this resulted in garbled noise!</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T14:09:00.507997Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T14:09:00.507348Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T14:09:09.754026Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T14:09:09.753560Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T14:09:00.507973Z&quot;}" data-execution_count="24">
+<div class="sourceCode cell-code" id="cb32" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [<span class="st" style="color: #20794D;">"Labrador in the style of Vermeer"</span>]</span>
+<span id="cb32-2">images <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts, negative_prompt<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"blue"</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">20</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>)</span>
+<span id="cb32-3"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_52/3564900662.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"0a4c68f366f54538ba2786ffccc57d61","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-18-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-12"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-18-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="implementation-2-pred-u-g2t-u-n" class="level2">
+<h2 class="anchored" data-anchor-id="implementation-2-pred-u-g2t-u-n">Implementation 2: <code>pred = u + g*(2*t-u-n)</code></h2>
+<p>As I was experimenting with the above <code>mk_samples</code> implementation, I found some success multiplying <code>t</code> by a scalar factor.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T15:26:17.491283Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T15:26:17.490462Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T15:26:17.499121Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T15:26:17.498409Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T15:26:17.491246Z&quot;}" data-execution_count="72">
+<details>
+<summary>Show modified <code>mk_samples</code> function</summary>
+<div class="sourceCode cell-code" id="cb34" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><span class="kw" style="color: #003B4F;">def</span> mk_samples(prompts, negative_prompt <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">""</span>, g<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">7.5</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">100</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>):</span>
+<span id="cb34-2">    bs <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(prompts)</span>
+<span id="cb34-3">    text <span class="op" style="color: #5E5E5E;">=</span> text_enc(prompts)</span>
+<span id="cb34-4">    uncond <span class="op" style="color: #5E5E5E;">=</span> text_enc([<span class="st" style="color: #20794D;">""</span>] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
+<span id="cb34-5">    n_embs <span class="op" style="color: #5E5E5E;">=</span> text_enc([negative_prompt] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
+<span id="cb34-6">    emb <span class="op" style="color: #5E5E5E;">=</span> torch.cat([uncond, text, n_embs])</span>
+<span id="cb34-7">    <span class="cf" style="color: #003B4F;">if</span> seed: torch.manual_seed(seed)</span>
+<span id="cb34-8"></span>
+<span id="cb34-9">    latents <span class="op" style="color: #5E5E5E;">=</span> torch.randn((bs, unet.in_channels, height<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>, width<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>))</span>
+<span id="cb34-10">    scheduler.set_timesteps(steps)</span>
+<span id="cb34-11">    latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(<span class="st" style="color: #20794D;">"cuda"</span>).half() <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">15</span></span>
+<span id="cb34-12"></span>
+<span id="cb34-13">    <span class="cf" style="color: #003B4F;">for</span> i,ts <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">enumerate</span>(tqdm(scheduler.timesteps)):</span>
+<span id="cb34-14">        inp <span class="op" style="color: #5E5E5E;">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">3</span>), ts)</span>
+<span id="cb34-15">        <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): u,t,n <span class="op" style="color: #5E5E5E;">=</span> unet(inp, ts, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>emb).sample.chunk(<span class="dv" style="color: #AD0000;">3</span>)</span>
+<span id="cb34-16">        pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(<span class="dv" style="color: #AD0000;">2</span><span class="op" style="color: #5E5E5E;">*</span>t<span class="op" style="color: #5E5E5E;">-</span>u<span class="op" style="color: #5E5E5E;">-</span>n)</span>
+<span id="cb34-17">        latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
+<span id="cb34-18"></span>
+<span id="cb34-19">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): <span class="cf" style="color: #003B4F;">return</span> vae.decode(<span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="fl" style="color: #AD0000;">0.18215</span> <span class="op" style="color: #5E5E5E;">*</span> latents).sample</span></code></pre></div>
+</details>
+</div>
+<p>The resulting image, for both seeds <code>20</code> and <code>18</code>, are not bad! For <code>seed=20</code> the generated image looks coherent and similar to the structure and composition of the original image though the background still contains blue-ish tones,</p>
+<p>The result for <code>seed=18</code> in my opinion is actually better than the <code>pred = n + g*(t-n)</code> implementation! Although the dog’s pose has changed, the dog is no longer wearing a blue sweater (instead it’s black) and more importantly, this approach has not generated a woman standing next to him.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T14:12:14.040162Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T14:12:14.039683Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T14:12:23.273373Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T14:12:23.272871Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T14:12:14.040142Z&quot;}" data-execution_count="26">
+<div class="sourceCode cell-code" id="cb35" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [<span class="st" style="color: #20794D;">"Labrador in the style of Vermeer"</span>]</span>
+<span id="cb35-2">images <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts, negative_prompt<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"blue"</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">20</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>)</span>
+<span id="cb35-3"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_52/4112522131.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"dbb973e3579a4e2bb828cc786c3685e1","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-20-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-13"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-20-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T14:13:55.203241Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T14:13:55.202416Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T14:14:04.419841Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T14:14:04.419357Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T14:13:55.203217Z&quot;}" data-execution_count="27">
+<div class="sourceCode cell-code" id="cb37" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [<span class="st" style="color: #20794D;">"Labrador in the style of Vermeer"</span>]</span>
+<span id="cb37-2">images <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts, negative_prompt<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"blue"</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">18</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>)</span>
+<span id="cb37-3"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_52/4112522131.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"6db8899be6ae4b6e83ca269342c09207","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-21-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-14"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-21-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>I don’t understand the intuition behind why, but it seems like <code>2</code> is the magical factor for this implementation (in terms of generating somewhat stable images). Here’s a slightly different prompt:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T15:26:47.093243Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T15:26:47.092698Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T15:26:56.342350Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T15:26:56.341606Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T15:26:47.093222Z&quot;}" data-execution_count="74">
+<div class="sourceCode cell-code" id="cb39" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [<span class="st" style="color: #20794D;">"Cat in the style of Vermeer"</span>]</span>
+<span id="cb39-2">images <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts, negative_prompt<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"blue"</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">18</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>)</span>
+<span id="cb39-3"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_52/4112522131.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"62dfa61a9ebc4a8d810c38abb77c42e7","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-22-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-15"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-22-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>I was curious to see how the result changed given different values of the factor multiplying <code>t</code>. I tried 100 different factors, incrementing from <code>1</code> to <code>3</code>, for <code>seed=18</code>:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T14:19:24.940422Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T14:19:24.939716Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T14:19:24.945747Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T14:19:24.945123Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T14:19:24.940399Z&quot;}" data-execution_count="28">
+<details>
+<summary>Show modified <code>mk_samples</code> function</summary>
+<div class="sourceCode cell-code" id="cb41" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><span class="kw" style="color: #003B4F;">def</span> mk_samples(prompts, negative_prompt <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">""</span>, g<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">7.5</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">100</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>, t_factor<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>):</span>
+<span id="cb41-2">    bs <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(prompts)</span>
+<span id="cb41-3">    text <span class="op" style="color: #5E5E5E;">=</span> text_enc(prompts)</span>
+<span id="cb41-4">    uncond <span class="op" style="color: #5E5E5E;">=</span> text_enc([<span class="st" style="color: #20794D;">""</span>] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
+<span id="cb41-5">    n_embs <span class="op" style="color: #5E5E5E;">=</span> text_enc([negative_prompt] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
+<span id="cb41-6">    emb <span class="op" style="color: #5E5E5E;">=</span> torch.cat([uncond, text, n_embs])</span>
+<span id="cb41-7">    <span class="cf" style="color: #003B4F;">if</span> seed: torch.manual_seed(seed)</span>
+<span id="cb41-8"></span>
+<span id="cb41-9">    latents <span class="op" style="color: #5E5E5E;">=</span> torch.randn((bs, unet.in_channels, height<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>, width<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>))</span>
+<span id="cb41-10">    scheduler.set_timesteps(steps)</span>
+<span id="cb41-11">    latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(<span class="st" style="color: #20794D;">"cuda"</span>).half() <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">15</span></span>
+<span id="cb41-12"></span>
+<span id="cb41-13">    <span class="cf" style="color: #003B4F;">for</span> i,ts <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">enumerate</span>(tqdm(scheduler.timesteps)):</span>
+<span id="cb41-14">        inp <span class="op" style="color: #5E5E5E;">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">3</span>), ts)</span>
+<span id="cb41-15">        <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): u,t,n <span class="op" style="color: #5E5E5E;">=</span> unet(inp, ts, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>emb).sample.chunk(<span class="dv" style="color: #AD0000;">3</span>)</span>
+<span id="cb41-16">        pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t_factor<span class="op" style="color: #5E5E5E;">*</span>t<span class="op" style="color: #5E5E5E;">-</span>u<span class="op" style="color: #5E5E5E;">-</span>n)</span>
+<span id="cb41-17">        latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
+<span id="cb41-18"></span>
+<span id="cb41-19">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): <span class="cf" style="color: #003B4F;">return</span> vae.decode(<span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="fl" style="color: #AD0000;">0.18215</span> <span class="op" style="color: #5E5E5E;">*</span> latents).sample</span></code></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T14:20:22.377413Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T14:20:22.376502Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T14:36:59.198215Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T14:36:59.197350Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T14:20:22.377387Z&quot;}">
+<div class="sourceCode cell-code" id="cb42" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1">images <span class="op" style="color: #5E5E5E;">=</span> []</span>
+<span id="cb42-2">prompts <span class="op" style="color: #5E5E5E;">=</span> [<span class="st" style="color: #20794D;">"Labrador in the style of Vermeer"</span>]</span>
+<span id="cb42-3"><span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(<span class="dv" style="color: #AD0000;">100</span>):</span>
+<span id="cb42-4">  img <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts, negative_prompt<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"blue"</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">18</span>, t_factor<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">+</span> (i<span class="op" style="color: #5E5E5E;">+</span><span class="dv" style="color: #AD0000;">1</span>)<span class="op" style="color: #5E5E5E;">/</span><span class="dv" style="color: #AD0000;">50</span>)</span>
+<span id="cb42-5">  images.append(img)</span></code></pre></div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T14:40:58.390472Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T14:40:58.389392Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T14:40:58.490761Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T14:40:58.490012Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T14:40:58.390435Z&quot;}" data-execution_count="35">
+<div class="sourceCode cell-code" id="cb43" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><span class="im" style="color: #00769E;">from</span> PIL <span class="im" style="color: #00769E;">import</span> Image, ImageDraw, ImageFont</span>
+<span id="cb43-2">imgs <span class="op" style="color: #5E5E5E;">=</span> [mk_img(im.squeeze()) <span class="cf" style="color: #003B4F;">for</span> im <span class="kw" style="color: #003B4F;">in</span> images]</span>
+<span id="cb43-3"></span>
+<span id="cb43-4"><span class="cf" style="color: #003B4F;">for</span> i, image <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">enumerate</span>(imgs):</span>
+<span id="cb43-5">  font <span class="op" style="color: #5E5E5E;">=</span> ImageFont.load_default().font_variant(size<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">24</span>)</span>
+<span id="cb43-6">  draw <span class="op" style="color: #5E5E5E;">=</span> ImageDraw.Draw(image)</span>
+<span id="cb43-7">  text <span class="op" style="color: #5E5E5E;">=</span> <span class="ss" style="color: #20794D;">f"t_factor = </span><span class="sc" style="color: #5E5E5E;">{</span><span class="bu" style="color: null;">round</span>(<span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">+</span> (i<span class="op" style="color: #5E5E5E;">+</span><span class="dv" style="color: #AD0000;">1</span>)<span class="op" style="color: #5E5E5E;">/</span><span class="dv" style="color: #AD0000;">50</span>, <span class="dv" style="color: #AD0000;">2</span>)<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span></span>
+<span id="cb43-8">  bbox <span class="op" style="color: #5E5E5E;">=</span> draw.textbbox((<span class="dv" style="color: #AD0000;">10</span>, <span class="dv" style="color: #AD0000;">10</span>), text, font<span class="op" style="color: #5E5E5E;">=</span>font)  <span class="co" style="color: #5E5E5E;"># Get text boundaries</span></span>
+<span id="cb43-9">  draw.rectangle(bbox, fill<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'black'</span>)  <span class="co" style="color: #5E5E5E;"># Draw black background</span></span>
+<span id="cb43-10">  ImageDraw.Draw(image).text((<span class="dv" style="color: #AD0000;">10</span>, <span class="dv" style="color: #AD0000;">10</span>), text, font<span class="op" style="color: #5E5E5E;">=</span>font, fill<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"white"</span>)</span>
+<span id="cb43-11">    </span>
+<span id="cb43-12">imgs[<span class="dv" style="color: #AD0000;">0</span>].save(<span class="ss" style="color: #20794D;">f't_factor_18.gif'</span>, save_all<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>, append_images<span class="op" style="color: #5E5E5E;">=</span>imgs[<span class="dv" style="color: #AD0000;">1</span>:], duration<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">100</span>, loop<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>)</span></code></pre></div>
+</div>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="t_factor_18.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-16" title="t_factor GIF"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/t_factor_18.gif" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">t_factor GIF</figcaption><p></p>
+</figure>
+</div>
+<p>We can see that for a only a very small range of <code>t_factor</code> values (around 2.00) do we get a coherent image.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T14:46:30.057115Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T14:46:30.056426Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T14:46:30.061561Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T14:46:30.060836Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T14:46:30.057084Z&quot;}" data-execution_count="46">
+<div class="sourceCode cell-code" id="cb44" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><span class="kw" style="color: #003B4F;">def</span> image_grid(imgs, rows, cols):</span>
+<span id="cb44-2">    w,h <span class="op" style="color: #5E5E5E;">=</span> imgs[<span class="dv" style="color: #AD0000;">0</span>].size</span>
+<span id="cb44-3">    grid <span class="op" style="color: #5E5E5E;">=</span> Image.new(<span class="st" style="color: #20794D;">'RGB'</span>, size<span class="op" style="color: #5E5E5E;">=</span>(cols<span class="op" style="color: #5E5E5E;">*</span>w, rows<span class="op" style="color: #5E5E5E;">*</span>h))</span>
+<span id="cb44-4">    <span class="cf" style="color: #003B4F;">for</span> i, img <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">enumerate</span>(imgs): grid.paste(img, box<span class="op" style="color: #5E5E5E;">=</span>(i<span class="op" style="color: #5E5E5E;">%</span>cols<span class="op" style="color: #5E5E5E;">*</span>w, i<span class="op" style="color: #5E5E5E;">//</span>cols<span class="op" style="color: #5E5E5E;">*</span>h))</span>
+<span id="cb44-5">    <span class="cf" style="color: #003B4F;">return</span> grid</span></code></pre></div>
+</div>
+<p>In fact for only three <code>t_factor</code> values out 100 (2.00, 2.02, 2.04) does the diffusion loop generate coherent images, and only in one of those (2.00) does the composition and style match the desired prompt (“in the style of Vermeer”).</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T14:47:56.006600Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T14:47:56.005699Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T14:47:56.209978Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T14:47:56.209084Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T14:47:56.006567Z&quot;}" data-execution_count="50">
+<div class="sourceCode cell-code" id="cb45" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1">image_grid([imgs[i] <span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> [<span class="dv" style="color: #AD0000;">48</span>, <span class="dv" style="color: #AD0000;">49</span>, <span class="dv" style="color: #AD0000;">50</span>, <span class="dv" style="color: #AD0000;">51</span>, <span class="dv" style="color: #AD0000;">52</span>, <span class="dv" style="color: #AD0000;">53</span>]], <span class="dv" style="color: #AD0000;">2</span>, <span class="dv" style="color: #AD0000;">3</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="50">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-27-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-17"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-27-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="implementation-2-pred-u-gt-u-n_factorn" class="level2">
+<h2 class="anchored" data-anchor-id="implementation-2-pred-u-gt-u-n_factorn">Implementation 2: <code>pred = u + g*(t-u-n_factor*n)</code></h2>
+<p>With some success achieved with that implementation, I decided to try a variant: scaling <code>n</code>.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T14:52:10.435472Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T14:52:10.435105Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T14:52:10.442466Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T14:52:10.441411Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T14:52:10.435443Z&quot;}" data-execution_count="51">
+<details>
+<summary>Show modified <code>mk_samples</code> function</summary>
+<div class="sourceCode cell-code" id="cb46" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><span class="kw" style="color: #003B4F;">def</span> mk_samples(prompts, negative_prompt <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">""</span>, g<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">7.5</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">100</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>, n_factor<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">0.5</span>):</span>
+<span id="cb46-2">    bs <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(prompts)</span>
+<span id="cb46-3">    text <span class="op" style="color: #5E5E5E;">=</span> text_enc(prompts)</span>
+<span id="cb46-4">    uncond <span class="op" style="color: #5E5E5E;">=</span> text_enc([<span class="st" style="color: #20794D;">""</span>] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
+<span id="cb46-5">    n_embs <span class="op" style="color: #5E5E5E;">=</span> text_enc([negative_prompt] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
+<span id="cb46-6">    emb <span class="op" style="color: #5E5E5E;">=</span> torch.cat([uncond, text, n_embs])</span>
+<span id="cb46-7">    <span class="cf" style="color: #003B4F;">if</span> seed: torch.manual_seed(seed)</span>
+<span id="cb46-8"></span>
+<span id="cb46-9">    latents <span class="op" style="color: #5E5E5E;">=</span> torch.randn((bs, unet.in_channels, height<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>, width<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>))</span>
+<span id="cb46-10">    scheduler.set_timesteps(steps)</span>
+<span id="cb46-11">    latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(<span class="st" style="color: #20794D;">"cuda"</span>).half() <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">15</span></span>
+<span id="cb46-12"></span>
+<span id="cb46-13">    <span class="cf" style="color: #003B4F;">for</span> i,ts <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">enumerate</span>(tqdm(scheduler.timesteps)):</span>
+<span id="cb46-14">        inp <span class="op" style="color: #5E5E5E;">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">3</span>), ts)</span>
+<span id="cb46-15">        <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): u,t,n <span class="op" style="color: #5E5E5E;">=</span> unet(inp, ts, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>emb).sample.chunk(<span class="dv" style="color: #AD0000;">3</span>)</span>
+<span id="cb46-16">        pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u<span class="op" style="color: #5E5E5E;">-</span>n_factor<span class="op" style="color: #5E5E5E;">*</span>n)</span>
+<span id="cb46-17">        latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
+<span id="cb46-18"></span>
+<span id="cb46-19">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): <span class="cf" style="color: #003B4F;">return</span> vae.decode(<span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="fl" style="color: #AD0000;">0.18215</span> <span class="op" style="color: #5E5E5E;">*</span> latents).sample</span></code></pre></div>
+</details>
+</div>
+<p>However, with this approach, I found that only negligible values of <code>n_factor</code> produced coherent images, and <code>n</code>’s impact was so small that it did not remove any “blue” elements from the image.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T14:55:27.534266Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T14:55:27.534009Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T14:55:37.032108Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T14:55:37.031410Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T14:55:27.534248Z&quot;}" data-execution_count="60">
+<div class="sourceCode cell-code" id="cb47" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [<span class="st" style="color: #20794D;">"Labrador in the style of Vermeer"</span>]</span>
+<span id="cb47-2">images <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts, negative_prompt<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"blue"</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">18</span>, n_factor<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">0.005</span>)</span>
+<span id="cb47-3"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_52/989121822.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"4c5965cfc7044202badac4525473aeb6","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-29-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-18"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-29-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T14:55:41.183193Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T14:55:41.182598Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T14:55:50.782631Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T14:55:50.781841Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T14:55:41.183160Z&quot;}" data-execution_count="61">
+<div class="sourceCode cell-code" id="cb49" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [<span class="st" style="color: #20794D;">"Labrador in the style of Vermeer"</span>]</span>
+<span id="cb49-2">images <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts, negative_prompt<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"blue"</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">18</span>, n_factor<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">0.05</span>)</span>
+<span id="cb49-3"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_52/989121822.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"04664d9b0d4749f9b5f31a26d81f28ed","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-30-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-19"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-30-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="implementation-3-using-rejection-of-t-on-n" class="level2">
+<h2 class="anchored" data-anchor-id="implementation-3-using-rejection-of-t-on-n">Implementation 3: Using Rejection of <code>t</code> on <code>n</code></h2>
+<p>My final implementation was the result of a lengthy conversation with Claude where I explicitly asked it <em>not</em> to provide me with fully fleshed solutions to my prompts but to respond with probing questions based on first principles. This led me to a very engaging and interesting conversation where we explored and developed my intuition of vector geometry.</p>
+<p>The implementation I came up with was based on the concept of <em>rejection</em>. In the image from Wikipedia below, <img src="https://latex.codecogs.com/png.latex?a_2"> is the rejection of <img src="https://latex.codecogs.com/png.latex?a"> onto <img src="https://latex.codecogs.com/png.latex?b">. In other words, it’s the component of vector <img src="https://latex.codecogs.com/png.latex?a"> that is perpendicular to vector <img src="https://latex.codecogs.com/png.latex?b">. We want to move our noise predictions away from <code>n</code>—adding the component of <code>t</code> that is perpendicular to <code>n</code> seemed an intuitive implementation.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-20" title="Vector rejection"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/1.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Vector rejection</figcaption><p></p>
+</figure>
+</div>
+<p>In my sketch below, I visualize in a simplified 2-D space how adding to <code>t</code> a vector <code>p</code> perpendicular to <code>n</code> moves it away from it.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-21" title="Moving t away from n with p"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/2.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Moving <code>t</code> away from <code>n</code> with <code>p</code></figcaption><p></p>
+</figure>
+</div>
+<p>The implementation of rejection between two vectors <code>t</code> and <code>n</code> (thanks Claude) is:</p>
+<div class="sourceCode" id="cb51" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1">p <span class="op" style="color: #5E5E5E;">=</span> t <span class="op" style="color: #5E5E5E;">-</span> (t <span class="op" style="color: #5E5E5E;">*</span> n).<span class="bu" style="color: null;">sum</span>(dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>, keepdim<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>) <span class="op" style="color: #5E5E5E;">*</span> n</span></code></pre></div>
+<p>Here’s a trivial example showing that the full vector <code>a</code> is the perpendicular component to the orthogonal <code>b</code>:</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T15:15:00.669025Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T15:15:00.668760Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T15:15:00.676422Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T15:15:00.675610Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T15:15:00.669007Z&quot;}" data-execution_count="64">
+<div class="sourceCode cell-code" id="cb52" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1">a <span class="op" style="color: #5E5E5E;">=</span> torch.tensor([[<span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">0</span>]])</span>
+<span id="cb52-2">b <span class="op" style="color: #5E5E5E;">=</span> torch.tensor([[<span class="dv" style="color: #AD0000;">1</span>, <span class="dv" style="color: #AD0000;">1</span>, <span class="dv" style="color: #AD0000;">1</span>]])</span>
+<span id="cb52-3">a <span class="op" style="color: #5E5E5E;">-</span> (a <span class="op" style="color: #5E5E5E;">*</span> b).<span class="bu" style="color: null;">sum</span>(dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>, keepdim<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>) <span class="op" style="color: #5E5E5E;">*</span> b</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="64">
+<pre><code>tensor([[0, 0, 0]])</code></pre>
+</div>
+</div>
+<p>Here’s the modifications I made to <code>mk_samples</code>:</p>
+<ul>
+<li>Calculate the rejection of <code>t</code> onto <code>n</code>: <code>p = t - (t * n).sum(dim=1, keepdim=True) * n</code>.</li>
+<li>Add this vector (scaled) to the noise prediction: <code>pred = u + g*(t-u) + g2*p</code>.</li>
+</ul>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T15:18:26.908117Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T15:18:26.907527Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T15:18:26.914087Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T15:18:26.913402Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T15:18:26.908096Z&quot;}" data-execution_count="68">
+<details>
+<summary>Show modified <code>mk_samples</code> function</summary>
+<div class="sourceCode cell-code" id="cb54" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><span class="kw" style="color: #003B4F;">def</span> mk_samples(prompts, negative_prompt <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">""</span>, g<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">7.5</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">100</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>, g2<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>):</span>
+<span id="cb54-2">    bs <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(prompts)</span>
+<span id="cb54-3">    text <span class="op" style="color: #5E5E5E;">=</span> text_enc(prompts)</span>
+<span id="cb54-4">    uncond <span class="op" style="color: #5E5E5E;">=</span> text_enc([<span class="st" style="color: #20794D;">""</span>] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
+<span id="cb54-5">    n_embs <span class="op" style="color: #5E5E5E;">=</span> text_enc([negative_prompt] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
+<span id="cb54-6">    emb <span class="op" style="color: #5E5E5E;">=</span> torch.cat([uncond, text, n_embs])</span>
+<span id="cb54-7">    <span class="cf" style="color: #003B4F;">if</span> seed: torch.manual_seed(seed)</span>
+<span id="cb54-8"></span>
+<span id="cb54-9">    latents <span class="op" style="color: #5E5E5E;">=</span> torch.randn((bs, unet.in_channels, height<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>, width<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>))</span>
+<span id="cb54-10">    scheduler.set_timesteps(steps)</span>
+<span id="cb54-11">    latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(<span class="st" style="color: #20794D;">"cuda"</span>).half() <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">15</span></span>
+<span id="cb54-12"></span>
+<span id="cb54-13">    <span class="cf" style="color: #003B4F;">for</span> i,ts <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">enumerate</span>(tqdm(scheduler.timesteps)):</span>
+<span id="cb54-14">        inp <span class="op" style="color: #5E5E5E;">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">3</span>), ts)</span>
+<span id="cb54-15">        <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): u,t,n <span class="op" style="color: #5E5E5E;">=</span> unet(inp, ts, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>emb).sample.chunk(<span class="dv" style="color: #AD0000;">3</span>)</span>
+<span id="cb54-16">        </span>
+<span id="cb54-17">        p <span class="op" style="color: #5E5E5E;">=</span> t <span class="op" style="color: #5E5E5E;">-</span> (t <span class="op" style="color: #5E5E5E;">*</span> n).<span class="bu" style="color: null;">sum</span>(dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>, keepdim<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>) <span class="op" style="color: #5E5E5E;">*</span> n</span>
+<span id="cb54-18">        </span>
+<span id="cb54-19">        pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u) <span class="op" style="color: #5E5E5E;">+</span> g2<span class="op" style="color: #5E5E5E;">*</span>p</span>
+<span id="cb54-20">        latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
+<span id="cb54-21"></span>
+<span id="cb54-22">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): <span class="cf" style="color: #003B4F;">return</span> vae.decode(<span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="fl" style="color: #AD0000;">0.18215</span> <span class="op" style="color: #5E5E5E;">*</span> latents).sample</span></code></pre></div>
+</details>
+</div>
+<p>On paper this seemed like an interesting approach but I found that only small values of <code>g2</code> allowed for coherent image generation, and even then, it did not remove any “blue” components.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T15:19:01.506812Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T15:19:01.506042Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T15:19:10.789727Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T15:19:10.789014Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T15:19:01.506787Z&quot;}" data-execution_count="71">
+<div class="sourceCode cell-code" id="cb55" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [<span class="st" style="color: #20794D;">"Labrador in the style of Vermeer"</span>]</span>
+<span id="cb55-2">images <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts, negative_prompt<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"blue"</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">18</span>, g2<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">0.001</span>)</span>
+<span id="cb55-3"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/tmp/ipykernel_52/3545698243.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
+  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<script type="application/vnd.jupyter.widget-view+json">
+{"model_id":"5d147460f31c4e08a92070a5fe5e7114","version_major":2,"version_minor":0}
+</script>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-33-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-22"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index_files/figure-html/cell-33-output-3.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>Working on these small, relatively contained stable diffusion experiments has been really fun and informative. On one hand, it’s broken some of the “mystique” around diffusion, as I’m able to change and somewhat control image generation with a few lines of code. On the other hand, it’s given a deeper insight into how mercurial and sensitive, and sometimes counterintuitive, the diffusion loop can be.</p>
+<p>For negative prompting, the simplest implementation was the most stable one. Swapping the unconditioned prompt with the negative prompt allows for seemingly guaranteed coherent image generation (although I’m sure there will be prompts that would break it!). That being said, I found that <code>pred = u+g*(2*t-u-n)</code> yielded a better image generation for <code>seed=18</code> at the cost of a high level of difficulty (or chance in my case) of finding the right factor to multiply <code>t</code> with.</p>
+<p>In the coming blog posts, I’ll be implementing other diffusion tricks, such as image-to-image generation and callbacks.</p>
+
+
+</section>
+
+ ]]></description>
+  <category>python</category>
+  <category>stable diffusion</category>
+  <category>fastai</category>
+  <category>deep learning</category>
+  <category>machine learning</category>
+  <category>generative AI</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index.html</guid>
+  <pubDate>Wed, 20 Nov 2024 08:00:00 GMT</pubDate>
+  <media:content url="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/t_factor_18.gif" medium="image" type="image/gif"/>
+</item>
 <item>
   <title>Exploring Cosine Similarity in Stable Diffusion’s Latent Space</title>
   <dc:creator>Vishal Bakshi</dc:creator>
@@ -28578,450 +29333,6 @@ Chapter 13: True</code></pre>
   <category>deep learning</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2024-09-03-random-numbers/index.html</guid>
   <pubDate>Tue, 03 Sep 2024 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>Implementing a Matrix Class in Python</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2024-09-02-matrix-class/index.html</link>
-  <description><![CDATA[ 
-
-
-
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<p>In <a href="https://youtu.be/6StU6UtZEbU?feature=shared&amp;t=4793">Lesson 10 of the fastai course (Part 2)</a> Jeremy introduces the following <code>Matrix</code> class to allow for PyTorch- and NumPy-like indexing into a Python <code>list</code>:</p>
-<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="kw" style="color: #003B4F;">class</span> Matrix:</span>
-<span id="cb1-2">  <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, xs): <span class="va" style="color: #111111;">self</span>.xs <span class="op" style="color: #5E5E5E;">=</span> xs</span>
-<span id="cb1-3">  <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__getitem__</span>(<span class="va" style="color: #111111;">self</span>, idxs): <span class="cf" style="color: #003B4F;">return</span> <span class="va" style="color: #111111;">self</span>.xs[idxs[<span class="dv" style="color: #AD0000;">0</span>]][idxs[<span class="dv" style="color: #AD0000;">1</span>]]</span></code></pre></div>
-<p>In this notebook, I’ll expand this class to add the following methods to further mimic NumPy arrays:</p>
-<ul>
-<li>A <code>__repr__</code> method which returns a displayable/printable representation of the <code>Matrix</code></li>
-<li>A <code>shape</code> method which displays the shape of the <code>Matrix</code>.</li>
-<li>A <code>min</code> method</li>
-<li>A <code>max</code> method</li>
-</ul>
-<div class="cell" data-execution_count="1">
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="im" style="color: #00769E;">import</span> numpy <span class="im" style="color: #00769E;">as</span> np</span></code></pre></div>
-</div>
-</section>
-<section id="expanding-the-matrix-class" class="level2">
-<h2 class="anchored" data-anchor-id="expanding-the-matrix-class">Expanding the <code>Matrix</code> Class</h2>
-<p>I’ll start by defining the <code>Matrix</code> class as done in Lesson 10 and instantiating a <code>Matrix</code> object:</p>
-<div class="cell" data-execution_count="2">
-<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="kw" style="color: #003B4F;">class</span> Matrix:</span>
-<span id="cb3-2">  <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, xs): <span class="va" style="color: #111111;">self</span>.xs <span class="op" style="color: #5E5E5E;">=</span> xs</span>
-<span id="cb3-3">  <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__getitem__</span>(<span class="va" style="color: #111111;">self</span>, idxs): <span class="cf" style="color: #003B4F;">return</span> <span class="va" style="color: #111111;">self</span>.xs[idxs[<span class="dv" style="color: #AD0000;">0</span>]][idxs[<span class="dv" style="color: #AD0000;">1</span>]]</span></code></pre></div>
-</div>
-<div class="cell" data-execution_count="3">
-<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1">lst1 <span class="op" style="color: #5E5E5E;">=</span> [</span>
-<span id="cb4-2">    [<span class="dv" style="color: #AD0000;">1</span>, <span class="dv" style="color: #AD0000;">2</span>, <span class="dv" style="color: #AD0000;">3</span>],</span>
-<span id="cb4-3">    [<span class="dv" style="color: #AD0000;">4</span>, <span class="dv" style="color: #AD0000;">5</span>, <span class="dv" style="color: #AD0000;">6</span>]</span>
-<span id="cb4-4">]</span></code></pre></div>
-</div>
-<div class="cell" data-execution_count="4">
-<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1">m <span class="op" style="color: #5E5E5E;">=</span> Matrix(lst1)</span></code></pre></div>
-</div>
-<p>I’ll illustrate the <code>__getitem__</code> method:</p>
-<div class="cell" data-outputid="408f4a49-4622-4f39-db5c-380fe0899e8b" data-execution_count="5">
-<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1">m[<span class="dv" style="color: #AD0000;">1</span>,<span class="dv" style="color: #AD0000;">2</span>]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="5">
-<pre><code>6</code></pre>
-</div>
-</div>
-<section id="adding-a-__repr__-method" class="level3">
-<h3 class="anchored" data-anchor-id="adding-a-__repr__-method">Adding a <code>__repr__</code> Method</h3>
-<p>Currently when I print out the <code>Matrix</code> object, it just shows a default object representation. From the Python docs:</p>
-<blockquote class="blockquote">
-<p>Called by the repr() built-in function to compute the “official” string representation of an object. If at all possible, this should look like a valid Python expression that could be used to recreate an object with the same value (given an appropriate environment). If this is not possible, a string of the form &lt;…some useful description…&gt; should be returned. The return value must be a string object.</p>
-</blockquote>
-<div class="cell" data-outputid="9525b4a1-0ba2-4e97-838c-b6d6af834481" data-execution_count="6">
-<div class="sourceCode cell-code" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1">m</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="6">
-<pre><code>&lt;__main__.Matrix at 0x7ce8aeae24d0&gt;</code></pre>
-</div>
-</div>
-<p>NumPy has a prettier object representation:</p>
-<div class="cell" data-outputid="37708ab6-4ded-46b1-ca7a-ddcf79c53f97" data-execution_count="7">
-<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1">arr <span class="op" style="color: #5E5E5E;">=</span> np.array(lst1)</span>
-<span id="cb10-2">arr</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="7">
-<pre><code>array([[1, 2, 3],
-       [4, 5, 6]])</code></pre>
-</div>
-</div>
-<p>I’ll add a <code>__repr__</code> method that does that (thanks Claude and ChatGPT!):</p>
-<div class="cell" data-execution_count="8">
-<div class="sourceCode cell-code" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><span class="kw" style="color: #003B4F;">class</span> Matrix:</span>
-<span id="cb12-2">  <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, xs): <span class="va" style="color: #111111;">self</span>.xs <span class="op" style="color: #5E5E5E;">=</span> xs</span>
-<span id="cb12-3">  <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__getitem__</span>(<span class="va" style="color: #111111;">self</span>, idxs): <span class="cf" style="color: #003B4F;">return</span> <span class="va" style="color: #111111;">self</span>.xs[idxs[<span class="dv" style="color: #AD0000;">0</span>]][idxs[<span class="dv" style="color: #AD0000;">1</span>]]</span>
-<span id="cb12-4">  <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__repr__</span>(<span class="va" style="color: #111111;">self</span>):</span>
-<span id="cb12-5">        <span class="co" style="color: #5E5E5E;"># Convert each element to string</span></span>
-<span id="cb12-6">        str_matrix <span class="op" style="color: #5E5E5E;">=</span> [[<span class="bu" style="color: null;">str</span>(elem) <span class="cf" style="color: #003B4F;">for</span> elem <span class="kw" style="color: #003B4F;">in</span> row] <span class="cf" style="color: #003B4F;">for</span> row <span class="kw" style="color: #003B4F;">in</span> <span class="va" style="color: #111111;">self</span>.xs]</span>
-<span id="cb12-7"></span>
-<span id="cb12-8">        <span class="co" style="color: #5E5E5E;"># Compute max column widths</span></span>
-<span id="cb12-9">        col_widths <span class="op" style="color: #5E5E5E;">=</span> [<span class="bu" style="color: null;">max</span>(<span class="bu" style="color: null;">map</span>(<span class="bu" style="color: null;">len</span>, col)) <span class="cf" style="color: #003B4F;">for</span> col <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(<span class="op" style="color: #5E5E5E;">*</span>str_matrix)]</span>
-<span id="cb12-10"></span>
-<span id="cb12-11">        <span class="co" style="color: #5E5E5E;"># Format each row with proper padding</span></span>
-<span id="cb12-12">        formatted_rows <span class="op" style="color: #5E5E5E;">=</span> (</span>
-<span id="cb12-13">            <span class="st" style="color: #20794D;">'['</span> <span class="op" style="color: #5E5E5E;">+</span> <span class="st" style="color: #20794D;">', '</span>.join(elem.rjust(width) <span class="cf" style="color: #003B4F;">for</span> elem, width <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(row, col_widths)) <span class="op" style="color: #5E5E5E;">+</span> <span class="st" style="color: #20794D;">']'</span></span>
-<span id="cb12-14">            <span class="cf" style="color: #003B4F;">for</span> row <span class="kw" style="color: #003B4F;">in</span> str_matrix</span>
-<span id="cb12-15">        )</span>
-<span id="cb12-16"></span>
-<span id="cb12-17">        <span class="co" style="color: #5E5E5E;"># Join rows with newline and proper indentation</span></span>
-<span id="cb12-18">        matrix_str <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">',</span><span class="ch" style="color: #20794D;">\n</span><span class="st" style="color: #20794D;">        '</span>.join(formatted_rows)</span>
-<span id="cb12-19"></span>
-<span id="cb12-20">        <span class="co" style="color: #5E5E5E;"># Add the class name and wrapping brackets</span></span>
-<span id="cb12-21">        <span class="cf" style="color: #003B4F;">return</span> <span class="ss" style="color: #20794D;">f"Matrix([</span><span class="sc" style="color: #5E5E5E;">{</span>matrix_str<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">])"</span></span></code></pre></div>
-</div>
-<p>That looks much prettier! Albeit a lot more code in the class definition.</p>
-<div class="cell" data-outputid="d30ff6a5-e064-4a66-a5ac-da58579ba65f" data-execution_count="9">
-<div class="sourceCode cell-code" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1">m <span class="op" style="color: #5E5E5E;">=</span> Matrix(lst1)</span>
-<span id="cb13-2">m</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="9">
-<pre><code>Matrix([[1, 2, 3],
-        [4, 5, 6]])</code></pre>
-</div>
-</div>
-<p>I’ll walk through each line in this <code>__repr__</code> method. We start with a nested list comprehension with maintains the nested list structure of <code>self.xs</code> but replaces the values with strings:</p>
-<div class="cell" data-outputid="a1679f74-4cf6-4503-8c7d-b6d7523d70d4" data-execution_count="10">
-<div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1">str_matrix <span class="op" style="color: #5E5E5E;">=</span> [[<span class="bu" style="color: null;">str</span>(elem) <span class="cf" style="color: #003B4F;">for</span> elem <span class="kw" style="color: #003B4F;">in</span> row] <span class="cf" style="color: #003B4F;">for</span> row <span class="kw" style="color: #003B4F;">in</span> m.xs]</span>
-<span id="cb15-2">str_matrix</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="10">
-<pre><code>[['1', '2', '3'], ['4', '5', '6']]</code></pre>
-</div>
-</div>
-<p>To determine the “width” of each column, the following list comprehension does the following:</p>
-<ul>
-<li>Transpose <code>str_matrix</code> with <code>zip(*str_matrix)</code></li>
-<li>Calculate the number of characters in each column with <code>map(len, col)</code></li>
-<li>Return the maximum length of each value in each column with <code>max()</code></li>
-</ul>
-<div class="cell" data-outputid="b8c2bfa6-0fbd-481b-aa4f-abe5c6767874" data-execution_count="11">
-<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1">col_widths <span class="op" style="color: #5E5E5E;">=</span> [<span class="bu" style="color: null;">max</span>(<span class="bu" style="color: null;">map</span>(<span class="bu" style="color: null;">len</span>, col)) <span class="cf" style="color: #003B4F;">for</span> col <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(<span class="op" style="color: #5E5E5E;">*</span>str_matrix)]</span>
-<span id="cb17-2">col_widths</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="11">
-<pre><code>[1, 1, 1]</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="dd3f1583-f640-429d-94b2-60a487e3e946" data-execution_count="12">
-<div class="sourceCode cell-code" id="cb19" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><span class="bu" style="color: null;">list</span>(<span class="bu" style="color: null;">zip</span>(<span class="op" style="color: #5E5E5E;">*</span>str_matrix)) <span class="co" style="color: #5E5E5E;"># transposed matrix</span></span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="12">
-<pre><code>[('1', '4'), ('2', '5'), ('3', '6')]</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="d4be1488-851d-42b2-f105-16820dc525cf" data-execution_count="13">
-<div class="sourceCode cell-code" id="cb21" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1">[<span class="bu" style="color: null;">list</span>(<span class="bu" style="color: null;">map</span>(<span class="bu" style="color: null;">len</span>, col)) <span class="cf" style="color: #003B4F;">for</span> col <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(<span class="op" style="color: #5E5E5E;">*</span>str_matrix)] <span class="co" style="color: #5E5E5E;"># width of each value in each column</span></span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="13">
-<pre><code>[[1, 1], [1, 1], [1, 1]]</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="109fdea5-ad51-42b9-f170-1533d01e6cc1" data-execution_count="14">
-<div class="sourceCode cell-code" id="cb23" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1">[<span class="bu" style="color: null;">max</span>(<span class="bu" style="color: null;">map</span>(<span class="bu" style="color: null;">len</span>, col)) <span class="cf" style="color: #003B4F;">for</span> col <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(<span class="op" style="color: #5E5E5E;">*</span>str_matrix)] <span class="co" style="color: #5E5E5E;"># maximum width of each column value</span></span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="14">
-<pre><code>[1, 1, 1]</code></pre>
-</div>
-</div>
-<p>The next line is another nested list comprehension. We iterate over each <code>row</code> in <code>str_matrix</code> inside the <code>.join</code> call and then do the following:</p>
-<ul>
-<li><code>zip</code> together the <code>row</code> and the <code>col_widths</code> list and iterate over it</li>
-<li>for each <code>elem, width</code> in <code>zip(row, col_widths)</code> we call <code>elem.rjust(width)</code> which right-adjusts <code>elem</code> inside the given string <code>width</code>.</li>
-</ul>
-<p><code>formatted_rows</code> is a list of strings where each row is a string representation of each row in the <code>Matrix</code>:</p>
-<div class="cell" data-outputid="e7263a4c-9d43-49a5-9453-65a4e0a20c1b" data-execution_count="15">
-<div class="sourceCode cell-code" id="cb25" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1">formatted_rows <span class="op" style="color: #5E5E5E;">=</span> (</span>
-<span id="cb25-2">            <span class="st" style="color: #20794D;">'['</span> <span class="op" style="color: #5E5E5E;">+</span> <span class="st" style="color: #20794D;">', '</span>.join(elem.rjust(width) <span class="cf" style="color: #003B4F;">for</span> elem, width <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(row, col_widths)) <span class="op" style="color: #5E5E5E;">+</span> <span class="st" style="color: #20794D;">']'</span></span>
-<span id="cb25-3">            <span class="cf" style="color: #003B4F;">for</span> row <span class="kw" style="color: #003B4F;">in</span> str_matrix</span>
-<span id="cb25-4">        )</span>
-<span id="cb25-5"><span class="bu" style="color: null;">list</span>(formatted_rows)</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="15">
-<pre><code>['[1, 2, 3]', '[4, 5, 6]']</code></pre>
-</div>
-</div>
-<p>Building up the <code>formatted_rows</code> logic line by line:</p>
-<div class="cell" data-outputid="4939b022-a8bd-4394-c3a4-b16448f24a59" data-execution_count="16">
-<div class="sourceCode cell-code" id="cb27" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1">[row <span class="cf" style="color: #003B4F;">for</span> row <span class="kw" style="color: #003B4F;">in</span> str_matrix]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="16">
-<pre><code>[['1', '2', '3'], ['4', '5', '6']]</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="ec4bf253-9b2d-44e6-a8e0-3a95188502a0" data-execution_count="17">
-<div class="sourceCode cell-code" id="cb29" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1">[<span class="bu" style="color: null;">list</span>(((elem, width) <span class="cf" style="color: #003B4F;">for</span> elem, width <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(row, col_widths))) <span class="cf" style="color: #003B4F;">for</span> row <span class="kw" style="color: #003B4F;">in</span> str_matrix]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="17">
-<pre><code>[[('1', 1), ('2', 1), ('3', 1)], [('4', 1), ('5', 1), ('6', 1)]]</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="0c6c96c4-ebf6-44c6-9793-197570920efa" data-execution_count="18">
-<div class="sourceCode cell-code" id="cb31" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1">[<span class="bu" style="color: null;">list</span>((elem.rjust(width) <span class="cf" style="color: #003B4F;">for</span> elem, width <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(row, col_widths))) <span class="cf" style="color: #003B4F;">for</span> row <span class="kw" style="color: #003B4F;">in</span> str_matrix]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="18">
-<pre><code>[['1', '2', '3'], ['4', '5', '6']]</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="3b6e9a05-237e-4a9e-d0e4-30a8fe50c8df" data-execution_count="19">
-<div class="sourceCode cell-code" id="cb33" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1">[<span class="st" style="color: #20794D;">', '</span>.join(elem.rjust(width) <span class="cf" style="color: #003B4F;">for</span> elem, width <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(row, col_widths)) <span class="cf" style="color: #003B4F;">for</span> row <span class="kw" style="color: #003B4F;">in</span> str_matrix]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="19">
-<pre><code>['1, 2, 3', '4, 5, 6']</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="d431dde6-76bb-4044-fa54-29460b5bff13" data-execution_count="20">
-<div class="sourceCode cell-code" id="cb35" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1">[<span class="st" style="color: #20794D;">'['</span> <span class="op" style="color: #5E5E5E;">+</span> <span class="st" style="color: #20794D;">', '</span>.join(elem.rjust(width) <span class="cf" style="color: #003B4F;">for</span> elem, width <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(row, col_widths)) <span class="op" style="color: #5E5E5E;">+</span> <span class="st" style="color: #20794D;">']'</span> <span class="cf" style="color: #003B4F;">for</span> row <span class="kw" style="color: #003B4F;">in</span> str_matrix]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="20">
-<pre><code>['[1, 2, 3]', '[4, 5, 6]']</code></pre>
-</div>
-</div>
-<p>The final line add a new line for each row and indents it to make it print prettily. Note there are 8 spaces after the newline character <code>\n</code> for the 8 characters in the string <code>Matrix([</code>:</p>
-<div class="cell" data-outputid="c7699d3c-1791-4d1f-a561-c6f1fb04ce93" data-execution_count="21">
-<div class="sourceCode cell-code" id="cb37" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1">formatted_rows <span class="op" style="color: #5E5E5E;">=</span> (</span>
-<span id="cb37-2">            <span class="st" style="color: #20794D;">'['</span> <span class="op" style="color: #5E5E5E;">+</span> <span class="st" style="color: #20794D;">', '</span>.join(elem.rjust(width) <span class="cf" style="color: #003B4F;">for</span> elem, width <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(row, col_widths)) <span class="op" style="color: #5E5E5E;">+</span> <span class="st" style="color: #20794D;">']'</span></span>
-<span id="cb37-3">            <span class="cf" style="color: #003B4F;">for</span> row <span class="kw" style="color: #003B4F;">in</span> str_matrix</span>
-<span id="cb37-4">        )</span>
-<span id="cb37-5"></span>
-<span id="cb37-6">matrix_str <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">',</span><span class="ch" style="color: #20794D;">\n</span><span class="st" style="color: #20794D;">        '</span>.join(formatted_rows)</span>
-<span id="cb37-7"><span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"Matrix([</span><span class="sc" style="color: #5E5E5E;">{</span>matrix_str<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">])"</span>)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Matrix([[1, 2, 3],
-        [4, 5, 6]])</code></pre>
-</div>
-</div>
-<p>Testing out the <code>__repr__</code> method on a <code>Matrix</code> with a different size and different values (note the right-adjustment of the values):</p>
-<div class="cell" data-execution_count="22">
-<div class="sourceCode cell-code" id="cb39" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1">lst2 <span class="op" style="color: #5E5E5E;">=</span> [[<span class="dv" style="color: #AD0000;">1</span>, <span class="dv" style="color: #AD0000;">2</span>], [<span class="dv" style="color: #AD0000;">2</span>, <span class="dv" style="color: #AD0000;">30</span>], [<span class="dv" style="color: #AD0000;">4</span>, <span class="dv" style="color: #AD0000;">50</span>]]</span></code></pre></div>
-</div>
-<div class="cell" data-outputid="05dc958b-9c72-474e-ce4b-01f8db106f16" data-execution_count="23">
-<div class="sourceCode cell-code" id="cb40" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1">m <span class="op" style="color: #5E5E5E;">=</span> Matrix(lst2)</span>
-<span id="cb40-2">m</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="23">
-<pre><code>Matrix([[1,  2],
-        [2, 30],
-        [4, 50]])</code></pre>
-</div>
-</div>
-<p>Pretty! And pretty complicated.</p>
-</section>
-<section id="adding-a-shape-property" class="level3">
-<h3 class="anchored" data-anchor-id="adding-a-shape-property">Adding a <code>shape</code> Property</h3>
-<p>One of the most useful properties in PyTorch and NumPy is the <code>shape</code> of an array or tensor. I constantly use it throughout my coding to make sure I’m dealing with the appropriately shaped tensors and arrays.</p>
-<div class="cell" data-outputid="33c76862-2053-44e2-fa4d-7a500546afd7" data-execution_count="26">
-<div class="sourceCode cell-code" id="cb42" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1">np.array(lst2).shape</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="26">
-<pre><code>(3, 2)</code></pre>
-</div>
-</div>
-<p>I’ll implement a <code>shape</code> property for my <code>Matrix</code>:</p>
-<div class="cell" data-execution_count="27">
-<div class="sourceCode cell-code" id="cb44" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><span class="kw" style="color: #003B4F;">class</span> Matrix:</span>
-<span id="cb44-2">  <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, xs): <span class="va" style="color: #111111;">self</span>.xs <span class="op" style="color: #5E5E5E;">=</span> xs</span>
-<span id="cb44-3">  <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__getitem__</span>(<span class="va" style="color: #111111;">self</span>, idxs): <span class="cf" style="color: #003B4F;">return</span> <span class="va" style="color: #111111;">self</span>.xs[idxs[<span class="dv" style="color: #AD0000;">0</span>]][idxs[<span class="dv" style="color: #AD0000;">1</span>]]</span>
-<span id="cb44-4"></span>
-<span id="cb44-5">  <span class="at" style="color: #657422;">@property</span></span>
-<span id="cb44-6">  <span class="kw" style="color: #003B4F;">def</span> shape(<span class="va" style="color: #111111;">self</span>): <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">len</span>(<span class="va" style="color: #111111;">self</span>.xs), <span class="bu" style="color: null;">len</span>(<span class="va" style="color: #111111;">self</span>.xs[<span class="dv" style="color: #AD0000;">0</span>])</span>
-<span id="cb44-7"></span>
-<span id="cb44-8">  <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__repr__</span>(<span class="va" style="color: #111111;">self</span>):</span>
-<span id="cb44-9">        <span class="co" style="color: #5E5E5E;"># Convert each element to string</span></span>
-<span id="cb44-10">        str_matrix <span class="op" style="color: #5E5E5E;">=</span> [[<span class="bu" style="color: null;">str</span>(elem) <span class="cf" style="color: #003B4F;">for</span> elem <span class="kw" style="color: #003B4F;">in</span> row] <span class="cf" style="color: #003B4F;">for</span> row <span class="kw" style="color: #003B4F;">in</span> <span class="va" style="color: #111111;">self</span>.xs]</span>
-<span id="cb44-11"></span>
-<span id="cb44-12">        <span class="co" style="color: #5E5E5E;"># Compute max column widths</span></span>
-<span id="cb44-13">        col_widths <span class="op" style="color: #5E5E5E;">=</span> [<span class="bu" style="color: null;">max</span>(<span class="bu" style="color: null;">map</span>(<span class="bu" style="color: null;">len</span>, col)) <span class="cf" style="color: #003B4F;">for</span> col <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(<span class="op" style="color: #5E5E5E;">*</span>str_matrix)]</span>
-<span id="cb44-14"></span>
-<span id="cb44-15">        <span class="co" style="color: #5E5E5E;"># Format each row with proper padding</span></span>
-<span id="cb44-16">        formatted_rows <span class="op" style="color: #5E5E5E;">=</span> (</span>
-<span id="cb44-17">            <span class="st" style="color: #20794D;">'['</span> <span class="op" style="color: #5E5E5E;">+</span> <span class="st" style="color: #20794D;">', '</span>.join(elem.rjust(width) <span class="cf" style="color: #003B4F;">for</span> elem, width <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(row, col_widths)) <span class="op" style="color: #5E5E5E;">+</span> <span class="st" style="color: #20794D;">']'</span></span>
-<span id="cb44-18">            <span class="cf" style="color: #003B4F;">for</span> row <span class="kw" style="color: #003B4F;">in</span> str_matrix</span>
-<span id="cb44-19">        )</span>
-<span id="cb44-20"></span>
-<span id="cb44-21">        <span class="co" style="color: #5E5E5E;"># Join rows with newline and proper indentation</span></span>
-<span id="cb44-22">        matrix_str <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">',</span><span class="ch" style="color: #20794D;">\n</span><span class="st" style="color: #20794D;">        '</span>.join(formatted_rows)</span>
-<span id="cb44-23"></span>
-<span id="cb44-24">        <span class="co" style="color: #5E5E5E;"># Add the class name and wrapping brackets</span></span>
-<span id="cb44-25">        <span class="cf" style="color: #003B4F;">return</span> <span class="ss" style="color: #20794D;">f"Matrix([</span><span class="sc" style="color: #5E5E5E;">{</span>matrix_str<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">])"</span></span></code></pre></div>
-</div>
-<div class="cell" data-outputid="309c0b9c-c529-4f03-9764-d718fb7c5dd4" data-execution_count="28">
-<div class="sourceCode cell-code" id="cb45" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1">m <span class="op" style="color: #5E5E5E;">=</span> Matrix(lst2)</span>
-<span id="cb45-2">m</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="28">
-<pre><code>Matrix([[1,  2],
-        [2, 30],
-        [4, 50]])</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="649d9bc2-0f0f-49c1-e11b-b55dcde44e8e" data-execution_count="29">
-<div class="sourceCode cell-code" id="cb47" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1">m.shape</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="29">
-<pre><code>(3, 2)</code></pre>
-</div>
-</div>
-<p>Explaining my one-liner: since the <code>Matrix</code> is always going to be rectangular, the number of rows is the <code>len</code> of the list <code>xs</code> and the number of columns is the <code>len</code> of either of the rows.</p>
-<div class="cell" data-outputid="f7601b92-d4c9-4a8b-b465-7e8f69e2ef0b" data-execution_count="30">
-<div class="sourceCode cell-code" id="cb49" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><span class="bu" style="color: null;">len</span>(m.xs), <span class="bu" style="color: null;">len</span>(m.xs[<span class="dv" style="color: #AD0000;">0</span>])</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="30">
-<pre><code>(3, 2)</code></pre>
-</div>
-</div>
-<p>That’s it for the <code>shape</code> method! Simple.</p>
-</section>
-<section id="adding-a-min-and-max-method" class="level3">
-<h3 class="anchored" data-anchor-id="adding-a-min-and-max-method">Adding a <code>min</code> and <code>max</code> Method</h3>
-<p>The last pair of methods I’ll implement are a <code>min</code> and a <code>max</code> method similar to NumPy.</p>
-<div class="cell" data-outputid="a2179023-85ec-4e25-dc3a-ee365fc3db1c" data-execution_count="31">
-<div class="sourceCode cell-code" id="cb51" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1">arr <span class="op" style="color: #5E5E5E;">=</span> np.array(lst2)</span>
-<span id="cb51-2">arr</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="31">
-<pre><code>array([[ 1,  2],
-       [ 2, 30],
-       [ 4, 50]])</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="ca232b09-de8a-4d2d-b548-2cc1dd85162a" data-execution_count="32">
-<div class="sourceCode cell-code" id="cb53" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1">arr.<span class="bu" style="color: null;">min</span>()</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="32">
-<pre><code>1</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="b7f15fd8-fafe-4b9a-d6f5-6ab043b3acdc" data-execution_count="33">
-<div class="sourceCode cell-code" id="cb55" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1">arr.<span class="bu" style="color: null;">min</span>(axis<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="33">
-<pre><code>array([1, 2])</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="ae60a306-59ee-49e3-c4b0-d48e463d5be0" data-execution_count="34">
-<div class="sourceCode cell-code" id="cb57" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1">arr.<span class="bu" style="color: null;">min</span>(axis<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="34">
-<pre><code>array([1, 2, 4])</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="56143eaf-8333-41ec-9e84-bfde062453d1" data-execution_count="35">
-<div class="sourceCode cell-code" id="cb59" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1">arr.<span class="bu" style="color: null;">max</span>()</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="35">
-<pre><code>50</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="5394cde9-7b3c-4e7f-9eed-c677b50296ee" data-execution_count="36">
-<div class="sourceCode cell-code" id="cb61" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb61-1">arr.<span class="bu" style="color: null;">max</span>(axis<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="36">
-<pre><code>array([ 4, 50])</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="1b6a1b27-efc8-42db-8000-763f61dae6a2" data-execution_count="37">
-<div class="sourceCode cell-code" id="cb63" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1">arr.<span class="bu" style="color: null;">max</span>(axis<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="37">
-<pre><code>array([ 2, 30, 50])</code></pre>
-</div>
-</div>
-<div class="cell" data-execution_count="38">
-<div class="sourceCode cell-code" id="cb65" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><span class="im" style="color: #00769E;">from</span> itertools <span class="im" style="color: #00769E;">import</span> chain</span>
-<span id="cb65-2"></span>
-<span id="cb65-3"><span class="kw" style="color: #003B4F;">class</span> Matrix:</span>
-<span id="cb65-4">  <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, xs): <span class="va" style="color: #111111;">self</span>.xs <span class="op" style="color: #5E5E5E;">=</span> xs</span>
-<span id="cb65-5">  <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__getitem__</span>(<span class="va" style="color: #111111;">self</span>, idxs): <span class="cf" style="color: #003B4F;">return</span> <span class="va" style="color: #111111;">self</span>.xs[idxs[<span class="dv" style="color: #AD0000;">0</span>]][idxs[<span class="dv" style="color: #AD0000;">1</span>]]</span>
-<span id="cb65-6"></span>
-<span id="cb65-7">  <span class="at" style="color: #657422;">@property</span></span>
-<span id="cb65-8">  <span class="kw" style="color: #003B4F;">def</span> shape(<span class="va" style="color: #111111;">self</span>): <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">len</span>(<span class="va" style="color: #111111;">self</span>.xs), <span class="bu" style="color: null;">len</span>(<span class="va" style="color: #111111;">self</span>.xs[<span class="dv" style="color: #AD0000;">0</span>])</span>
-<span id="cb65-9"></span>
-<span id="cb65-10">  <span class="kw" style="color: #003B4F;">def</span> <span class="bu" style="color: null;">min</span>(<span class="va" style="color: #111111;">self</span>, axis<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
-<span id="cb65-11">    <span class="cf" style="color: #003B4F;">if</span> axis <span class="kw" style="color: #003B4F;">is</span> <span class="va" style="color: #111111;">None</span>: <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">min</span>(chain(<span class="op" style="color: #5E5E5E;">*</span><span class="va" style="color: #111111;">self</span>.xs))</span>
-<span id="cb65-12">    <span class="cf" style="color: #003B4F;">elif</span> axis <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">0</span>: <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">min</span>(<span class="va" style="color: #111111;">self</span>.xs)</span>
-<span id="cb65-13">    <span class="cf" style="color: #003B4F;">elif</span> axis <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">1</span>: <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">min</span>(<span class="bu" style="color: null;">zip</span>(<span class="op" style="color: #5E5E5E;">*</span><span class="va" style="color: #111111;">self</span>.xs))</span>
-<span id="cb65-14">    <span class="cf" style="color: #003B4F;">else</span>: <span class="cf" style="color: #003B4F;">raise</span> <span class="pp" style="color: #AD0000;">IndexError</span>(<span class="st" style="color: #20794D;">"Matrix only has two axes"</span>)</span>
-<span id="cb65-15"></span>
-<span id="cb65-16">  <span class="kw" style="color: #003B4F;">def</span> <span class="bu" style="color: null;">max</span>(<span class="va" style="color: #111111;">self</span>, axis<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
-<span id="cb65-17">    <span class="cf" style="color: #003B4F;">if</span> axis <span class="kw" style="color: #003B4F;">is</span> <span class="va" style="color: #111111;">None</span>: <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">max</span>(chain(<span class="op" style="color: #5E5E5E;">*</span><span class="va" style="color: #111111;">self</span>.xs))</span>
-<span id="cb65-18">    <span class="cf" style="color: #003B4F;">elif</span> axis <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">0</span>: <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">max</span>(<span class="va" style="color: #111111;">self</span>.xs)</span>
-<span id="cb65-19">    <span class="cf" style="color: #003B4F;">elif</span> axis <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">1</span>: <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">max</span>(<span class="bu" style="color: null;">zip</span>(<span class="op" style="color: #5E5E5E;">*</span><span class="va" style="color: #111111;">self</span>.xs))</span>
-<span id="cb65-20">    <span class="cf" style="color: #003B4F;">else</span>: <span class="cf" style="color: #003B4F;">raise</span> <span class="pp" style="color: #AD0000;">IndexError</span>(<span class="st" style="color: #20794D;">"Matrix only has two axes"</span>)</span>
-<span id="cb65-21"></span>
-<span id="cb65-22">  <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__repr__</span>(<span class="va" style="color: #111111;">self</span>):</span>
-<span id="cb65-23">        <span class="co" style="color: #5E5E5E;"># Convert each element to string</span></span>
-<span id="cb65-24">        str_matrix <span class="op" style="color: #5E5E5E;">=</span> [[<span class="bu" style="color: null;">str</span>(elem) <span class="cf" style="color: #003B4F;">for</span> elem <span class="kw" style="color: #003B4F;">in</span> row] <span class="cf" style="color: #003B4F;">for</span> row <span class="kw" style="color: #003B4F;">in</span> <span class="va" style="color: #111111;">self</span>.xs]</span>
-<span id="cb65-25"></span>
-<span id="cb65-26">        <span class="co" style="color: #5E5E5E;"># Compute max column widths</span></span>
-<span id="cb65-27">        col_widths <span class="op" style="color: #5E5E5E;">=</span> [<span class="bu" style="color: null;">max</span>(<span class="bu" style="color: null;">map</span>(<span class="bu" style="color: null;">len</span>, col)) <span class="cf" style="color: #003B4F;">for</span> col <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(<span class="op" style="color: #5E5E5E;">*</span>str_matrix)]</span>
-<span id="cb65-28"></span>
-<span id="cb65-29">        <span class="co" style="color: #5E5E5E;"># Format each row with proper padding</span></span>
-<span id="cb65-30">        formatted_rows <span class="op" style="color: #5E5E5E;">=</span> (</span>
-<span id="cb65-31">            <span class="st" style="color: #20794D;">'['</span> <span class="op" style="color: #5E5E5E;">+</span> <span class="st" style="color: #20794D;">', '</span>.join(elem.rjust(width) <span class="cf" style="color: #003B4F;">for</span> elem, width <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">zip</span>(row, col_widths)) <span class="op" style="color: #5E5E5E;">+</span> <span class="st" style="color: #20794D;">']'</span></span>
-<span id="cb65-32">            <span class="cf" style="color: #003B4F;">for</span> row <span class="kw" style="color: #003B4F;">in</span> str_matrix</span>
-<span id="cb65-33">        )</span>
-<span id="cb65-34"></span>
-<span id="cb65-35">        <span class="co" style="color: #5E5E5E;"># Join rows with newline and proper indentation</span></span>
-<span id="cb65-36">        matrix_str <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">',</span><span class="ch" style="color: #20794D;">\n</span><span class="st" style="color: #20794D;">        '</span>.join(formatted_rows)</span>
-<span id="cb65-37"></span>
-<span id="cb65-38">        <span class="co" style="color: #5E5E5E;"># Add the class name and wrapping brackets</span></span>
-<span id="cb65-39">        <span class="cf" style="color: #003B4F;">return</span> <span class="ss" style="color: #20794D;">f"Matrix([</span><span class="sc" style="color: #5E5E5E;">{</span>matrix_str<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">])"</span></span></code></pre></div>
-</div>
-<div class="cell" data-outputid="7dfb2713-594a-480e-9486-8b262fad3017" data-execution_count="39">
-<div class="sourceCode cell-code" id="cb66" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb66-1">m <span class="op" style="color: #5E5E5E;">=</span> Matrix(lst2)</span>
-<span id="cb66-2">m</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="39">
-<pre><code>Matrix([[1,  2],
-        [2, 30],
-        [4, 50]])</code></pre>
-</div>
-</div>
-<p>When no <code>axis</code> is specified, <code>min</code> returns the minimum value of the flattened <code>Matrix</code> (flattened using <code>chain(*self.xs)</code>).</p>
-<div class="cell" data-outputid="641fd856-5c94-4efd-8fe0-cffc369022c3" data-execution_count="41">
-<div class="sourceCode cell-code" id="cb68" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb68-1">m.<span class="bu" style="color: null;">min</span>()</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="41">
-<pre><code>1</code></pre>
-</div>
-</div>
-<p>When <code>axis=0</code>, <code>min</code> returns the minimum value in each row, which is simply the built-in return value when <code>min</code> is applied to a <code>list</code> (<code>min(self.xs)</code>).</p>
-<div class="cell" data-outputid="7a8c9889-b109-4cd1-de4e-7db301ab7c5a" data-execution_count="42">
-<div class="sourceCode cell-code" id="cb70" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb70-1">m.<span class="bu" style="color: null;">min</span>(axis<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="42">
-<pre><code>[1, 2]</code></pre>
-</div>
-</div>
-<p>When <code>axis=1</code>, <code>min</code> returns the minimum value in each column. I first transpose the <code>list</code> and then pass it through <code>min</code> to get the desired result:</p>
-<div class="cell" data-outputid="9c6a8839-dfd3-4c11-efd7-1dc02b42a0a2" data-execution_count="43">
-<div class="sourceCode cell-code" id="cb72" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb72-1">m.<span class="bu" style="color: null;">min</span>(axis<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="43">
-<pre><code>(1, 2, 4)</code></pre>
-</div>
-</div>
-<p>Finally, if the <code>axis</code> is some other value, I throw an <code>IndexError</code>:</p>
-<div class="cell" data-outputid="7b7995c1-5dcb-489f-dbc1-8b147274ab4f" data-execution_count="44">
-<div class="sourceCode cell-code" id="cb74" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb74-1">m.<span class="bu" style="color: null;">min</span>(axis<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">3</span>)</span></code></pre></div>
-<div class="cell-output cell-output-error">
-<pre><code>IndexError: Matrix only has two axes</code></pre>
-</div>
-</div>
-<p><code>max</code> operates similarly:</p>
-<div class="cell" data-outputid="53f210a1-0fac-4077-bffb-d5a37aa4c691" data-execution_count="45">
-<div class="sourceCode cell-code" id="cb76" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb76-1">m.<span class="bu" style="color: null;">max</span>(), m.<span class="bu" style="color: null;">max</span>(axis<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>), m.<span class="bu" style="color: null;">max</span>(axis<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="45">
-<pre><code>(50, [4, 50], (2, 30, 50))</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="f95b7ed1-7f11-4a6d-9f27-ab00dc539bc0" data-execution_count="46">
-<div class="sourceCode cell-code" id="cb78" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb78-1">m.<span class="bu" style="color: null;">max</span>(axis<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">3</span>)</span></code></pre></div>
-<div class="cell-output cell-output-error">
-<pre><code>IndexError: Matrix only has two axes</code></pre>
-</div>
-</div>
-<p>That’s it! Another relatively simple implementation.</p>
-</section>
-</section>
-<section id="final-thoughts" class="level2">
-<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
-<p>Creating my own <code>Matrix</code> class was fun and educational. I didn’t expect the object representation as a string to be so involved—and I haven’t even added functionality like NumPy or PyTorch where they “summarize” very long arrays and tensors instead of listing out all of the values.</p>
-<p>I also learned a few things along the way:</p>
-<ul>
-<li>Using <code>zip</code> to transpose a list</li>
-<li>Using the <code>@property</code> decorator</li>
-<li>Justifying string with <code>rjust</code></li>
-<li>Implementing the built-in <code>IndexError</code> for situations when the user passes an incompatible <code>axis</code> argument</li>
-</ul>
-<p>I’m assuming that we’ll be building on this <code>Matrix</code> class further down the road in Part 2, so it was helpful to get a jump on that and start thinking about how this class would function right now.</p>
-<p>I hope you enjoyed this blog post! Follow me on Twitter <a href="https://twitter.com/vishal_learner"><span class="citation" data-cites="vishal_learner">@vishal_learner</span></a>.</p>
-
-
-</section>
-
- ]]></description>
-  <category>python</category>
-  <category>deep learning</category>
-  <category>machine learning</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2024-09-02-matrix-class/index.html</guid>
-  <pubDate>Mon, 02 Sep 2024 07:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
