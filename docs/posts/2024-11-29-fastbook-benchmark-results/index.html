@@ -1,0 +1,1454 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2024-11-08">
+<meta name="description" content="In this blog post, I run retrieval on three differently preprocessed datasets using four retrieval methods from chunk sizes 100 to 2000 tokens, using my fastbook-benchmark dataset to auto-score the results. Surprisingly, full text search yields the best MRR@10 (0.67) and Recall@10 (0.95) for a chunk size of 2000 tokens.">
+
+<title>Vishal Bakshi’s Blog - Scoring Full Text and Semantic Search on Chunk Sizes from 100 to 2000 Tokens</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Vishal Bakshi’s Blog</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#setup" id="toc-setup" class="nav-link active" data-scroll-target="#setup">Setup</a></li>
+  <li><a href="#background" id="toc-background" class="nav-link" data-scroll-target="#background">Background</a></li>
+  <li><a href="#data-preprocessing" id="toc-data-preprocessing" class="nav-link" data-scroll-target="#data-preprocessing">Data Preprocessing</a></li>
+  <li><a href="#benchmark-dataset" id="toc-benchmark-dataset" class="nav-link" data-scroll-target="#benchmark-dataset">Benchmark Dataset</a></li>
+  <li><a href="#running-retrieval-100-2000-token-chunks" id="toc-running-retrieval-100-2000-token-chunks" class="nav-link" data-scroll-target="#running-retrieval-100-2000-token-chunks">Running Retrieval (100-2000 token chunks)</a>
+  <ul class="collapse">
+  <li><a href="#data-no-preprocessing" id="toc-data-no-preprocessing" class="nav-link" data-scroll-target="#data-no-preprocessing">Data: No Preprocessing</a></li>
+  <li><a href="#data-no-html-tags" id="toc-data-no-html-tags" class="nav-link" data-scroll-target="#data-no-html-tags">Data: No HTML Tags</a></li>
+  <li><a href="#data-no-punctuation" id="toc-data-no-punctuation" class="nav-link" data-scroll-target="#data-no-punctuation">Data: No Punctuation</a></li>
+  </ul></li>
+  <li><a href="#analyzing-results" id="toc-analyzing-results" class="nav-link" data-scroll-target="#analyzing-results">Analyzing Results</a>
+  <ul class="collapse">
+  <li><a href="#best-overall-mrr10" id="toc-best-overall-mrr10" class="nav-link" data-scroll-target="#best-overall-mrr10">Best Overall MRR@10</a></li>
+  <li><a href="#best-overall-recall10" id="toc-best-overall-recall10" class="nav-link" data-scroll-target="#best-overall-recall10">Best Overall Recall@10</a></li>
+  <li><a href="#analyzing-metrics-by-chunk-size-range" id="toc-analyzing-metrics-by-chunk-size-range" class="nav-link" data-scroll-target="#analyzing-metrics-by-chunk-size-range">Analyzing Metrics by Chunk Size Range</a></li>
+  <li><a href="#visualizing-metrics-by-chunk-size-and-method" id="toc-visualizing-metrics-by-chunk-size-and-method" class="nav-link" data-scroll-target="#visualizing-metrics-by-chunk-size-and-method">Visualizing Metrics by Chunk Size and Method</a></li>
+  </ul></li>
+  <li><a href="#final-thoughts" id="toc-final-thoughts" class="nav-link" data-scroll-target="#final-thoughts">Final Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Scoring Full Text and Semantic Search on Chunk Sizes from 100 to 2000 Tokens</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">python</div>
+    <div class="quarto-category">RAG</div>
+    <div class="quarto-category">information retrieval</div>
+    <div class="quarto-category">fastbookRAG</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    In this blog post, I run retrieval on three differently preprocessed datasets using four retrieval methods from chunk sizes 100 to 2000 tokens, using my fastbook-benchmark dataset to auto-score the results. Surprisingly, full text search yields the best MRR@10 (0.67) and Recall@10 (0.95) for a chunk size of 2000 tokens.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">November 8, 2024</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="setup" class="level2">
+<h2 class="anchored" data-anchor-id="setup">Setup</h2>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:35:34.413312Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:35:34.413011Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:35:48.851237Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:35:48.850561Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:35:34.413283Z&quot;}" data-trusted="true">
+<details>
+<summary>pip installs and imports</summary>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>pip install sentence<span class="op">-</span>transformers <span class="op">-</span>Uqq</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>pip install <span class="op">-</span>qq RAGatouille</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>pip install ftfy <span class="op">-</span>qq</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> sqlite3</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> json</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> re</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd, numpy <span class="im">as</span> np</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> requests</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch.nn.functional <span class="im">as</span> F</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ftfy <span class="im">import</span> fix_text</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sentence_transformers <span class="im">import</span> SentenceTransformer</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ragatouille <span class="im">import</span> RAGPretrainedModel</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ragatouille.data <span class="im">import</span> CorpusProcessor</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>corpus_processor <span class="op">=</span> CorpusProcessor()</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>emb_model <span class="op">=</span> SentenceTransformer(<span class="st">"BAAI/bge-small-en-v1.5"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:35:48.852942Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:35:48.852356Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.139480Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.138592Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:35:48.852914Z&quot;}" data-outputid="dfa04737-fb6e-46e3-c46e-a8e0ca6248ad" data-trusted="true" data-execution_count="3">
+<details>
+<summary>Download chapter ipynb files</summary>
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>urls <span class="op">=</span> {</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'01_intro.ipynb'</span>: <span class="st">'https://drive.google.com/uc?export=view&amp;id=1mmBjFH_plndPBC4iRZHChfMazgBxKK4_'</span>,</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">'02_production.ipynb'</span>: <span class="st">'https://drive.google.com/uc?export=view&amp;id=1Cf5QHthHy1z13H0iu3qrzAWgquCfqVHk'</span>,</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">'04_mnist_basics.ipynb'</span>: <span class="st">'https://drive.google.com/uc?export=view&amp;id=113909_BNulzyLIKUNJHdya0Hhoqie30I'</span>,</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">'08_collab.ipynb'</span>: <span class="st">'https://drive.google.com/uc?export=view&amp;id=1BtvStgFjUtvtqbSZNrL7Y2N-ey3seNZU'</span>,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">'09_tabular.ipynb'</span>: <span class="st">'https://drive.google.com/uc?export=view&amp;id=1rHFvwl_l-AJLg_auPjBpNrOgG9HDnfqg'</span>,</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">'10_nlp.ipynb'</span>: <span class="st">'https://drive.google.com/uc?export=view&amp;id=1pg1pH7jMMElzrXS0kBBz14aAuDsi2DEP'</span>,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">'13_convolutions.ipynb'</span>: <span class="st">'https://drive.google.com/uc?export=view&amp;id=19P-eEHpAO3WrOvdxgXckyhHhfv_R-hnS'</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> download_file(url, filename):</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Send a GET request to the URL</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    response <span class="op">=</span> requests.get(url)</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Check if the request was successful</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> response.status_code <span class="op">==</span> <span class="dv">200</span>:</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Open the file in write-binary mode</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> <span class="bu">open</span>(filename, <span class="st">'wb'</span>) <span class="im">as</span> <span class="bu">file</span>:</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Write the content of the response to the file</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>            <span class="bu">file</span>.write(response.content)</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"File downloaded successfully: </span><span class="sc">{</span>filename<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"Failed to download file. Status code: </span><span class="sc">{</span>response<span class="sc">.</span>status_code<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> fname, url <span class="kw">in</span> urls.items():</span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>  download_file(url, fname)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>File downloaded successfully: 01_intro.ipynb
+File downloaded successfully: 02_production.ipynb
+File downloaded successfully: 04_mnist_basics.ipynb
+File downloaded successfully: 08_collab.ipynb
+File downloaded successfully: 09_tabular.ipynb
+File downloaded successfully: 10_nlp.ipynb
+File downloaded successfully: 13_convolutions.ipynb</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.141537Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.141247Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.145767Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.144919Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.141510Z&quot;}" data-trusted="true">
+<details>
+<summary><code>nbs</code> dict</summary>
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>nbs <span class="op">=</span> {</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'1'</span>: <span class="st">'01_intro.ipynb'</span>,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">'2'</span>: <span class="st">'02_production.ipynb'</span>,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">'4'</span>: <span class="st">'04_mnist_basics.ipynb'</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">'8'</span>: <span class="st">'08_collab.ipynb'</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">'9'</span>: <span class="st">'09_tabular.ipynb'</span>,</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">'10'</span>: <span class="st">'10_nlp.ipynb'</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">'13'</span>: <span class="st">'13_convolutions.ipynb'</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.146977Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.146769Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.580447Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.579593Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.146956Z&quot;}" data-trusted="true">
+<details>
+<summary>load questions</summary>
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>url <span class="op">=</span> <span class="st">'https://gist.githubusercontent.com/vishalbakshi/2c22ca69ac7bc4bc845052c1b9d949c8/raw/d498259f2fc75d27c485ddc73933f145987feef3/cs_bm25_baselines.csv'</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>questions <span class="op">=</span> pd.read_csv(url).query(<span class="st">"is_answerable == 1"</span>)[[<span class="st">"chapter"</span>, <span class="st">"question_number"</span>, <span class="st">"question_text"</span>, <span class="st">"answer"</span>, <span class="st">"keywords"</span>]]</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co"># remove double quotations from the question text</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co"># as these affect embeddings/cosine similarity: https://vishalbakshi.github.io/blog/posts/2024-11-08-punctuation-cosine-similarity/</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>questions[<span class="st">'question_text'</span>] <span class="op">=</span> questions[<span class="st">'question_text'</span>].<span class="bu">str</span>.strip(<span class="st">'"</span><span class="ch">\'</span><span class="st">'</span>)</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> questions.shape <span class="op">==</span> (<span class="dv">191</span>,<span class="dv">5</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.581926Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.581642Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.791769Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.790918Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.581893Z&quot;}" data-outputid="7530aad2-4d99-4543-d502-ad55c01803f8" data-trusted="true">
+<details>
+<summary>download fastbook-benchmark</summary>
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>download_file(</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"https://gist.githubusercontent.com/vishalbakshi/a507b6e9e893475e93a4141e96b8947d/raw/e32835ba1dbf94384943ed5a65404112e1c89df2/fastbook-benchmark.json"</span>,</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"fastbook-benchmark.json"</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> load_benchmark():</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Load the benchmark data</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> <span class="bu">open</span>(<span class="st">'fastbook-benchmark.json'</span>, <span class="st">'r'</span>) <span class="im">as</span> f:</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>        benchmark <span class="op">=</span> json.load(f)</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> benchmark</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>benchmark <span class="op">=</span> load_benchmark()</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(benchmark[<span class="st">'questions'</span>]) <span class="op">==</span> <span class="dv">191</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>File downloaded successfully: fastbook-benchmark.json</code></pre>
+</div>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.792998Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.792738Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.798523Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.797592Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.792972Z&quot;}" data-trusted="true">
+<details>
+<summary><code>calculate_mrr</code> function</summary>
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> calculate_mrr(question, retrieved_passages, cutoff<span class="op">=</span><span class="dv">10</span>):</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    retrieved_passages <span class="op">=</span> retrieved_passages[:cutoff]</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    highest_rank <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> ans_comp <span class="kw">in</span> question[<span class="st">"answer_context"</span>]:</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>        contexts <span class="op">=</span> ans_comp.get(<span class="st">"context"</span>, [])</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>        component_found <span class="op">=</span> <span class="va">False</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> rank, passage <span class="kw">in</span> <span class="bu">enumerate</span>(retrieved_passages, start<span class="op">=</span><span class="dv">1</span>):</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> <span class="bu">any</span>(fix_text(context) <span class="kw">in</span> fix_text(passage) <span class="cf">for</span> context <span class="kw">in</span> contexts):</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>                highest_rank <span class="op">=</span> <span class="bu">max</span>(highest_rank, rank)</span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>                component_found <span class="op">=</span> <span class="va">True</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>                <span class="cf">break</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="kw">not</span> component_found:</span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="fl">0.0</span></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="fl">1.0</span><span class="op">/</span>highest_rank <span class="cf">if</span> highest_rank <span class="op">&gt;</span> <span class="dv">0</span> <span class="cf">else</span> <span class="fl">0.0</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.799879Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.799496Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.812780Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.812074Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.799852Z&quot;}" data-trusted="true">
+<details>
+<summary><code>calculate_recall</code> function</summary>
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> calculate_recall(question, retrieved_passages, cutoff<span class="op">=</span><span class="dv">10</span>):</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    retrieved_passages <span class="op">=</span> retrieved_passages[:cutoff]</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Track if we've found at least one context for each answer component</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    ans_comp_found <span class="op">=</span> []</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> ans_comp <span class="kw">in</span> question[<span class="st">"answer_context"</span>]:</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>        contexts <span class="op">=</span> ans_comp.get(<span class="st">"context"</span>, [])</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>        found <span class="op">=</span> <span class="va">False</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Check if any context for this answer component appears in retrieved passages</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> passage <span class="kw">in</span> retrieved_passages:</span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> <span class="bu">any</span>(fix_text(context) <span class="kw">in</span> fix_text(passage) <span class="cf">for</span> context <span class="kw">in</span> contexts):</span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>                found <span class="op">=</span> <span class="va">True</span></span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>                <span class="cf">break</span></span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a>        ans_comp_found.append(found)</span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Recall is ratio of answer components with at least one found context</span></span>
+<span id="cb9-20"><a href="#cb9-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="bu">sum</span>(ans_comp_found) <span class="op">/</span> <span class="bu">len</span>(ans_comp_found)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.814669Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.813922Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.825978Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.825246Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.814632Z&quot;}" data-trusted="true">
+<details>
+<summary><code>load_data</code> function</summary>
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> load_data(chunks, db_path, chapter<span class="op">=</span><span class="dv">1</span>):</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>        <span class="co"># create virtual table if database doesn't exist</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="kw">not</span> os.path.exists(db_path):</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>            <span class="cf">with</span> sqlite3.<span class="ex">connect</span>(db_path) <span class="im">as</span> conn:</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>              cur <span class="op">=</span> conn.cursor()</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>              cur.execute(<span class="st">"""</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="st">              CREATE VIRTUAL TABLE fastbook_text</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a><span class="st">              USING FTS5(chapter, text);</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a><span class="st">              """</span>)</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>              conn.commit()</span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>        <span class="co"># load in the chunks for each chapter</span></span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> sqlite3.<span class="ex">connect</span>(db_path) <span class="im">as</span> conn:</span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a>            cur <span class="op">=</span> conn.cursor()</span>
+<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> chunk <span class="kw">in</span> chunks:</span>
+<span id="cb10-18"><a href="#cb10-18" aria-hidden="true" tabindex="-1"></a>                cur.execute(<span class="st">"INSERT INTO fastbook_text(chapter, text) VALUES (?, ?)"</span>, (chapter, chunk))</span>
+<span id="cb10-19"><a href="#cb10-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-20"><a href="#cb10-20" aria-hidden="true" tabindex="-1"></a>            conn.commit()</span>
+<span id="cb10-21"><a href="#cb10-21" aria-hidden="true" tabindex="-1"></a>            res <span class="op">=</span> cur.execute(<span class="st">"SELECT * FROM fastbook_text WHERE chapter = ?"</span>, (chapter,)).fetchall()</span>
+<span id="cb10-22"><a href="#cb10-22" aria-hidden="true" tabindex="-1"></a>        <span class="co"># make sure all the data was loaded into the database</span></span>
+<span id="cb10-23"><a href="#cb10-23" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="bu">len</span>(res) <span class="op">!=</span> <span class="bu">len</span>(chunks):</span>
+<span id="cb10-24"><a href="#cb10-24" aria-hidden="true" tabindex="-1"></a>            <span class="cf">raise</span> <span class="pp">ValueError</span>(<span class="ss">f"Number of inserted chunks (</span><span class="sc">{</span><span class="bu">len</span>(res)<span class="sc">}</span><span class="ss">) doesn't match input chunks (</span><span class="sc">{</span><span class="bu">len</span>(chunks)<span class="sc">}</span><span class="ss">)"</span>)</span>
+<span id="cb10-25"><a href="#cb10-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-26"><a href="#cb10-26" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">True</span></span>
+<span id="cb10-27"><a href="#cb10-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-28"><a href="#cb10-28" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> sqlite3.Error <span class="im">as</span> e:</span>
+<span id="cb10-29"><a href="#cb10-29" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"An error occurred: </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb10-30"><a href="#cb10-30" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">False</span></span>
+<span id="cb10-31"><a href="#cb10-31" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> <span class="pp">Exception</span> <span class="im">as</span> e:</span>
+<span id="cb10-32"><a href="#cb10-32" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"An unexpected error occurred: </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb10-33"><a href="#cb10-33" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">False</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.828738Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.828429Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.843414Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.842734Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.828713Z&quot;}" data-trusted="true">
+<details>
+<summary><code>db_search</code> function</summary>
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> db_search(df, limit<span class="op">=</span><span class="dv">1</span>):</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  results <span class="op">=</span> []</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">with</span> sqlite3.<span class="ex">connect</span>(<span class="st">'fastbook.db'</span>) <span class="im">as</span> conn:</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    cur <span class="op">=</span> conn.cursor()</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    <span class="co"># concatenate the keywords into a string "keyword1 OR keyword 2 OR keyword3 ..."</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _, row <span class="kw">in</span> df.iterrows():</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>      keywords <span class="op">=</span> <span class="st">' OR '</span>.join([<span class="ss">f'"</span><span class="sc">{</span>keyword<span class="sc">.</span>strip(<span class="st">","</span>)<span class="sc">}</span><span class="ss">"'</span> <span class="cf">for</span> keyword <span class="kw">in</span> row[<span class="st">'keywords'</span>].replace(<span class="st">'"'</span>, <span class="st">''</span>).split()])</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>      q <span class="op">=</span> <span class="ss">f"""</span></span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a><span class="ss">        SELECT text, rank</span></span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a><span class="ss">        FROM fastbook_text</span></span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a><span class="ss">        WHERE fastbook_text MATCH ?</span></span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a><span class="ss">        AND chapter = ?</span></span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a><span class="ss">        ORDER BY rank</span></span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a><span class="ss">        LIMIT ?</span></span>
+<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a><span class="ss">        """</span></span>
+<span id="cb11-17"><a href="#cb11-17" aria-hidden="true" tabindex="-1"></a>      res <span class="op">=</span> cur.execute(q, (keywords, <span class="bu">str</span>(row[<span class="st">'chapter'</span>]), limit)).fetchall()</span>
+<span id="cb11-18"><a href="#cb11-18" aria-hidden="true" tabindex="-1"></a>      <span class="co"># grab the retrieved chunk from the query results</span></span>
+<span id="cb11-19"><a href="#cb11-19" aria-hidden="true" tabindex="-1"></a>      res <span class="op">=</span> [item[<span class="dv">0</span>] <span class="cf">for</span> item <span class="kw">in</span> res]</span>
+<span id="cb11-20"><a href="#cb11-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-21"><a href="#cb11-21" aria-hidden="true" tabindex="-1"></a>      <span class="co"># if there are multiple chunks retrieved, combine them into a single string</span></span>
+<span id="cb11-22"><a href="#cb11-22" aria-hidden="true" tabindex="-1"></a>      results.append(res)</span>
+<span id="cb11-23"><a href="#cb11-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-24"><a href="#cb11-24" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.844600Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.844324Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.857436Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.856702Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.844565Z&quot;}" data-trusted="true">
+<details>
+<summary><code>fts_retrieval</code> function</summary>
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> fts_retrieval(data, df, chunk_size):</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> os.path.exists(<span class="st">"fastbook.db"</span>):</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>        os.remove(<span class="st">"fastbook.db"</span>)</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> chapter, chunks <span class="kw">in</span> data.items():</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>        documents <span class="op">=</span> corpus_processor.process_corpus(chunks, chunk_size<span class="op">=</span>chunk_size)</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>        documents <span class="op">=</span> [doc[<span class="st">'content'</span>] <span class="cf">for</span> doc <span class="kw">in</span> documents]</span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> load_data(documents, <span class="st">'fastbook.db'</span>, chapter)</span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>    results <span class="op">=</span> db_search(df, limit<span class="op">=</span><span class="dv">10</span>)</span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">191</span></span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> res <span class="kw">in</span> results:</span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="bu">len</span>(res) <span class="op">&lt;=</span> <span class="dv">10</span></span>
+<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.859170Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.858590Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.871005Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.870199Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.859133Z&quot;}" data-trusted="true">
+<details>
+<summary><code>single_vector_retrieval</code> function</summary>
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> single_vector_retrieval(data, benchmark, chunk_size):</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Group questions by chapter</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    questions <span class="op">=</span> {}</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> q <span class="kw">in</span> benchmark[<span class="st">"questions"</span>]:</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>        chapter <span class="op">=</span> <span class="bu">str</span>(q[<span class="st">"chapter"</span>])</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> chapter <span class="kw">not</span> <span class="kw">in</span> questions:</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>            questions[chapter] <span class="op">=</span> []</span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>        questions[chapter].append(q[<span class="st">'question_text'</span>].strip(<span class="st">'"</span><span class="ch">\'</span><span class="st">'</span>))</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>    q_embs <span class="op">=</span> {}</span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> chapter, _ <span class="kw">in</span> data.items():</span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>        qs <span class="op">=</span> questions[chapter]</span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>        q_embs[chapter] <span class="op">=</span> emb_model.encode(qs, convert_to_tensor<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a>    results <span class="op">=</span> []</span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> chapter, chunks <span class="kw">in</span> data.items():</span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a>        <span class="co"># chunk chapter text</span></span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a>        documents <span class="op">=</span> corpus_processor.process_corpus(chunks, chunk_size<span class="op">=</span>chunk_size)</span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a>        documents <span class="op">=</span> [doc[<span class="st">'content'</span>] <span class="cf">for</span> doc <span class="kw">in</span> documents]</span>
+<span id="cb13-20"><a href="#cb13-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-21"><a href="#cb13-21" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Embed documents</span></span>
+<span id="cb13-22"><a href="#cb13-22" aria-hidden="true" tabindex="-1"></a>        data_embs <span class="op">=</span> emb_model.encode(documents, convert_to_tensor<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb13-23"><a href="#cb13-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-24"><a href="#cb13-24" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Compute cosine similarity and get top 10 indices for each row</span></span>
+<span id="cb13-25"><a href="#cb13-25" aria-hidden="true" tabindex="-1"></a>        idxs <span class="op">=</span> F.cosine_similarity(q_embs[chapter].unsqueeze(<span class="dv">1</span>), data_embs.unsqueeze(<span class="dv">0</span>), dim<span class="op">=</span><span class="dv">2</span>).sort(descending<span class="op">=</span><span class="va">True</span>)[<span class="dv">1</span>]</span>
+<span id="cb13-26"><a href="#cb13-26" aria-hidden="true" tabindex="-1"></a>        top_10_idxs <span class="op">=</span> idxs[:, :<span class="dv">10</span>]  <span class="co"># Get the top 10 indices for each row</span></span>
+<span id="cb13-27"><a href="#cb13-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-28"><a href="#cb13-28" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Extract top 10 chunks for each row</span></span>
+<span id="cb13-29"><a href="#cb13-29" aria-hidden="true" tabindex="-1"></a>        top_10_chunks <span class="op">=</span> [</span>
+<span id="cb13-30"><a href="#cb13-30" aria-hidden="true" tabindex="-1"></a>            [documents[idx.item()] <span class="cf">for</span> idx <span class="kw">in</span> row_idxs]</span>
+<span id="cb13-31"><a href="#cb13-31" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> row_idxs <span class="kw">in</span> top_10_idxs</span>
+<span id="cb13-32"><a href="#cb13-32" aria-hidden="true" tabindex="-1"></a>        ]</span>
+<span id="cb13-33"><a href="#cb13-33" aria-hidden="true" tabindex="-1"></a>        results.extend(top_10_chunks)</span>
+<span id="cb13-34"><a href="#cb13-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-35"><a href="#cb13-35" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">191</span></span>
+<span id="cb13-36"><a href="#cb13-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-37"><a href="#cb13-37" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> res <span class="kw">in</span> results:</span>
+<span id="cb13-38"><a href="#cb13-38" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="bu">len</span>(res) <span class="op">&lt;=</span> <span class="dv">10</span></span>
+<span id="cb13-39"><a href="#cb13-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-40"><a href="#cb13-40" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.872282Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.872001Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.886865Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.886203Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.872258Z&quot;}" data-trusted="true">
+<details>
+<summary><code>index_free_retrieval</code> function</summary>
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> index_free_retrieval(data, model_nm, chunk_size, benchmark):</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    questions_by_chapter <span class="op">=</span> {}</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> q <span class="kw">in</span> benchmark[<span class="st">"questions"</span>]:</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>        chapter <span class="op">=</span> <span class="bu">str</span>(q[<span class="st">"chapter"</span>])</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> chapter <span class="kw">not</span> <span class="kw">in</span> questions_by_chapter:</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>            questions_by_chapter[chapter] <span class="op">=</span> []</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>        questions_by_chapter[chapter].append(q)</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Dictionary to store results per chapter</span></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>    chapter_results <span class="op">=</span> {}</span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Process each chapter separately</span></span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> chapter <span class="kw">in</span> nbs.keys():</span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>        <span class="co"># instantiate new RAG object</span></span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>        RAG <span class="op">=</span> RAGPretrainedModel.from_pretrained(model_nm)</span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Get questions for this chapter</span></span>
+<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a>        chapter_questions <span class="op">=</span> questions_by_chapter[chapter]</span>
+<span id="cb14-19"><a href="#cb14-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-20"><a href="#cb14-20" aria-hidden="true" tabindex="-1"></a>        <span class="co"># encode chapter documents</span></span>
+<span id="cb14-21"><a href="#cb14-21" aria-hidden="true" tabindex="-1"></a>        documents <span class="op">=</span> corpus_processor.process_corpus(data[chapter], chunk_size<span class="op">=</span>chunk_size)</span>
+<span id="cb14-22"><a href="#cb14-22" aria-hidden="true" tabindex="-1"></a>        RAG.encode([x[<span class="st">'content'</span>] <span class="cf">for</span> x <span class="kw">in</span> documents], document_metadatas<span class="op">=</span>[{<span class="st">"chapter"</span>: chapter} <span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="bu">len</span>(documents))])</span>
+<span id="cb14-23"><a href="#cb14-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-24"><a href="#cb14-24" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Perform retrieval for each question in this chapter</span></span>
+<span id="cb14-25"><a href="#cb14-25" aria-hidden="true" tabindex="-1"></a>        results <span class="op">=</span> []</span>
+<span id="cb14-26"><a href="#cb14-26" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> q <span class="kw">in</span> chapter_questions:</span>
+<span id="cb14-27"><a href="#cb14-27" aria-hidden="true" tabindex="-1"></a>            top_k <span class="op">=</span> <span class="bu">min</span>(<span class="dv">10</span>, <span class="bu">len</span>(documents))</span>
+<span id="cb14-28"><a href="#cb14-28" aria-hidden="true" tabindex="-1"></a>            retrieved <span class="op">=</span> RAG.search_encoded_docs(query <span class="op">=</span> q[<span class="st">"question_text"</span>].strip(<span class="st">'"</span><span class="ch">\'</span><span class="st">'</span>), k<span class="op">=</span>top_k)</span>
+<span id="cb14-29"><a href="#cb14-29" aria-hidden="true" tabindex="-1"></a>            results.append(retrieved)</span>
+<span id="cb14-30"><a href="#cb14-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-31"><a href="#cb14-31" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Store results</span></span>
+<span id="cb14-32"><a href="#cb14-32" aria-hidden="true" tabindex="-1"></a>        chapter_results[chapter] <span class="op">=</span> results</span>
+<span id="cb14-33"><a href="#cb14-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-34"><a href="#cb14-34" aria-hidden="true" tabindex="-1"></a>    results <span class="op">=</span> []</span>
+<span id="cb14-35"><a href="#cb14-35" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> chapter, res <span class="kw">in</span> chapter_results.items():</span>
+<span id="cb14-36"><a href="#cb14-36" aria-hidden="true" tabindex="-1"></a>        results.extend(res)</span>
+<span id="cb14-37"><a href="#cb14-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-38"><a href="#cb14-38" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">191</span></span>
+<span id="cb14-39"><a href="#cb14-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-40"><a href="#cb14-40" aria-hidden="true" tabindex="-1"></a>    final_results <span class="op">=</span> []</span>
+<span id="cb14-41"><a href="#cb14-41" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> res <span class="kw">in</span> results:</span>
+<span id="cb14-42"><a href="#cb14-42" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="bu">len</span>(res) <span class="op">&lt;=</span> <span class="dv">10</span></span>
+<span id="cb14-43"><a href="#cb14-43" aria-hidden="true" tabindex="-1"></a>        intermediate_results <span class="op">=</span> [r[<span class="st">'content'</span>] <span class="cf">for</span> r <span class="kw">in</span> res]</span>
+<span id="cb14-44"><a href="#cb14-44" aria-hidden="true" tabindex="-1"></a>        final_results.append(intermediate_results)</span>
+<span id="cb14-45"><a href="#cb14-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-46"><a href="#cb14-46" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">len</span>(final_results) <span class="op">==</span> <span class="dv">191</span></span>
+<span id="cb14-47"><a href="#cb14-47" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> final_results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.887930Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.887716Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.900132Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.899389Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.887908Z&quot;}" data-trusted="true">
+<details>
+<summary><code>do_retrieval</code> function</summary>
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> do_retrieval(method, chunk_size, data, benchmark, questions<span class="op">=</span><span class="va">None</span>, benchmark_results<span class="op">=</span><span class="va">None</span>):</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> method <span class="op">==</span> <span class="st">"bm25"</span>: results <span class="op">=</span> fts_retrieval(data, questions, chunk_size)</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> method <span class="op">==</span> <span class="st">"single_vector"</span>: results <span class="op">=</span> single_vector_retrieval(data, benchmark, chunk_size)</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> method <span class="op">==</span> <span class="st">"colbertv2"</span>: results <span class="op">=</span> index_free_retrieval(data<span class="op">=</span>data, model_nm<span class="op">=</span><span class="st">"colbert-ir/colbertv2.0"</span>, chunk_size<span class="op">=</span>chunk_size, benchmark<span class="op">=</span>benchmark)</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> method <span class="op">==</span> <span class="st">"answerai_colbert"</span>: results <span class="op">=</span> index_free_retrieval(data<span class="op">=</span>data, model_nm<span class="op">=</span><span class="st">"answerdotai/answerai-colbert-small-v1"</span>, chunk_size<span class="op">=</span>chunk_size, benchmark<span class="op">=</span>benchmark)</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>  <span class="co">#name = f"{method}_{chunking_strategy}"</span></span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>  q_mrr, q_recall <span class="op">=</span> score_retrieval(results, benchmark)</span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>  <span class="co">#benchmark_results = save_results(results, benchmark_results, q_mrr, q_recall, name=name)</span></span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> pd.Series(q_mrr).mean(), pd.Series(q_recall).mean()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.901370Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.901123Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.913227Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.912491Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.901347Z&quot;}" data-trusted="true">
+<details>
+<summary><code>score_retrieval</code> function</summary>
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> score_retrieval(results, benchmark):</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    q_mrr <span class="op">=</span> []</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    q_recall <span class="op">=</span> []</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i, question <span class="kw">in</span> <span class="bu">enumerate</span>(benchmark[<span class="st">"questions"</span>]):</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>        mrr <span class="op">=</span> calculate_mrr(question, results[i], cutoff<span class="op">=</span><span class="dv">10</span>)</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>        recall <span class="op">=</span> calculate_recall(question, results[i], cutoff<span class="op">=</span><span class="dv">10</span>)</span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>        q_mrr.append(mrr)</span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>        q_recall.append(recall)</span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">len</span>(q_mrr) <span class="op">==</span> <span class="bu">len</span>(benchmark[<span class="st">"questions"</span>])</span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">len</span>(q_recall) <span class="op">==</span> <span class="bu">len</span>(benchmark[<span class="st">"questions"</span>])</span>
+<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> q_mrr, q_recall</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.914264Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.914042Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.924181Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.923516Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.914242Z&quot;}" data-trusted="true">
+<details>
+<summary><code>save_results</code> function</summary>
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> save_results(results, df, q_mrr, q_recall, name):</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    flat_results <span class="op">=</span> []</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> res <span class="kw">in</span> results:</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>        flat_results.append(<span class="st">"</span><span class="ch">\n\n</span><span class="st">"</span>.join(res))</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">len</span>(flat_results) <span class="op">==</span> <span class="dv">191</span></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>    df[<span class="ss">f'</span><span class="sc">{</span>name<span class="sc">}</span><span class="ss">_retrieval'</span>] <span class="op">=</span> flat_results</span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>    df[<span class="ss">f'</span><span class="sc">{</span>name<span class="sc">}</span><span class="ss">_mrr10'</span>] <span class="op">=</span> q_mrr</span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>    df[<span class="ss">f'</span><span class="sc">{</span>name<span class="sc">}</span><span class="ss">_recall10'</span>] <span class="op">=</span> q_recall</span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> df</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.925325Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.925090Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.935453Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.934718Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.925302Z&quot;}" data-trusted="true">
+<details>
+<summary><code>notebook_to_string</code> function</summary>
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> notebook_to_string(path):</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">with</span> <span class="bu">open</span>(path, <span class="st">'r'</span>, encoding<span class="op">=</span><span class="st">'utf-8'</span>) <span class="im">as</span> f:</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    notebook <span class="op">=</span> json.load(f)</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>  all_text <span class="op">=</span> <span class="st">''</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>  found_questionnaire <span class="op">=</span> <span class="va">False</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> cell <span class="kw">in</span> notebook[<span class="st">'cells'</span>]:</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> cell[<span class="st">'cell_type'</span>] <span class="op">==</span> <span class="st">'markdown'</span> <span class="kw">and</span> <span class="bu">any</span>(<span class="st">'## Questionnaire'</span> <span class="kw">in</span> line <span class="cf">for</span> line <span class="kw">in</span> cell[<span class="st">'source'</span>]):</span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>      found_questionnaire <span class="op">=</span> <span class="va">True</span></span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>      <span class="cf">break</span></span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> cell[<span class="st">'cell_type'</span>] <span class="kw">in</span> [<span class="st">'markdown'</span>, <span class="st">'code'</span>]:</span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a>      all_text <span class="op">+=</span> <span class="st">''</span>.join(cell[<span class="st">'source'</span>]) <span class="op">+</span> <span class="st">'</span><span class="ch">\n</span><span class="st">'</span></span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> all_text</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.937125Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.936441Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.946918Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.946355Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.937089Z&quot;}" data-trusted="true">
+<details>
+<summary><code>chunk_string</code> function</summary>
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> chunk_string(text, n):</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Split text into n chunks."""</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>    skip <span class="op">=</span> <span class="bu">int</span>(<span class="bu">len</span>(text) <span class="op">/</span> n)</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> [text[i:i <span class="op">+</span> skip] <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">0</span>, <span class="bu">len</span>(text), skip)]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.947888Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.947679Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.956866Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.956184Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.947866Z&quot;}" data-trusted="true">
+<details>
+<summary><code>clean_html</code> function</summary>
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> clean_html(text):</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Step 1: Temporarily replace double-bracketed content with a placeholder</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    <span class="im">import</span> uuid</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>    placeholder <span class="op">=</span> <span class="ss">f"PLACEHOLDER_</span><span class="sc">{</span>uuid<span class="sc">.</span>uuid4()<span class="sc">}</span><span class="ss">"</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>    double_bracketed <span class="op">=</span> re.findall(<span class="vs">r'&lt;&lt;[^&gt;]*&gt;&gt;'</span>, text)</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>    step1 <span class="op">=</span> re.sub(<span class="vs">r'&lt;&lt;[^&gt;]*&gt;&gt;'</span>, placeholder, text)</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Step 2: Remove HTML tags</span></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>    step2 <span class="op">=</span> re.sub(<span class="vs">r'&lt;[/]?[a-zA-Z][^&gt;]*&gt;'</span>, <span class="st">''</span>, step1)</span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Step 3: Restore double-bracketed content</span></span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> double_bracketed:</span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>        step3 <span class="op">=</span> step2.replace(placeholder, double_bracketed[<span class="dv">0</span>])</span>
+<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> step3</span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> step2</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.958034Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.957806Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.966934Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.966284Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.958012Z&quot;}" data-trusted="true">
+<details>
+<summary><code>remove_punctuation</code> function</summary>
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> remove_punctuation(text):</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    <span class="im">import</span> string</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="st">''</span>.join(char <span class="cf">if</span> char.isalnum() <span class="cf">else</span> <span class="st">' '</span> <span class="cf">if</span> char <span class="kw">in</span> string.punctuation <span class="cf">else</span> char <span class="cf">for</span> char <span class="kw">in</span> text)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.968107Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.967856Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:07.976869Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:07.976069Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.968083Z&quot;}" data-trusted="true">
+<details>
+<summary><code>process_contexts</code> function</summary>
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> process_contexts(data):</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Process questions</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> question <span class="kw">in</span> data[<span class="st">'questions'</span>]:</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Process only answer_context</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="st">'answer_context'</span> <span class="kw">in</span> question:</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> context_item <span class="kw">in</span> question[<span class="st">'answer_context'</span>]:</span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>                <span class="cf">if</span> <span class="st">'context'</span> <span class="kw">in</span> context_item:</span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">if</span> <span class="bu">isinstance</span>(context_item[<span class="st">'context'</span>], <span class="bu">list</span>):</span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a>                        <span class="co"># If context is a list, process each string in the list</span></span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a>                        context_item[<span class="st">'context'</span>] <span class="op">=</span> [</span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a>                            remove_punctuation(text) <span class="cf">if</span> text <span class="cf">else</span> text</span>
+<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a>                            <span class="cf">for</span> text <span class="kw">in</span> context_item[<span class="st">'context'</span>]</span>
+<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a>                        ]</span>
+<span id="cb22-14"><a href="#cb22-14" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">elif</span> <span class="bu">isinstance</span>(context_item[<span class="st">'context'</span>], <span class="bu">str</span>):</span>
+<span id="cb22-15"><a href="#cb22-15" aria-hidden="true" tabindex="-1"></a>                        <span class="co"># If context is a single string, process it directly</span></span>
+<span id="cb22-16"><a href="#cb22-16" aria-hidden="true" tabindex="-1"></a>                        context_item[<span class="st">'context'</span>] <span class="op">=</span> remove_punctuation(context_item[<span class="st">'context'</span>])</span>
+<span id="cb22-17"><a href="#cb22-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-18"><a href="#cb22-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> data</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+</section>
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In this notebook, I evaluate four retrieval methods on my fastbook-benchmark dataset using various chunk sizes:</p>
+<ul>
+<li>Full text search (using sqlite and Claude-generated keywords).</li>
+<li>Single-vector cosine similarity (using <code>SentenceTransformer("BAAI/bge-small-en-v1.5")</code>).</li>
+<li>ColBERTv2 (using ragatouille).</li>
+<li>answerai-colbert-small-v1 (ragatouille).</li>
+</ul>
+<p>For each retrieval method, I’m looking to find the best MRR@10 and Recall@10 for three chunk size ranges:</p>
+<ul>
+<li>Small: 100-500 tokens</li>
+<li>Medium: 500-1000 tokens</li>
+<li>Large: 1000+ tokens</li>
+</ul>
+<p>I chose these ranges based on trends I saw during some experiments I ran with ColBERTv2 and answerai-colbert-small-v1 for a chunk size range of 100-3000 tokens.</p>
+<p>I’m using <code>corpus_processor.process_corpus</code> for chunking.</p>
+</section>
+<section id="data-preprocessing" class="level2">
+<h2 class="anchored" data-anchor-id="data-preprocessing">Data Preprocessing</h2>
+<p>For each retrieval method/chunk size combination, I’ll preprocess my data three ways:</p>
+<ul>
+<li>No preprocessing.</li>
+<li>Remove HTML tags.</li>
+<li>Remove punctuation.</li>
+</ul>
+<p>Note that in each case, I am first converting the <code>.ipynb</code> for each chapter into a single string and splitting them into 2-3 chunks since for full-length texts were causing OOM during ColBERTv2 encoding.</p>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:07.990323Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:07.990007Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:08.029468Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:08.028908Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:07.990288Z&quot;}" data-trusted="true" data-execution_count="23">
+<details>
+<summary>Prep <code>no preprocessing</code> dataset</summary>
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>data_no_pp <span class="op">=</span> {}</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>n_chars <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chapter, nb <span class="kw">in</span> nbs.items():</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>    data_no_pp[chapter] <span class="op">=</span> chunk_string(notebook_to_string(nb), <span class="dv">2</span>)</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> c <span class="kw">in</span> data_no_pp[chapter]:</span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>        n_chars <span class="op">+=</span> <span class="bu">len</span>(c)</span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> n_chars <span class="op">==</span> <span class="dv">503769</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:08.030689Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:08.030342Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:08.039049Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:08.038342Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:08.030653Z&quot;}" data-trusted="true" data-execution_count="24">
+<details>
+<summary>Prep <code>no HTML</code> dataset</summary>
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>data_no_html <span class="op">=</span> {}</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>n_chars <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chapter, nb <span class="kw">in</span> nbs.items():</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>    data_no_html[chapter] <span class="op">=</span> chunk_string(notebook_to_string(nb), <span class="dv">2</span>)</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> c <span class="kw">in</span> data_no_html[chapter]:</span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>        n_chars <span class="op">+=</span> <span class="bu">len</span>(c)</span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> n_chars <span class="op">==</span> <span class="dv">503769</span></span>
+<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>n_chars <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chapter, chunks <span class="kw">in</span> data_no_html.items():</span>
+<span id="cb24-13"><a href="#cb24-13" aria-hidden="true" tabindex="-1"></a>    data_no_html[chapter] <span class="op">=</span> [clean_html(chunk) <span class="cf">for</span> chunk <span class="kw">in</span> chunks]</span>
+<span id="cb24-14"><a href="#cb24-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> string <span class="kw">in</span> data_no_html[chapter]: n_chars <span class="op">+=</span> <span class="bu">len</span>(string)</span>
+<span id="cb24-15"><a href="#cb24-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-16"><a href="#cb24-16" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> n_chars <span class="op">==</span> <span class="dv">493604</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-28T13:36:08.040141Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-28T13:36:08.039913Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-28T13:36:08.129082Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-28T13:36:08.128486Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-28T13:36:08.040118Z&quot;}" data-trusted="true" data-execution_count="25">
+<details>
+<summary>Prep <code>no punctuation</code> dataset</summary>
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>data_no_punc <span class="op">=</span> {}</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>n_chars <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chapter, nb <span class="kw">in</span> nbs.items():</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>    data_no_punc[chapter] <span class="op">=</span> chunk_string(notebook_to_string(nb), <span class="dv">2</span>)</span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> c <span class="kw">in</span> data_no_punc[chapter]:</span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>        n_chars <span class="op">+=</span> <span class="bu">len</span>(c)</span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> n_chars <span class="op">==</span> <span class="dv">503769</span></span>
+<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>n_chars <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chapter, chunks <span class="kw">in</span> data_no_punc.items():</span>
+<span id="cb25-13"><a href="#cb25-13" aria-hidden="true" tabindex="-1"></a>    data_no_punc[chapter] <span class="op">=</span> [remove_punctuation(chunk) <span class="cf">for</span> chunk <span class="kw">in</span> chunks]</span>
+<span id="cb25-14"><a href="#cb25-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> string <span class="kw">in</span> data_no_punc[chapter]: n_chars <span class="op">+=</span> <span class="bu">len</span>(string)</span>
+<span id="cb25-15"><a href="#cb25-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-16"><a href="#cb25-16" aria-hidden="true" tabindex="-1"></a><span class="co"># we are replacing punctuation with single space so n_chars doesn't change</span></span>
+<span id="cb25-17"><a href="#cb25-17" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> n_chars <span class="op">==</span> <span class="dv">503769</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+</section>
+<section id="benchmark-dataset" class="level2">
+<h2 class="anchored" data-anchor-id="benchmark-dataset">Benchmark Dataset</h2>
+<div class="cell" data-trusted="true" data-execution_count="26">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>benchmark <span class="op">=</span> load_benchmark()</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(benchmark[<span class="st">'questions'</span>]) <span class="op">==</span> <span class="dv">191</span></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>processed_benchmark <span class="op">=</span> process_contexts(benchmark)</span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(processed_benchmark[<span class="st">'questions'</span>]) <span class="op">==</span> <span class="dv">191</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="running-retrieval-100-2000-token-chunks" class="level2">
+<h2 class="anchored" data-anchor-id="running-retrieval-100-2000-token-chunks">Running Retrieval (100-2000 token chunks)</h2>
+<div class="cell" data-outputid="5cd7551c-7df0-480a-fc61-07f3c155239c" data-execution_count="28">
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> google.colab <span class="im">import</span> drive</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>drive.mount(<span class="st">'/content/drive'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Mounted at /content/drive</code></pre>
+</div>
+</div>
+<section id="data-no-preprocessing" class="level3">
+<h3 class="anchored" data-anchor-id="data-no-preprocessing">Data: No Preprocessing</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> []</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> method <span class="kw">in</span> [<span class="st">"bm25"</span>, <span class="st">"single_vector"</span>, <span class="st">"colbertv2"</span>, <span class="st">"answerai_colbert"</span>]:</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> chunk_size <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">100</span>, <span class="dv">2100</span>, <span class="dv">100</span>):</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>    mrr, recall <span class="op">=</span> do_retrieval(method, chunk_size, data_no_pp, load_benchmark(), questions)</span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>    results.append((<span class="st">'no preprocessing'</span>, method, chunk_size, mrr, recall))</span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pd.DataFrame(results, columns<span class="op">=</span>[<span class="st">'data'</span>, <span class="st">'method'</span>, <span class="st">'chunk_size'</span>, <span class="st">'MRR@10'</span>, <span class="st">'Recall@10'</span>])</span>
+<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>df.to_csv(<span class="st">"/content/drive/MyDrive/2024-11-29-fastbook-benchmark-results_no preprocessing.csv"</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="data-no-html-tags" class="level3">
+<h3 class="anchored" data-anchor-id="data-no-html-tags">Data: No HTML Tags</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> []</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> method <span class="kw">in</span> [<span class="st">"bm25"</span>, <span class="st">"single_vector"</span>, <span class="st">"colbertv2"</span>, <span class="st">"answerai_colbert"</span>]:</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> chunk_size <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">100</span>, <span class="dv">2100</span>, <span class="dv">100</span>):</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>    mrr, recall <span class="op">=</span> do_retrieval(method, chunk_size, data_no_html, load_benchmark(), questions)</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>    results.append((<span class="st">'no HTML'</span>, method, chunk_size, mrr, recall))</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pd.DataFrame(results, columns<span class="op">=</span>[<span class="st">'data'</span>, <span class="st">'method'</span>, <span class="st">'chunk_size'</span>, <span class="st">'MRR@10'</span>, <span class="st">'Recall@10'</span>])</span>
+<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a>df.to_csv(<span class="st">"/content/drive/MyDrive/2024-11-29-fastbook-benchmark-results_no HTML.csv"</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="data-no-punctuation" class="level3">
+<h3 class="anchored" data-anchor-id="data-no-punctuation">Data: No Punctuation</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> []</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> method <span class="kw">in</span> [<span class="st">"bm25"</span>, <span class="st">"single_vector"</span>, <span class="st">"colbertv2"</span>, <span class="st">"answerai_colbert"</span>]:</span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> chunk_size <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">100</span>, <span class="dv">2100</span>, <span class="dv">100</span>):</span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>    mrr, recall <span class="op">=</span> do_retrieval(method, chunk_size, data_no_punc, process_contexts(benchmark), questions)</span>
+<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a>    results.append((<span class="st">'no punctuation'</span>, method, chunk_size, mrr, recall))</span>
+<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pd.DataFrame(results, columns<span class="op">=</span>[<span class="st">'data'</span>, <span class="st">'method'</span>, <span class="st">'chunk_size'</span>, <span class="st">'MRR@10'</span>, <span class="st">'Recall@10'</span>])</span>
+<span id="cb31-9"><a href="#cb31-9" aria-hidden="true" tabindex="-1"></a>df.to_csv(<span class="st">"/content/drive/MyDrive/2024-11-29-fastbook-benchmark-results_no punctuation.csv"</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+</section>
+<section id="analyzing-results" class="level2">
+<h2 class="anchored" data-anchor-id="analyzing-results">Analyzing Results</h2>
+<div class="cell" data-outputid="3c4780a2-0223-469a-8b56-b2f50ef92949" data-execution_count="195">
+<details>
+<summary>Load saved results CSVs</summary>
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>no_pp <span class="op">=</span> pd.read_csv(<span class="st">"/content/drive/MyDrive/2024-11-29-fastbook-benchmark-results_no preprocessing.csv"</span>)</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>no_html <span class="op">=</span> pd.read_csv(<span class="st">"/content/drive/MyDrive/2024-11-29-fastbook-benchmark-results_no HTML.csv"</span>)</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>no_punc <span class="op">=</span> pd.read_csv(<span class="st">"/content/drive/MyDrive/2024-11-29-fastbook-benchmark-results_no punctuation.csv"</span>)</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pd.concat([no_pp, no_html, no_punc])</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>df.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-display" data-execution_count="195">
+<pre><code>(240, 5)</code></pre>
+</div>
+</div>
+<section id="best-overall-mrr10" class="level3">
+<h3 class="anchored" data-anchor-id="best-overall-mrr10">Best Overall MRR@10</h3>
+<p>Surprisingly, full text search had the highest-overall MRR@10 with 0.67 for 2000-token chunks, for text with punctuation removed.</p>
+<div class="cell" data-outputid="966b62a2-8407-45be-8f1e-6ed74042077f" data-execution_count="32">
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>df[df[<span class="st">'MRR@10'</span>] <span class="op">==</span> df[<span class="st">'MRR@10'</span>].<span class="bu">max</span>()]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="32">
+
+
+  <div id="df-ea293031-af15-4fcd-bb00-77b780978cbb" class="colab-df-container">
+    <div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>data</th>
+      <th>method</th>
+      <th>chunk_size</th>
+      <th>MRR@10</th>
+      <th>Recall@10</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>19</th>
+      <td>no punctuation</td>
+      <td>bm25</td>
+      <td>2000</td>
+      <td>0.668046</td>
+      <td>0.94315</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+    <div class="colab-df-buttons">
+
+  <div class="colab-df-container">
+    <button class="colab-df-convert" onclick="convertToInteractive('df-ea293031-af15-4fcd-bb00-77b780978cbb')" title="Convert this dataframe to an interactive table." style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
+    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
+  </svg>
+    </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    .colab-df-buttons div {
+      margin-bottom: 4px;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+    <script>
+      const buttonEl =
+        document.querySelector('#df-ea293031-af15-4fcd-bb00-77b780978cbb button.colab-df-convert');
+      buttonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+      async function convertToInteractive(key) {
+        const element = document.querySelector('#df-ea293031-af15-4fcd-bb00-77b780978cbb');
+        const dataTable =
+          await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                    [key], {});
+        if (!dataTable) return;
+
+        const docLinkHtml = 'Like what you see? Visit the ' +
+          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+          + ' to learn more about interactive tables.';
+        element.innerHTML = '';
+        dataTable['output_type'] = 'display_data';
+        await google.colab.output.renderOutput(dataTable, element);
+        const docLink = document.createElement('div');
+        docLink.innerHTML = docLinkHtml;
+        element.appendChild(docLink);
+      }
+    </script>
+  </div>
+
+
+    </div>
+  </div>
+</div>
+</div>
+</section>
+<section id="best-overall-recall10" class="level3">
+<h3 class="anchored" data-anchor-id="best-overall-recall10">Best Overall Recall@10</h3>
+<p>Full text search also yielded the best overall Recall@10 at 95%, also at a chunk size of 2000 tokens, but for text with no preprocessing on it (other than splitting the notebook into 2-3 chunks). Wow!</p>
+<div class="cell" data-outputid="52b55409-0b36-4a53-c9f0-8e77a5de3b4f" data-execution_count="33">
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>df[df[<span class="st">'Recall@10'</span>] <span class="op">==</span> df[<span class="st">'Recall@10'</span>].<span class="bu">max</span>()]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="33">
+
+
+  <div id="df-27ff4a6e-ae12-430a-8b49-93dbfd0a6221" class="colab-df-container">
+    <div>
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th></th>
+      <th>data</th>
+      <th>method</th>
+      <th>chunk_size</th>
+      <th>MRR@10</th>
+      <th>Recall@10</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>19</th>
+      <td>no preprocessing</td>
+      <td>bm25</td>
+      <td>2000</td>
+      <td>0.658541</td>
+      <td>0.95493</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+    <div class="colab-df-buttons">
+
+  <div class="colab-df-container">
+    <button class="colab-df-convert" onclick="convertToInteractive('df-27ff4a6e-ae12-430a-8b49-93dbfd0a6221')" title="Convert this dataframe to an interactive table." style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
+    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
+  </svg>
+    </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    .colab-df-buttons div {
+      margin-bottom: 4px;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+    <script>
+      const buttonEl =
+        document.querySelector('#df-27ff4a6e-ae12-430a-8b49-93dbfd0a6221 button.colab-df-convert');
+      buttonEl.style.display =
+        google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+      async function convertToInteractive(key) {
+        const element = document.querySelector('#df-27ff4a6e-ae12-430a-8b49-93dbfd0a6221');
+        const dataTable =
+          await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                    [key], {});
+        if (!dataTable) return;
+
+        const docLinkHtml = 'Like what you see? Visit the ' +
+          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+          + ' to learn more about interactive tables.';
+        element.innerHTML = '';
+        dataTable['output_type'] = 'display_data';
+        await google.colab.output.renderOutput(dataTable, element);
+        const docLink = document.createElement('div');
+        docLink.innerHTML = docLinkHtml;
+        element.appendChild(docLink);
+      }
+    </script>
+  </div>
+
+
+    </div>
+  </div>
+</div>
+</div>
+</section>
+<section id="analyzing-metrics-by-chunk-size-range" class="level3">
+<h3 class="anchored" data-anchor-id="analyzing-metrics-by-chunk-size-range">Analyzing Metrics by Chunk Size Range</h3>
+<p>I care about chunk size because eventually I am going to pass on the retrieved context to an LLM for answer generation and context size will dictate latency and potentially performance.</p>
+<div class="cell" data-execution_count="35">
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>df[<span class="st">'category'</span>] <span class="op">=</span> pd.cut(df[<span class="st">'chunk_size'</span>], bins<span class="op">=</span>[<span class="dv">100</span>, <span class="dv">500</span>, <span class="dv">1000</span>, <span class="dv">2000</span>], labels<span class="op">=</span>[<span class="st">'small'</span>, <span class="st">'medium'</span>, <span class="st">'large'</span>], include_lowest<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<section id="mrr10" class="level4">
+<h4 class="anchored" data-anchor-id="mrr10">MRR@10</h4>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Chunk Size Category</th>
+<th style="text-align: center;">Retrieval Method</th>
+<th style="text-align: center;">MRR@10</th>
+<th style="text-align: center;">Chunk Size</th>
+<th style="text-align: center;">Dataset</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">Small (100-500 tokens)</td>
+<td style="text-align: center;">answer-colbert-small-v1</td>
+<td style="text-align: center;">0.59</td>
+<td style="text-align: center;">500 tokens</td>
+<td style="text-align: center;">No punctuation</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">Medium (501-1000 tokens)</td>
+<td style="text-align: center;">ColBERTv2</td>
+<td style="text-align: center;">0.61</td>
+<td style="text-align: center;">600 tokens</td>
+<td style="text-align: center;">No punctuation</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">Large (1001-2000 tokens)</td>
+<td style="text-align: center;">Full text search</td>
+<td style="text-align: center;">0.67</td>
+<td style="text-align: center;">2000 tokens</td>
+<td style="text-align: center;">No punctuation</td>
+</tr>
+</tbody>
+</table>
+<p>Interesting to note:</p>
+<ul>
+<li>600 tokens was the best-performing chunk size for medium chunks.</li>
+<li>In all three cases, text without punctuation resulted in the best MRR@10.</li>
+</ul>
+</section>
+<section id="recall10" class="level4">
+<h4 class="anchored" data-anchor-id="recall10">Recall@10</h4>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Chunk Size Category</th>
+<th style="text-align: center;">Retrieval Method</th>
+<th style="text-align: center;">MRR@10</th>
+<th style="text-align: center;">Chunk Size</th>
+<th style="text-align: center;">Data</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">Small (100-500 tokens)</td>
+<td style="text-align: center;">answer-colbert-small-v1</td>
+<td style="text-align: center;">0.88</td>
+<td style="text-align: center;">500 tokens</td>
+<td style="text-align: center;">No punctuation</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">Medium (501-1000 tokens)</td>
+<td style="text-align: center;">Full text search</td>
+<td style="text-align: center;">0.92</td>
+<td style="text-align: center;">1000 tokens</td>
+<td style="text-align: center;">No preprocessing</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">Large (1001-2000 tokens)</td>
+<td style="text-align: center;">Full text search</td>
+<td style="text-align: center;">0.95</td>
+<td style="text-align: center;">2000 tokens</td>
+<td style="text-align: center;">No preprocessing</td>
+</tr>
+</tbody>
+</table>
+<p>Interesting to note:</p>
+<ul>
+<li>The highest chunk size in each range yielded the best MRR@10.</li>
+<li>Text without punctuation worked best for small chunks while unprocessed text worked best for medium and large chunks.</li>
+</ul>
+</section>
+</section>
+<section id="visualizing-metrics-by-chunk-size-and-method" class="level3">
+<h3 class="anchored" data-anchor-id="visualizing-metrics-by-chunk-size-and-method">Visualizing Metrics by Chunk Size and Method</h3>
+<div class="cell" data-execution_count="162">
+<details>
+<summary>Show <code>plot_metrics</code> function</summary>
+<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> plot_metrics(df, metric<span class="op">=</span><span class="st">"MRR@10"</span>):</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>  plt.style.use(<span class="st">'seaborn-v0_8-bright'</span>)</span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>  fig, axs <span class="op">=</span> plt.subplots(<span class="dv">1</span>, <span class="dv">3</span>, figsize<span class="op">=</span>(<span class="dv">20</span>, <span class="dv">6</span>))</span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>  colors <span class="op">=</span> [<span class="st">'#268BD2'</span>, <span class="st">'#DC322F'</span>, <span class="st">'#859900'</span>, <span class="st">'#6C71C4'</span>]</span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> i, dataset <span class="kw">in</span> <span class="bu">enumerate</span>([<span class="st">'no preprocessing'</span>, <span class="st">'no HTML'</span>, <span class="st">'no punctuation'</span>]):</span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>    data_df <span class="op">=</span> df[df[<span class="st">'data'</span>] <span class="op">==</span> dataset]</span>
+<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> j, method <span class="kw">in</span> <span class="bu">enumerate</span>(<span class="bu">sorted</span>(data_df[<span class="st">'method'</span>].unique())):</span>
+<span id="cb37-10"><a href="#cb37-10" aria-hidden="true" tabindex="-1"></a>      method_data <span class="op">=</span> data_df[data_df[<span class="st">'method'</span>] <span class="op">==</span> method]</span>
+<span id="cb37-11"><a href="#cb37-11" aria-hidden="true" tabindex="-1"></a>      axs[i].plot(method_data[<span class="st">'chunk_size'</span>], method_data[metric],</span>
+<span id="cb37-12"><a href="#cb37-12" aria-hidden="true" tabindex="-1"></a>                        linestyle<span class="op">=</span><span class="st">'--'</span>, linewidth<span class="op">=</span><span class="dv">2</span>,</span>
+<span id="cb37-13"><a href="#cb37-13" aria-hidden="true" tabindex="-1"></a>                        color<span class="op">=</span>colors[j],</span>
+<span id="cb37-14"><a href="#cb37-14" aria-hidden="true" tabindex="-1"></a>                        label<span class="op">=</span>method)</span>
+<span id="cb37-15"><a href="#cb37-15" aria-hidden="true" tabindex="-1"></a>      <span class="co">#axs[i].scatter(method_data['chunk_size'], method_data[metric], color=colors[j], s=25)</span></span>
+<span id="cb37-16"><a href="#cb37-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-17"><a href="#cb37-17" aria-hidden="true" tabindex="-1"></a>      axs[i].set_xlabel(<span class="st">'Chunk Size (Tokens)'</span>, fontsize<span class="op">=</span><span class="dv">14</span>)</span>
+<span id="cb37-18"><a href="#cb37-18" aria-hidden="true" tabindex="-1"></a>      axs[i].set_ylabel(<span class="st">'Score'</span> <span class="cf">if</span> i <span class="op">==</span> <span class="dv">0</span> <span class="cf">else</span> <span class="st">''</span>, fontsize<span class="op">=</span><span class="dv">14</span>)</span>
+<span id="cb37-19"><a href="#cb37-19" aria-hidden="true" tabindex="-1"></a>      axs[i].set_title(dataset.replace(<span class="st">'no '</span>, <span class="st">'No '</span>), fontsize<span class="op">=</span><span class="dv">16</span>, pad<span class="op">=</span><span class="dv">10</span>)</span>
+<span id="cb37-20"><a href="#cb37-20" aria-hidden="true" tabindex="-1"></a>      axs[i].tick_params(axis<span class="op">=</span><span class="st">'both'</span>, labelsize<span class="op">=</span><span class="dv">14</span>)</span>
+<span id="cb37-21"><a href="#cb37-21" aria-hidden="true" tabindex="-1"></a>      axs[i].grid(<span class="va">True</span>, alpha<span class="op">=</span><span class="fl">0.8</span>)</span>
+<span id="cb37-22"><a href="#cb37-22" aria-hidden="true" tabindex="-1"></a>      axs[i].set_xlim(<span class="dv">50</span>, <span class="dv">2050</span>)</span>
+<span id="cb37-23"><a href="#cb37-23" aria-hidden="true" tabindex="-1"></a>      <span class="cf">if</span> metric <span class="op">==</span> <span class="st">'MRR@10'</span>: axs[i].set_ylim(<span class="fl">0.15</span>, <span class="fl">0.7</span>)</span>
+<span id="cb37-24"><a href="#cb37-24" aria-hidden="true" tabindex="-1"></a>      <span class="cf">else</span>: axs[i].set_ylim(<span class="fl">0.4</span>, <span class="fl">1.0</span>)</span>
+<span id="cb37-25"><a href="#cb37-25" aria-hidden="true" tabindex="-1"></a>  handles, labels <span class="op">=</span> axs[<span class="dv">0</span>].get_legend_handles_labels()</span>
+<span id="cb37-26"><a href="#cb37-26" aria-hidden="true" tabindex="-1"></a>  fig.legend(handles, labels, loc<span class="op">=</span><span class="st">'right'</span>, bbox_to_anchor<span class="op">=</span>(<span class="fl">1.03</span>, <span class="fl">0.5</span>), fontsize<span class="op">=</span><span class="dv">18</span>)</span>
+<span id="cb37-27"><a href="#cb37-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-28"><a href="#cb37-28" aria-hidden="true" tabindex="-1"></a>  fig.suptitle(<span class="ss">f"fastbook-benchmark </span><span class="sc">{</span>metric<span class="sc">}</span><span class="ss"> by Chunk Size"</span>, fontsize<span class="op">=</span><span class="dv">24</span>, y<span class="op">=</span><span class="fl">1.05</span>)</span>
+<span id="cb37-29"><a href="#cb37-29" aria-hidden="true" tabindex="-1"></a>  plt.tight_layout()</span>
+<span id="cb37-30"><a href="#cb37-30" aria-hidden="true" tabindex="-1"></a>  plt.subplots_adjust(right<span class="op">=</span><span class="fl">0.85</span>)</span>
+<span id="cb37-31"><a href="#cb37-31" aria-hidden="true" tabindex="-1"></a>  plt.show()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-outputid="22209e74-d208-4031-8e17-a5444e743802" data-execution_count="163">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>plot_metrics(df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-35-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="index_files/figure-html/cell-35-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Takeaways:</p>
+<ul>
+<li>All semantic search methods peak at a chunk size of ~500 tokens.</li>
+<li>Full text search (BM25) mostly monotonically improves with chunk size.</li>
+<li>Single-vector cosine simililarity is the worst-performing method after ~250 tokens.</li>
+<li>For semantic search methods, in general, answerai-colbert-small-v1 &gt; ColBERTv2 &gt; Single-vector cosine similarity.</li>
+</ul>
+<div class="cell" data-outputid="6d5cb540-5d7a-4fd7-8099-79499b94cd2e" data-execution_count="164">
+<div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>plot_metrics(df, metric<span class="op">=</span><span class="st">"Recall@10"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-36-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2"><img src="index_files/figure-html/cell-36-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Takeaways:</p>
+<ul>
+<li>When the data is not preprocessed, all semantic search methods’ Recall@10 decreases from ~500 tokens to ~1000 tokens, then increase again to 2000 tokens.</li>
+<li>After 500 tokens, full text search (BM25) has the best Recall@10 for most of the way.</li>
+</ul>
+</section>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>This was an incredibly awesome experience. I did a couple iterations of these experiments before this notebook, each time refactoring my approach so that I could relatively concisely run these chunk size experiments. That process was tough at times but really rewarding.</p>
+<p>My three main takeaways:</p>
+<ul>
+<li>For small chunks, answerai-colbert-small-v1 has the best MRR@10 and Recall@10.</li>
+<li>For medium chunks, use ColBERTv2 for the best MRR@10 and full text search for the best Recall@10.</li>
+<li>For large chunks, full text search has the best MRR@10 and Recall@10.</li>
+</ul>
+<p>I expect to try out all of these approaches after I integrate an LLM to turn this information retrieval pipeline to a RAG pipeline. My hypothesis is that smaller chunks will yield better responses from the LLM since there will be less “noise” and more “signal” in the context.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<script>var lightboxQuarto = GLightbox({"selector":".lightbox","descPosition":"bottom","closeEffect":"zoom","openEffect":"zoom","loop":true});</script>
+
+
+
+</body></html>
