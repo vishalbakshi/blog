@@ -1,0 +1,1723 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2024-12-24">
+<meta name="description" content="In this blog post, I walk through the colbert research codebase (via AnswerAI’s RAGatouille) and work my way line-by-line through the 4-stage PLAID scoring pipeline to recreate RAGatouille results for a toy example of 1 query and 3 documents.">
+
+<title>Vishal Bakshi’s Blog - Recreating the PLAID ColBERTv2 Scoring Pipeline: From Research Code to RAGatouille</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Vishal Bakshi’s Blog</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#ragatouille-results" id="toc-ragatouille-results" class="nav-link" data-scroll-target="#ragatouille-results">RAGatouille Results</a></li>
+  <li><a href="#where-to-start" id="toc-where-to-start" class="nav-link" data-scroll-target="#where-to-start">Where to Start?</a></li>
+  <li><a href="#the-searcher-class" id="toc-the-searcher-class" class="nav-link" data-scroll-target="#the-searcher-class">The <code>Searcher</code> Class</a></li>
+  <li><a href="#searcher.ranker.rank" id="toc-searcher.ranker.rank" class="nav-link" data-scroll-target="#searcher.ranker.rank"><code>Searcher.ranker.rank</code></a></li>
+  <li><a href="#stage-1-initial-candidate-generation" id="toc-stage-1-initial-candidate-generation" class="nav-link" data-scroll-target="#stage-1-initial-candidate-generation">Stage 1: Initial Candidate Generation</a>
+  <ul class="collapse">
+  <li><a href="#searcher.ranker.retrieve" id="toc-searcher.ranker.retrieve" class="nav-link" data-scroll-target="#searcher.ranker.retrieve"><code>Searcher.ranker.retrieve</code></a></li>
+  <li><a href="#generate_candidates" id="toc-generate_candidates" class="nav-link" data-scroll-target="#generate_candidates"><code>generate_candidates</code></a></li>
+  <li><a href="#generate_candidate_pids" id="toc-generate_candidate_pids" class="nav-link" data-scroll-target="#generate_candidate_pids"><code>generate_candidate_pids</code></a></li>
+  <li><a href="#get_cells" id="toc-get_cells" class="nav-link" data-scroll-target="#get_cells"><code>get_cells</code></a></li>
+  <li><a href="#ivf" id="toc-ivf" class="nav-link" data-scroll-target="#ivf"><code>ivf</code></a></li>
+  </ul></li>
+  <li><a href="#stage-2-centroid-interaction-with-pruning" id="toc-stage-2-centroid-interaction-with-pruning" class="nav-link" data-scroll-target="#stage-2-centroid-interaction-with-pruning">Stage 2: Centroid Interaction with Pruning</a>
+  <ul class="collapse">
+  <li><a href="#picking-centroids-with-scores-above-threshold" id="toc-picking-centroids-with-scores-above-threshold" class="nav-link" data-scroll-target="#picking-centroids-with-scores-above-threshold">Picking centroids with scores above threshold</a></li>
+  <li><a href="#looking-up-codes-centroid-ids-corresponding-to-passage-tokens" id="toc-looking-up-codes-centroid-ids-corresponding-to-passage-tokens" class="nav-link" data-scroll-target="#looking-up-codes-centroid-ids-corresponding-to-passage-tokens">Looking up codes (centroid IDs corresponding to passage tokens)</a></li>
+  <li><a href="#picking-scores-for-centroid-ids-corresponding-to-passage-tokens" id="toc-picking-scores-for-centroid-ids-corresponding-to-passage-tokens" class="nav-link" data-scroll-target="#picking-scores-for-centroid-ids-corresponding-to-passage-tokens">Picking scores for centroid IDs corresponding to passage tokens</a></li>
+  <li><a href="#max-reducing-scores-to-get-1-score-per-passage-id" id="toc-max-reducing-scores-to-get-1-score-per-passage-id" class="nav-link" data-scroll-target="#max-reducing-scores-to-get-1-score-per-passage-id">Max-reducing scores to get 1 score per passage ID</a></li>
+  <li><a href="#picking-the-top-ndocs-passages" id="toc-picking-the-top-ndocs-passages" class="nav-link" data-scroll-target="#picking-the-top-ndocs-passages">Picking the top-ndocs passages</a></li>
+  </ul></li>
+  <li><a href="#stage-3-centroid-interaction-wo-pruning" id="toc-stage-3-centroid-interaction-wo-pruning" class="nav-link" data-scroll-target="#stage-3-centroid-interaction-wo-pruning">Stage 3: Centroid Interaction w/o Pruning</a></li>
+  <li><a href="#stage-4-final-ranking-with-decompression" id="toc-stage-4-final-ranking-with-decompression" class="nav-link" data-scroll-target="#stage-4-final-ranking-with-decompression">Stage 4: Final ranking with decompression</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Recreating the PLAID ColBERTv2 Scoring Pipeline: From Research Code to RAGatouille</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">python</div>
+    <div class="quarto-category">information retrieval</div>
+    <div class="quarto-category">machine learning</div>
+    <div class="quarto-category">deep learning</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    In this blog post, I walk through the colbert research codebase (via AnswerAI’s RAGatouille) and work my way line-by-line through the 4-stage PLAID scoring pipeline to recreate RAGatouille results for a toy example of 1 query and 3 documents.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">December 24, 2024</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>pip install RAGatouille <span class="op">-</span>qq</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="2">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ragatouille <span class="im">import</span> RAGPretrainedModel</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> colbert</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fastcore.utils <span class="im">import</span> Path</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> json</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>This walkthrough reconstructs the PLAID scoring pipeline by tracing code paths in the <a href="https://github.com/stanford-futuredata/ColBERT">ColBERT research codebase</a> that reproduce RAGatouille’s verified results. This is a reverse engineering process - I pulled at promising threads (code related to centroids, passage IDs, and scores) and validated my understanding by comparing against RAGatouille’s known-correct outputs.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="1.png" class="lightbox" title="4-Stage PLAID Scoring Pipeline" data-gallery="quarto-lightbox-gallery-1"><img src="1.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">4-Stage PLAID Scoring Pipeline</figcaption><p></p>
+</figure>
+</div>
+<p>Here’s my video walkthrough of the code in this notebook:</p>
+<div class="quarto-video ratio ratio-16x9"><iframe src="https://www.youtube.com/embed/XRPP5LHHk0o" title="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe></div>
+</section>
+<section id="ragatouille-results" class="level2">
+<h2 class="anchored" data-anchor-id="ragatouille-results">RAGatouille Results</h2>
+<p>In this notebook, the gold truth scores for the documents given a query are determined by the RAGatouille library. I create a query (<em>What is Python?</em>) and a simple set of documents where one document is the obvious right answer (<em>Python is a programming language. It is easy to learn</em>) , one is a hard negative in that it’s about Python (<em>Python was created by Guido van Rossum in 1991</em>) and one is a easier negative as it’s related to the programming but not about Python (<em>Java is a popular coding language used in many applications</em>).</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>RAG <span class="op">=</span> RAGPretrainedModel.from_pretrained(<span class="st">"colbert-ir/colbertv2.0"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="89b586b3-11b0-4cae-8e03-54496bf75f35" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>q <span class="op">=</span> <span class="st">"What is Python?"</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>q</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<pre><code>'What is Python?'</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="5e61a859-1291-48d1-e3cb-430ec494cdf7" data-execution_count="5">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>documents <span class="op">=</span> [</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Python is a programming language. It is easy to learn"</span>,</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Java is a popular coding language used in many applications"</span>,</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Python was created by Guido van Rossum in 1991"</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>documents</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<pre><code>['Python is a programming language. It is easy to learn',
+ 'Java is a popular coding language used in many applications',
+ 'Python was created by Guido van Rossum in 1991']</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>index_path <span class="op">=</span> RAG.index(index_name<span class="op">=</span><span class="st">"toy_example"</span>, collection<span class="op">=</span>documents)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="14b79968-f1f3-4da6-801c-631016f860b3" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>index_path</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<pre><code>'.ragatouille/colbert/indexes/toy_example'</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="9e40747b-0e07-4e78-abe4-d3dc5f3d94ff" data-execution_count="9">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> RAG.search(q)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>WARNING: k value is larger than the number of documents in the index! Lowering k to 3...</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="9">
+<pre><code>[{'content': 'Python is a programming language. It is easy to learn',
+  'score': 27.6875,
+  'rank': 1,
+  'document_id': '8aa5aade-10d5-4144-b634-c7866578b43c',
+  'passage_id': 0},
+ {'content': 'Python was created by Guido van Rossum in 1991',
+  'score': 22.28125,
+  'rank': 2,
+  'document_id': '12352328-9bb1-4a51-896e-a002d3548adc',
+  'passage_id': 2},
+ {'content': 'Java is a popular coding language used in many applications',
+  'score': 13.953125,
+  'rank': 3,
+  'document_id': '1fe9788e-ccec-4b9e-a004-14acc657915e',
+  'passage_id': 1}]</code></pre>
+</div>
+</div>
+<p>Note the <code>score</code> and <code>passage_id</code>—these are values I’ll continuously reference throughout my walkthrough:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;"><code>passage_id</code></th>
+<th style="text-align: center;"><code>score</code></th>
+<th style="text-align: center;">passage text</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">27.6875</td>
+<td style="text-align: center;">“Python is a programming language. It is easy to learn”</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2</td>
+<td style="text-align: center;">22.28125</td>
+<td style="text-align: center;">“Python was created by Guido van Rossum in 1991”</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">13.953125</td>
+<td style="text-align: center;">“Java is a popular coding language used in many applications”</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="where-to-start" class="level2">
+<h2 class="anchored" data-anchor-id="where-to-start">Where to Start?</h2>
+<p>Starting at the top—the model in play: of type <code>ColBERT</code></p>
+<div class="cell" data-outputid="a569389d-4ae5-45fe-e11d-3e4c9c340d81" data-execution_count="10">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>m <span class="op">=</span> RAG.model</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>m</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<pre><code>&lt;ragatouille.models.colbert.ColBERT at 0x7d0a4cc14670&gt;</code></pre>
+</div>
+</div>
+<p>And its index—of type <code>PLAIDModelIndex</code>.</p>
+<div class="cell" data-outputid="07afbe51-fa27-4156-e6c5-a4a01e73de0c" data-execution_count="11">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>index <span class="op">=</span> m.model_index</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>index</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<pre><code>&lt;ragatouille.models.index.PLAIDModelIndex at 0x7d0bd8bb7e80&gt;</code></pre>
+</div>
+</div>
+<p>Inside the source code for <a href="https://github.com/AnswerDotAI/RAGatouille/blob/8183aad64a9a6ba805d4066dcab489d97615d316/ragatouille/models/index.py#L284"><code>PLAIDModelIndex</code></a> the most promising method seemed be the <code>_search</code> method, which contains the following line:</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> <span class="va">self</span>.searcher.search(query, k<span class="op">=</span>k, pids<span class="op">=</span>pids)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>This contained three things I recognized: the <code>query</code>, the top <code>k</code> value and the passage IDs <code>pids</code>.</p>
+<div class="cell" data-outputid="737f4016-6a3e-49a7-ee28-ccfd19dd095e" data-execution_count="12">
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>index.searcher</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<pre><code>&lt;colbert.searcher.Searcher at 0x7d0a4cdc6530&gt;</code></pre>
+</div>
+</div>
+</section>
+<section id="the-searcher-class" class="level2">
+<h2 class="anchored" data-anchor-id="the-searcher-class">The <code>Searcher</code> Class</h2>
+<p>I couldn’t find the <code>Searcher</code> in RAGAtouille’s codebase as it was imported from <code>colbert</code>. Thankfully, installing RAGatouille gives you access to this library!</p>
+<div class="cell" data-outputid="6abf22d1-2cb2-4a49-a70a-0121cac86de5" data-execution_count="13">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>colbert.Searcher</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<div style="max-width:800px; border: 1px solid var(--colab-border-color);"><style>
+      pre.function-repr-contents {
+        overflow-x: auto;
+        padding: 8px 12px;
+        max-height: 500px;
+      }
+
+      pre.function-repr-contents.function-repr-contents-collapsed {
+        cursor: pointer;
+        max-height: 100px;
+      }
+    </style>
+    <pre style="white-space: initial; background:
+         var(--colab-secondary-surface-color); padding: 8px 12px;
+         border-bottom: 1px solid var(--colab-border-color);"><b>colbert.searcher.Searcher</b><br>def __init__(index, checkpoint=None, collection=None, config=None, index_root=None, verbose: int=3)</pre><pre class="function-repr-contents function-repr-contents-collapsed" style=""><a class="filepath" style="display:none" href="#">/usr/local/lib/python3.10/dist-packages/colbert/searcher.py</a>&lt;no docstring&gt;</pre>
+      <script>
+      if (google.colab.kernel.accessAllowed && google.colab.files && google.colab.files.view) {
+        for (const element of document.querySelectorAll('.filepath')) {
+          element.style.display = 'block'
+          element.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            google.colab.files.view(element.textContent, 22);
+          };
+        }
+      }
+      for (const element of document.querySelectorAll('.function-repr-contents')) {
+        element.onclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          element.classList.toggle('function-repr-contents-collapsed');
+        };
+      }
+      </script>
+      </div>
+</div>
+</div>
+<p>The <code>Searcher</code> takes as a required argument an <code>index</code> path—which we have!</p>
+<div class="cell" data-outputid="56727311-62b7-45d7-a5bb-58e710870a54" data-execution_count="14">
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>searcher <span class="op">=</span> colbert.Searcher(index<span class="op">=</span><span class="st">'toy_example'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[Dec 24, 15:59:52] #&gt; Loading codec...
+[Dec 24, 15:59:52] #&gt; Loading IVF...
+[Dec 24, 15:59:52] #&gt; Loading doclens...</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>100%|██████████| 1/1 [00:00&lt;00:00, 4315.13it/s]</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[Dec 24, 15:59:52] #&gt; Loading codes and residuals...</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+100%|██████████| 1/1 [00:00&lt;00:00, 454.67it/s]</code></pre>
+</div>
+</div>
+<p>Notice that it loads the <code>codec</code>, <code>IVF</code> and <code>doclens</code>, all things we’ll look at throughout this notebook. Looking inside the <code>Searcher.search</code> method (which was called in the <code>PLAIDModelIndex._search</code> method) <a href="https://github.com/stanford-futuredata/ColBERT/blob/7067ef598b5011edaa1f4a731a2c269dbac864e4/colbert/searcher.py#L65">I see the following</a>:</p>
+<div class="sourceCode" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> search(<span class="va">self</span>, text: <span class="bu">str</span>, k<span class="op">=</span><span class="dv">10</span>, filter_fn<span class="op">=</span><span class="va">None</span>, full_length_search<span class="op">=</span><span class="va">False</span>, pids<span class="op">=</span><span class="va">None</span>):</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>    Q <span class="op">=</span> <span class="va">self</span>.encode(text, full_length_search<span class="op">=</span>full_length_search)</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="va">self</span>.dense_search(Q, k, filter_fn<span class="op">=</span>filter_fn, pids<span class="op">=</span>pids)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>This is encoding the <code>text</code> into <code>Q</code>. Looks promising. I’ll see what that gets me:</p>
+<div class="cell" data-outputid="5877b31f-6555-45e1-c697-e47c726a989a" data-execution_count="16">
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>Q <span class="op">=</span> searcher.encode(q)</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>Q.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="16">
+<pre><code>torch.Size([1, 32, 128])</code></pre>
+</div>
+</div>
+<p>Looks good! It has 32 tokens, each with a 128-dimension encoding.</p>
+<p><code>Searcher.search</code> returns the output of <code>Searcher.dense_search</code>, and the <a href="https://github.com/stanford-futuredata/ColBERT/blob/7067ef598b5011edaa1f4a731a2c269dbac864e4/colbert/searcher.py#L106"><code>Searcher.dense_search</code></a> method looks <em>very</em> promising. It takes queries <code>Q</code> and passages IDs and returns passage IDs and <code>scores</code>.</p>
+<div class="sourceCode" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>pids, scores <span class="op">=</span> <span class="va">self</span>.ranker.rank(<span class="va">self</span>.config, Q, filter_fn<span class="op">=</span>filter_fn, pids<span class="op">=</span>pids)</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> pids[:k], <span class="bu">list</span>(<span class="bu">range</span>(<span class="dv">1</span>, k<span class="op">+</span><span class="dv">1</span>)), scores[:k]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell" data-outputid="5dd61d17-137b-40e7-bb37-7fde4118079c" data-execution_count="17">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>searcher.dense_search</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="17">
+<div style="max-width:800px; border: 1px solid var(--colab-border-color);"><style>
+      pre.function-repr-contents {
+        overflow-x: auto;
+        padding: 8px 12px;
+        max-height: 500px;
+      }
+
+      pre.function-repr-contents.function-repr-contents-collapsed {
+        cursor: pointer;
+        max-height: 100px;
+      }
+    </style>
+    <pre style="white-space: initial; background:
+         var(--colab-secondary-surface-color); padding: 8px 12px;
+         border-bottom: 1px solid var(--colab-border-color);"><b>colbert.searcher.Searcher.dense_search</b><br>def dense_search(Q: torch.Tensor, k=10, filter_fn=None, pids=None)</pre><pre class="function-repr-contents function-repr-contents-collapsed" style=""><a class="filepath" style="display:none" href="#">/usr/local/lib/python3.10/dist-packages/colbert/searcher.py</a>&lt;no docstring&gt;</pre>
+      <script>
+      if (google.colab.kernel.accessAllowed && google.colab.files && google.colab.files.view) {
+        for (const element of document.querySelectorAll('.filepath')) {
+          element.style.display = 'block'
+          element.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            google.colab.files.view(element.textContent, 106);
+          };
+        }
+      }
+      for (const element of document.querySelectorAll('.function-repr-contents')) {
+        element.onclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          element.classList.toggle('function-repr-contents-collapsed');
+        };
+      }
+      </script>
+      </div>
+</div>
+</div>
+<div class="cell" data-outputid="abd2a719-2384-47ff-b1e6-0aaa88182c91" data-execution_count="18">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>searcher.dense_search(Q)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="18">
+<pre><code>([0], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], [27.6875])</code></pre>
+</div>
+</div>
+<p>Excellent!! The first value is <code>pids[:k]</code>, which I understand to be the passage IDs corresponding to the top-k results. In this case it’s just 1 passage ID, <code>0</code>, the first passage (<em>“Python is a programming language. It is easy to learn”</em>). The second value is <code>list(range(1,k+1))</code> which is just a list from 1 to <code>k</code>. The final value is <code>scores[:k]</code> which is score corresponding to the top-k values. In this case it’s just one score, but an important one in our journey, as it is the same as RAGatouille for this passage (27.6875) !</p>
+<div class="cell" data-outputid="a003d766-cd30-4fbd-c15d-cec4b6b73fee" data-execution_count="19">
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>results[<span class="dv">0</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="19">
+<pre><code>{'content': 'Python is a programming language. It is easy to learn',
+ 'score': 27.6875,
+ 'rank': 1,
+ 'document_id': '8aa5aade-10d5-4144-b634-c7866578b43c',
+ 'passage_id': 0}</code></pre>
+</div>
+</div>
+<p>This is incredibly exciting, but I’m only getting 1 score instead of 3. Looking more closely at <code>dense_search</code> I see that the value of <code>k</code> determines the value of <code>config.ncells</code>:</p>
+<div class="sourceCode" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> k <span class="op">&lt;=</span> <span class="dv">10</span>:</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="va">self</span>.config.ncells <span class="kw">is</span> <span class="va">None</span>:</span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.configure(ncells<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="va">self</span>.config.centroid_score_threshold <span class="kw">is</span> <span class="va">None</span>:</span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.configure(centroid_score_threshold<span class="op">=</span><span class="fl">0.5</span>)</span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="va">self</span>.config.ndocs <span class="kw">is</span> <span class="va">None</span>:</span>
+<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.configure(ndocs<span class="op">=</span><span class="dv">256</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Afterwhich <code>dense_search</code> calls:</p>
+<div class="sourceCode" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>pids, scores <span class="op">=</span> <span class="va">self</span>.ranker.rank(<span class="va">self</span>.config, Q, filter_fn<span class="op">=</span>filter_fn, pids<span class="op">=</span>pids)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>I’ll look at <code>Searcher.ranker.rank</code> next.</p>
+</section>
+<section id="searcher.ranker.rank" class="level2">
+<h2 class="anchored" data-anchor-id="searcher.ranker.rank"><code>Searcher.ranker.rank</code></h2>
+<div class="cell" data-outputid="2aeba55e-d7d8-4d4e-8f0e-2b38acdfb5b6" data-execution_count="20">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>searcher.ranker.rank</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="20">
+<div style="max-width:800px; border: 1px solid var(--colab-border-color);"><style>
+      pre.function-repr-contents {
+        overflow-x: auto;
+        padding: 8px 12px;
+        max-height: 500px;
+      }
+
+      pre.function-repr-contents.function-repr-contents-collapsed {
+        cursor: pointer;
+        max-height: 100px;
+      }
+    </style>
+    <pre style="white-space: initial; background:
+         var(--colab-secondary-surface-color); padding: 8px 12px;
+         border-bottom: 1px solid var(--colab-border-color);"><b>colbert.search.index_storage.IndexScorer.rank</b><br>def rank(config, Q, filter_fn=None, pids=None)</pre><pre class="function-repr-contents function-repr-contents-collapsed" style=""><a class="filepath" style="display:none" href="#">/usr/local/lib/python3.10/dist-packages/colbert/search/index_storage.py</a>&lt;no docstring&gt;</pre>
+      <script>
+      if (google.colab.kernel.accessAllowed && google.colab.files && google.colab.files.view) {
+        for (const element of document.querySelectorAll('.filepath')) {
+          element.style.display = 'block'
+          element.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            google.colab.files.view(element.textContent, 87);
+          };
+        }
+      }
+      for (const element of document.querySelectorAll('.function-repr-contents')) {
+        element.onclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          element.classList.toggle('function-repr-contents-collapsed');
+        };
+      }
+      </script>
+      </div>
+</div>
+</div>
+<p>The first parameter, <code>config</code>, <a href="https://github.com/stanford-futuredata/ColBERT/blob/7067ef598b5011edaa1f4a731a2c269dbac864e4/colbert/searcher.py#L37">is found in the <code>Searcher</code></a>:</p>
+<div class="cell" data-outputid="85a314f5-4d5a-4574-8269-d0cca718cf75" data-execution_count="21">
+<div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>searcher.config</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="21">
+<pre><code>ColBERTConfig(query_token_id='[unused0]', doc_token_id='[unused1]', query_token='[Q]', doc_token='[D]', ncells=1, centroid_score_threshold=0.5, ndocs=256, load_index_with_mmap=False, index_path=None, index_bsize=32, nbits=4, kmeans_niters=20, resume=False, similarity='cosine', bsize=64, accumsteps=1, lr=1e-05, maxsteps=400000, save_every=None, warmup=20000, warmup_bert=None, relu=False, nway=64, use_ib_negatives=True, reranker=False, distillation_alpha=1.0, ignore_scores=False, model_name=None, query_maxlen=32, attend_to_mask_tokens=False, interaction='colbert', dim=128, doc_maxlen=256, mask_punctuation=True, checkpoint='colbert-ir/colbertv2.0', triples='/future/u/okhattab/root/unit/experiments/2021.10/downstream.distillation.round2.2_score/round2.nway6.cosine.ib/examples.64.json', collection=&lt;colbert.data.collection.Collection object at 0x7d0a4cc052d0&gt;, queries='/future/u/okhattab/data/MSMARCO/queries.train.tsv', index_name='toy_example', overwrite=False, root='.ragatouille/', experiment='colbert', index_root=None, name='2024-12/24/15.52.48', rank=0, nranks=1, amp=True, gpus=1, avoid_fork_if_possible=False)</code></pre>
+</div>
+</div>
+<p><code>ncells</code> is <code>1</code>.</p>
+<div class="cell" data-outputid="7ed5b79f-e2fa-4aba-d22a-d8e90f6e91ea" data-execution_count="22">
+<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a>searcher.config.ncells</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="22">
+<pre><code>1</code></pre>
+</div>
+</div>
+<p>From my previous amblings through the codebase, and which will see later on, I learned that <code>ncells</code> is synonymous with the <span class="math inline">\(n_{probe}\)</span> parameter in the ColBERTv2 and PLAID ColBERTv2 papers (i.e.&nbsp;the number of centroids closest to each query token). In the papers they use values of 1, 4, and 8. I’ll pick a value of <code>4</code>.</p>
+<div class="cell" data-outputid="607b13a5-da93-48ea-d9a0-40885ff730d3" data-execution_count="23">
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a>searcher.config.configure(ncells<span class="op">=</span><span class="dv">4</span>)</span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>searcher.config.ncells</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="23">
+<pre><code>4</code></pre>
+</div>
+</div>
+<p>I’ll now pass <code>config</code> to <code>Searcher.ranker.rank</code> along with my encoded query <code>Q</code>:</p>
+<div class="cell" data-outputid="5fde9ef4-3ae5-4553-ad55-4180a9857c55" data-execution_count="24">
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>searcher.ranker.rank(config<span class="op">=</span>searcher.config, Q<span class="op">=</span>Q)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="24">
+<pre><code>([0, 2, 1], [27.6875, 22.28125, 13.953125])</code></pre>
+</div>
+</div>
+<p>Major success!! I now see three passage IDs and their corresponding scores, an exact match with RAGatouille’s results.</p>
+<div class="cell" data-outputid="d8e74f8d-3f01-4cd0-aedc-bca25c620d83" data-execution_count="25">
+<div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="25">
+<pre><code>[{'content': 'Python is a programming language. It is easy to learn',
+  'score': 27.6875,
+  'rank': 1,
+  'document_id': '8aa5aade-10d5-4144-b634-c7866578b43c',
+  'passage_id': 0},
+ {'content': 'Python was created by Guido van Rossum in 1991',
+  'score': 22.28125,
+  'rank': 2,
+  'document_id': '12352328-9bb1-4a51-896e-a002d3548adc',
+  'passage_id': 2},
+ {'content': 'Java is a popular coding language used in many applications',
+  'score': 13.953125,
+  'rank': 3,
+  'document_id': '1fe9788e-ccec-4b9e-a004-14acc657915e',
+  'passage_id': 1}]</code></pre>
+</div>
+</div>
+<p>At this point I felt confident in the threads I was pulling and could now dig deeper and start recreating each stage of the PLAID scoring pipeline, starting with Stage 1.</p>
+</section>
+<section id="stage-1-initial-candidate-generation" class="level2">
+<h2 class="anchored" data-anchor-id="stage-1-initial-candidate-generation">Stage 1: Initial Candidate Generation</h2>
+<p>In Stage 1, we retrieve the passage IDs corresponding to the <code>ncells</code> centroid IDs neareest to each of the query tokens. I have set <code>ncells</code> to 4 and have 32 query tokens so we’re dealing with a maximum of 4 x 32 = 128 centroid IDs.</p>
+<p>The first promising line in <code>Searcher.ranker.rank</code> is <a href="https://github.com/stanford-futuredata/ColBERT/blob/7067ef598b5011edaa1f4a731a2c269dbac864e4/colbert/search/index_storage.py#L90">the call to <code>retrieve</code></a>:</p>
+<div class="sourceCode" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> pids <span class="kw">is</span> <span class="va">None</span>:</span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>    pids, centroid_scores <span class="op">=</span> <span class="va">self</span>.retrieve(config, Q)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="searcher.ranker.retrieve" class="level3">
+<h3 class="anchored" data-anchor-id="searcher.ranker.retrieve"><code>Searcher.ranker.retrieve</code></h3>
+<div class="cell" data-outputid="68dbbf65-0afc-4456-de7e-481aa0e4faae" data-execution_count="26">
+<div class="sourceCode cell-code" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a>searcher.ranker.retrieve</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="26">
+<div style="max-width:800px; border: 1px solid var(--colab-border-color);"><style>
+      pre.function-repr-contents {
+        overflow-x: auto;
+        padding: 8px 12px;
+        max-height: 500px;
+      }
+
+      pre.function-repr-contents.function-repr-contents-collapsed {
+        cursor: pointer;
+        max-height: 100px;
+      }
+    </style>
+    <pre style="white-space: initial; background:
+         var(--colab-secondary-surface-color); padding: 8px 12px;
+         border-bottom: 1px solid var(--colab-border-color);"><b>colbert.search.index_storage.IndexScorer.retrieve</b><br>def retrieve(config, Q)</pre><pre class="function-repr-contents function-repr-contents-collapsed" style=""><a class="filepath" style="display:none" href="#">/usr/local/lib/python3.10/dist-packages/colbert/search/index_storage.py</a>&lt;no docstring&gt;</pre>
+      <script>
+      if (google.colab.kernel.accessAllowed && google.colab.files && google.colab.files.view) {
+        for (const element of document.querySelectorAll('.filepath')) {
+          element.style.display = 'block'
+          element.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            google.colab.files.view(element.textContent, 77);
+          };
+        }
+      }
+      for (const element of document.querySelectorAll('.function-repr-contents')) {
+        element.onclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          element.classList.toggle('function-repr-contents-collapsed');
+        };
+      }
+      </script>
+      </div>
+</div>
+</div>
+<div class="cell" data-outputid="48688f7e-6996-4f2c-e991-be956644b074" data-execution_count="27">
+<div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a>pids, centroid_scores <span class="op">=</span> searcher.ranker.retrieve(searcher.config, Q)</span>
+<span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>pids, centroid_scores.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="27">
+<pre><code>(tensor([0, 1, 2], device='cuda:0', dtype=torch.int32), torch.Size([64, 32]))</code></pre>
+</div>
+</div>
+<p>This is where I start to get really excited. I’m seeing abstract concepts in a research paper come to life! <code>pids</code> is now familiar—the three indexes <code>0</code>, <code>1</code>, and <code>2</code>. What’s more interesting is <code>centroid_scores</code> which has 64 rows and 32 columns. We know from the PLAID paper that the MaxSim scores between centroids and query tokens is matrix with number of rows being the number of centroids and the number of columns being the number of tokens.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="2.png" class="lightbox" title="Section 4.1 from the PLAID ColBERTv2 Paper" data-gallery="quarto-lightbox-gallery-2"><img src="2.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Section 4.1 from the PLAID ColBERTv2 Paper</figcaption><p></p>
+</figure>
+</div>
+<p>Looking <a href="https://github.com/stanford-futuredata/ColBERT/blob/7067ef598b5011edaa1f4a731a2c269dbac864e4/colbert/search/index_storage.py#L77">inside of <code>Searcher.ranker.retrieve</code></a> we see that it calls <code>Searcher.ranker.generate_candidates</code>:</p>
+<div class="sourceCode" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a>pids, centroid_scores <span class="op">=</span> <span class="va">self</span>.generate_candidates(config, Q)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="generate_candidates" class="level3">
+<h3 class="anchored" data-anchor-id="generate_candidates"><code>generate_candidates</code></h3>
+<div class="cell" data-outputid="95fba38b-fef8-4847-b8b3-94a3b47abccb" data-execution_count="28">
+<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a>searcher.ranker.generate_candidates</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="28">
+<div style="max-width:800px; border: 1px solid var(--colab-border-color);"><style>
+      pre.function-repr-contents {
+        overflow-x: auto;
+        padding: 8px 12px;
+        max-height: 500px;
+      }
+
+      pre.function-repr-contents.function-repr-contents-collapsed {
+        cursor: pointer;
+        max-height: 100px;
+      }
+    </style>
+    <pre style="white-space: initial; background:
+         var(--colab-secondary-surface-color); padding: 8px 12px;
+         border-bottom: 1px solid var(--colab-border-color);"><b>colbert.search.candidate_generation.CandidateGeneration.generate_candidates</b><br>def generate_candidates(config, Q)</pre><pre class="function-repr-contents function-repr-contents-collapsed" style=""><a class="filepath" style="display:none" href="#">/usr/local/lib/python3.10/dist-packages/colbert/search/candidate_generation.py</a>&lt;no docstring&gt;</pre>
+      <script>
+      if (google.colab.kernel.accessAllowed && google.colab.files && google.colab.files.view) {
+        for (const element of document.querySelectorAll('.filepath')) {
+          element.style.display = 'block'
+          element.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            google.colab.files.view(element.textContent, 45);
+          };
+        }
+      }
+      for (const element of document.querySelectorAll('.function-repr-contents')) {
+        element.onclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          element.classList.toggle('function-repr-contents-collapsed');
+        };
+      }
+      </script>
+      </div>
+</div>
+</div>
+<p>This will only be a brief pit stop. There are three lines of interest:</p>
+<div class="sourceCode" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a>Q <span class="op">=</span> Q.squeeze(<span class="dv">0</span>)</span>
+<span id="cb55-2"><a href="#cb55-2" aria-hidden="true" tabindex="-1"></a>Q <span class="op">=</span> Q.cuda().half()</span>
+<span id="cb55-3"><a href="#cb55-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb55-4"><a href="#cb55-4" aria-hidden="true" tabindex="-1"></a>pids, centroid_scores <span class="op">=</span> <span class="va">self</span>.generate_candidate_pids(Q, ncells)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell" data-outputid="0418b741-08b0-45ba-8cc4-984c312cd429" data-execution_count="29">
+<div class="sourceCode cell-code" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a>Q <span class="op">=</span> Q.squeeze(<span class="dv">0</span>)</span>
+<span id="cb56-2"><a href="#cb56-2" aria-hidden="true" tabindex="-1"></a>Q.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="29">
+<pre><code>torch.Size([32, 128])</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="30">
+<div class="sourceCode cell-code" id="cb58"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb58-1"><a href="#cb58-1" aria-hidden="true" tabindex="-1"></a>Q <span class="op">=</span> Q.cuda().half()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="2ef50c3e-9288-449e-a656-836d4361d88c" data-execution_count="31">
+<div class="sourceCode cell-code" id="cb59"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1"><a href="#cb59-1" aria-hidden="true" tabindex="-1"></a>searcher.ranker.generate_candidates</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="31">
+<div style="max-width:800px; border: 1px solid var(--colab-border-color);"><style>
+      pre.function-repr-contents {
+        overflow-x: auto;
+        padding: 8px 12px;
+        max-height: 500px;
+      }
+
+      pre.function-repr-contents.function-repr-contents-collapsed {
+        cursor: pointer;
+        max-height: 100px;
+      }
+    </style>
+    <pre style="white-space: initial; background:
+         var(--colab-secondary-surface-color); padding: 8px 12px;
+         border-bottom: 1px solid var(--colab-border-color);"><b>colbert.search.candidate_generation.CandidateGeneration.generate_candidates</b><br>def generate_candidates(config, Q)</pre><pre class="function-repr-contents function-repr-contents-collapsed" style=""><a class="filepath" style="display:none" href="#">/usr/local/lib/python3.10/dist-packages/colbert/search/candidate_generation.py</a>&lt;no docstring&gt;</pre>
+      <script>
+      if (google.colab.kernel.accessAllowed && google.colab.files && google.colab.files.view) {
+        for (const element of document.querySelectorAll('.filepath')) {
+          element.style.display = 'block'
+          element.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            google.colab.files.view(element.textContent, 45);
+          };
+        }
+      }
+      for (const element of document.querySelectorAll('.function-repr-contents')) {
+        element.onclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          element.classList.toggle('function-repr-contents-collapsed');
+        };
+      }
+      </script>
+      </div>
+</div>
+</div>
+<div class="cell" data-outputid="f333e2c3-12b7-4ae9-885d-3af5c98dde09" data-execution_count="32">
+<div class="sourceCode cell-code" id="cb60"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb60-1"><a href="#cb60-1" aria-hidden="true" tabindex="-1"></a>cells, scores <span class="op">=</span> searcher.ranker.generate_candidates(searcher.config, Q)</span>
+<span id="cb60-2"><a href="#cb60-2" aria-hidden="true" tabindex="-1"></a>cells.shape, scores.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="32">
+<pre><code>(torch.Size([3]), torch.Size([64, 32]))</code></pre>
+</div>
+</div>
+<p>There’s that 64 x 32 shape again.</p>
+<div class="cell" data-outputid="09e75872-fded-4321-e776-ac1c3e172bae" data-execution_count="33">
+<div class="sourceCode cell-code" id="cb62"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1" aria-hidden="true" tabindex="-1"></a>cells</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="33">
+<pre><code>tensor([0, 1, 2], device='cuda:0', dtype=torch.int32)</code></pre>
+</div>
+</div>
+<p>I’m not entirely sure what <code>cells</code> is (I’m tempted to say it’s our passage IDs based on the values). Let’s look at <code>get_candidate_pids</code> first:</p>
+</section>
+<section id="generate_candidate_pids" class="level3">
+<h3 class="anchored" data-anchor-id="generate_candidate_pids"><code>generate_candidate_pids</code></h3>
+<p>Another quick stop, we see the following two very interesting line:</p>
+<div class="sourceCode" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a>cells, scores <span class="op">=</span> <span class="va">self</span>.get_cells(Q, ncells)</span>
+<span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb64-3"><a href="#cb64-3" aria-hidden="true" tabindex="-1"></a>pids, cell_lengths <span class="op">=</span> <span class="va">self</span>.ivf.lookup(cells)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>From reading the paper, I know that in Stage 1 we get the centroid IDs that are close to the query tokens, which I think is what <code>get_cells</code> does. I also know that the PLAID index stores a mapping between passage IDs and centroid IDs, which is what I think <code>ivf.lookup</code> is looking up!</p>
+</section>
+<section id="get_cells" class="level3">
+<h3 class="anchored" data-anchor-id="get_cells"><code>get_cells</code></h3>
+<div class="sourceCode" id="cb65"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_cells(<span class="va">self</span>, Q, ncells):</span>
+<span id="cb65-2"><a href="#cb65-2" aria-hidden="true" tabindex="-1"></a>    scores <span class="op">=</span> (<span class="va">self</span>.codec.centroids <span class="op">@</span> Q.T)</span>
+<span id="cb65-3"><a href="#cb65-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> ncells <span class="op">==</span> <span class="dv">1</span>:</span>
+<span id="cb65-4"><a href="#cb65-4" aria-hidden="true" tabindex="-1"></a>        cells <span class="op">=</span> scores.argmax(dim<span class="op">=</span><span class="dv">0</span>, keepdim<span class="op">=</span><span class="va">True</span>).permute(<span class="dv">1</span>, <span class="dv">0</span>)</span>
+<span id="cb65-5"><a href="#cb65-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb65-6"><a href="#cb65-6" aria-hidden="true" tabindex="-1"></a>        cells <span class="op">=</span> scores.topk(ncells, dim<span class="op">=</span><span class="dv">0</span>, <span class="bu">sorted</span><span class="op">=</span><span class="va">False</span>).indices.permute(<span class="dv">1</span>, <span class="dv">0</span>)  <span class="co"># (32, ncells)</span></span>
+<span id="cb65-7"><a href="#cb65-7" aria-hidden="true" tabindex="-1"></a>    cells <span class="op">=</span> cells.flatten().contiguous()  <span class="co"># (32 * ncells,)</span></span>
+<span id="cb65-8"><a href="#cb65-8" aria-hidden="true" tabindex="-1"></a>    cells <span class="op">=</span> cells.unique(<span class="bu">sorted</span><span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb65-9"><a href="#cb65-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> cells, scores</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The first line is critical: <code>self.codec.centroids @ Q.T</code> is almost verbatim the matrix multiplication formula in the paper. This confirms that the 64 x 32 shape of <code>scores</code> is number of centroids x number of query tokens!</p>
+<div class="cell" data-outputid="001e0d17-a842-48fa-f583-866aac965eea" data-execution_count="34">
+<div class="sourceCode cell-code" id="cb66"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb66-1"><a href="#cb66-1" aria-hidden="true" tabindex="-1"></a>searcher.ranker.codec.centroids.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="34">
+<pre><code>torch.Size([64, 128])</code></pre>
+</div>
+</div>
+<p>There are indeed 64 centroids, each of them with 128 dimensions. So cool to see!!</p>
+<div class="cell" data-outputid="e6692878-b07b-4c2f-863c-569c90ad2d50" data-execution_count="35">
+<div class="sourceCode cell-code" id="cb68"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb68-1"><a href="#cb68-1" aria-hidden="true" tabindex="-1"></a>_scores <span class="op">=</span> (searcher.ranker.codec.centroids <span class="op">@</span> Q.T)</span>
+<span id="cb68-2"><a href="#cb68-2" aria-hidden="true" tabindex="-1"></a>_scores.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="35">
+<pre><code>torch.Size([64, 32])</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="a724de6c-e23d-4609-fc1a-f1ab9010ab6b" data-execution_count="36">
+<div class="sourceCode cell-code" id="cb70"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb70-1"><a href="#cb70-1" aria-hidden="true" tabindex="-1"></a>(scores <span class="op">==</span> _scores).<span class="bu">float</span>().mean()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="36">
+<pre><code>tensor(1., device='cuda:0')</code></pre>
+</div>
+</div>
+<p>The next line of interest is:</p>
+<div class="sourceCode" id="cb72"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb72-1"><a href="#cb72-1" aria-hidden="true" tabindex="-1"></a>cells <span class="op">=</span> scores.topk(ncells, dim<span class="op">=</span><span class="dv">0</span>, <span class="bu">sorted</span><span class="op">=</span><span class="va">False</span>).indices.permute(<span class="dv">1</span>, <span class="dv">0</span>)  <span class="co"># (32, ncells)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell" data-outputid="3894ec15-d048-4d18-81a2-3e72a7028a14" data-execution_count="37">
+<div class="sourceCode cell-code" id="cb73"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb73-1"><a href="#cb73-1" aria-hidden="true" tabindex="-1"></a>scores.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="37">
+<pre><code>torch.Size([64, 32])</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="c0ea0697-8c08-4dcd-fe54-b63d4c460e64" data-execution_count="38">
+<div class="sourceCode cell-code" id="cb75"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb75-1"><a href="#cb75-1" aria-hidden="true" tabindex="-1"></a>scores</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="38">
+<pre><code>tensor([[ 0.0879,  0.0498,  0.0136,  ...,  0.0586,  0.0564,  0.0699],
+        [ 0.0798, -0.0043,  0.0223,  ..., -0.0271, -0.0166, -0.0172],
+        [ 0.2053,  0.0300,  0.1144,  ...,  0.0100,  0.0226,  0.0177],
+        ...,
+        [ 0.4587,  0.9458,  0.1954,  ...,  0.9507,  0.9482,  0.9482],
+        [ 0.0000,  0.0000,  0.0000,  ...,  0.0000,  0.0000,  0.0000],
+        [ 0.0000,  0.0000,  0.0000,  ...,  0.0000,  0.0000,  0.0000]],
+       device='cuda:0', dtype=torch.float16)</code></pre>
+</div>
+</div>
+<p><code>scores.topk</code> seems to return the scores corresponding to the top-4 cosine similarities (between centroids and query tokens) for each token.</p>
+<div class="cell" data-outputid="7f5c02f1-2af0-4466-c5df-dd08277d50c0" data-execution_count="39">
+<div class="sourceCode cell-code" id="cb77"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb77-1"><a href="#cb77-1" aria-hidden="true" tabindex="-1"></a>scores.topk(<span class="dv">4</span>, dim<span class="op">=</span><span class="dv">0</span>, <span class="bu">sorted</span><span class="op">=</span><span class="va">False</span>).values</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="39">
+<pre><code>tensor([[0.5786, 0.9521, 0.7397, 0.7510, 0.9395, 0.5850, 0.5859, 0.9131, 0.6782,
+         0.5186, 0.6353, 0.7104, 0.9209, 0.9014, 0.9443, 0.9473, 0.9434, 0.9497,
+         0.9468, 0.9331, 0.9355, 0.9233, 0.9370, 0.9336, 0.7026, 0.9468, 0.9131,
+         0.7529, 0.9517, 0.9482, 0.9448, 0.9429],
+        [0.5361, 0.8901, 0.6255, 0.6245, 0.9097, 0.5220, 0.7354, 0.8682, 0.6260,
+         0.4663, 0.5654, 0.6030, 0.8486, 0.8306, 0.9429, 0.8979, 0.8950, 0.8960,
+         0.8965, 0.8799, 0.8892, 0.8770, 0.8794, 0.8774, 0.5869, 0.8921, 0.8418,
+         0.6328, 0.8931, 0.9009, 0.8970, 0.8994],
+        [0.7129, 0.9458, 0.4612, 0.4766, 0.9658, 0.4229, 0.5332, 0.9219, 0.7002,
+         0.4092, 0.4729, 0.5034, 0.9111, 0.8955, 0.8872, 0.9487, 0.9458, 0.9497,
+         0.9492, 0.9375, 0.9419, 0.9312, 0.9380, 0.9365, 0.4958, 0.9453, 0.9048,
+         0.4829, 0.9482, 0.9507, 0.9482, 0.9482],
+        [0.4753, 0.8882, 0.3442, 0.3616, 0.8799, 0.3958, 0.5195, 0.8589, 0.6108,
+         0.4077, 0.4324, 0.4333, 0.8438, 0.8281, 0.8872, 0.8945, 0.8901, 0.8955,
+         0.8926, 0.8745, 0.8813, 0.8687, 0.8774, 0.8745, 0.4360, 0.8911, 0.8394,
+         0.3711, 0.8911, 0.8955, 0.8911, 0.8916]], device='cuda:0',
+       dtype=torch.float16)</code></pre>
+</div>
+</div>
+<p>The first value, <code>0.5786</code> represents the cosine similarity (dot product) between a centroid and the first query token.</p>
+<div class="cell" data-outputid="48eeef66-91b6-4242-dee7-f6108e7acd93" data-execution_count="40">
+<div class="sourceCode cell-code" id="cb79"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb79-1"><a href="#cb79-1" aria-hidden="true" tabindex="-1"></a>cells <span class="op">=</span> scores.topk(<span class="dv">4</span>, dim<span class="op">=</span><span class="dv">0</span>, <span class="bu">sorted</span><span class="op">=</span><span class="va">False</span>).indices.permute(<span class="dv">1</span>,<span class="dv">0</span>)</span>
+<span id="cb79-2"><a href="#cb79-2" aria-hidden="true" tabindex="-1"></a>cells.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="40">
+<pre><code>torch.Size([32, 4])</code></pre>
+</div>
+</div>
+<p>The following line flattens out the 32 x 4 matrix into a 128-value 1D tensor.</p>
+<div class="cell" data-outputid="7f891a56-005a-4266-efab-077890ecf51c" data-execution_count="41">
+<div class="sourceCode cell-code" id="cb81"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb81-1"><a href="#cb81-1" aria-hidden="true" tabindex="-1"></a>cells <span class="op">=</span> cells.flatten().contiguous()  <span class="co"># (32 * ncells,)</span></span>
+<span id="cb81-2"><a href="#cb81-2" aria-hidden="true" tabindex="-1"></a>cells.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="41">
+<pre><code>torch.Size([128])</code></pre>
+</div>
+</div>
+<p>The following gets the unique centroid IDs. In this case there are 10 unique centroids that give the top-4 cosine similarity with all 32 tokens.</p>
+<div class="cell" data-outputid="b58ea42b-8e86-4b90-9b5a-f0575f063cca" data-execution_count="42">
+<div class="sourceCode cell-code" id="cb83"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb83-1"><a href="#cb83-1" aria-hidden="true" tabindex="-1"></a>cells <span class="op">=</span> cells.unique(<span class="bu">sorted</span><span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb83-2"><a href="#cb83-2" aria-hidden="true" tabindex="-1"></a>cells.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="42">
+<pre><code>torch.Size([10])</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="e2f9020b-881b-4884-e315-c923918daca5" data-execution_count="43">
+<div class="sourceCode cell-code" id="cb85"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb85-1"><a href="#cb85-1" aria-hidden="true" tabindex="-1"></a>cells</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="43">
+<pre><code>tensor([ 7,  8, 14, 19, 24, 29, 31, 38, 41, 61], device='cuda:0')</code></pre>
+</div>
+</div>
+<p>Confirming that we can recreate the cosine similarity (0.5768) betweeen the first centroid (with ID = 7) and the first query token:</p>
+<div class="cell" data-outputid="6d4924ca-6e71-4936-b6b8-14254db44352" data-execution_count="44">
+<div class="sourceCode cell-code" id="cb87"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb87-1"><a href="#cb87-1" aria-hidden="true" tabindex="-1"></a>(searcher.ranker.codec.centroids[<span class="dv">7</span>] <span class="op">*</span> Q[<span class="dv">0</span>].T).<span class="bu">sum</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>UserWarning: The use of `x.T` on tensors of dimension other than 2 to reverse their shape is deprecated and it will throw an error in a future release. Consider `x.mT` to transpose batches of matrices or `x.permute(*torch.arange(x.ndim - 1, -1, -1))` to reverse the dimensions of a tensor. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3683.)
+  (searcher.ranker.codec.centroids[7] * Q[0].T).sum()</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="44">
+<pre><code>tensor(0.5786, device='cuda:0', dtype=torch.float16)</code></pre>
+</div>
+</div>
+</section>
+<section id="ivf" class="level3">
+<h3 class="anchored" data-anchor-id="ivf"><code>ivf</code></h3>
+<p>The next line in <code>generate_candidate_pids</code> gets to the core of PLAID: the mapping between centroid IDs and passage IDs:</p>
+<div class="sourceCode" id="cb90"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb90-1"><a href="#cb90-1" aria-hidden="true" tabindex="-1"></a>pids, cell_lengths <span class="op">=</span> <span class="va">self</span>.ivf.lookup(cells)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell" data-outputid="1391cb5b-fe7d-4229-a6bd-0da84227bd8f" data-execution_count="45">
+<div class="sourceCode cell-code" id="cb91"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb91-1"><a href="#cb91-1" aria-hidden="true" tabindex="-1"></a>searcher.ranker.ivf</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="45">
+<pre><code>&lt;colbert.search.strided_tensor.StridedTensor at 0x7d0a4f48e350&gt;</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="b02815c1-029b-4413-839e-f6160abd4a70" data-execution_count="46">
+<div class="sourceCode cell-code" id="cb93"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb93-1"><a href="#cb93-1" aria-hidden="true" tabindex="-1"></a>pids, cell_lengths <span class="op">=</span> searcher.ranker.ivf.lookup(cells)</span>
+<span id="cb93-2"><a href="#cb93-2" aria-hidden="true" tabindex="-1"></a>pids.shape, cell_lengths.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="46">
+<pre><code>(torch.Size([10]), torch.Size([10]))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="fb9ce7c4-eaba-413a-af3b-b6b1037b6721" data-execution_count="47">
+<div class="sourceCode cell-code" id="cb95"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb95-1"><a href="#cb95-1" aria-hidden="true" tabindex="-1"></a>cells</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="47">
+<pre><code>tensor([ 7,  8, 14, 19, 24, 29, 31, 38, 41, 61], device='cuda:0')</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="3d77e596-24d6-4c5a-aed5-27b918bf45ed" data-execution_count="48">
+<div class="sourceCode cell-code" id="cb97"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb97-1"><a href="#cb97-1" aria-hidden="true" tabindex="-1"></a>pids</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="48">
+<pre><code>tensor([0, 0, 1, 0, 1, 2, 2, 2, 0, 0], device='cuda:0', dtype=torch.int32)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="90bc17a1-5de4-471b-a870-0503153a166a" data-execution_count="49">
+<div class="sourceCode cell-code" id="cb99"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb99-1"><a href="#cb99-1" aria-hidden="true" tabindex="-1"></a>cell_lengths</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="49">
+<pre><code>tensor([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])</code></pre>
+</div>
+</div>
+<p>How I interpret this: we have 10 centroid IDs (<code>cells</code>) and each are mapped to 1 passage ID. Now, given that we only have 3 passages to work with, there are some repeats (passage ID <code>0</code> corresponds to both centroid IDs <code>7</code> and <code>8</code>).</p>
+<p>I’ll leave my full exploration of how <code>ivf</code> is constructed for a future video/blog post, but as an aside, I do want to highlight some things I learned, starting with the fact that our <code>index_path</code> contains a lot of interesting files!</p>
+<div class="cell" data-outputid="00e35cd1-afb1-4adb-899b-d408ed08f36d" data-execution_count="50">
+<div class="sourceCode cell-code" id="cb101"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb101-1"><a href="#cb101-1" aria-hidden="true" tabindex="-1"></a>path <span class="op">=</span> Path(index_path)</span>
+<span id="cb101-2"><a href="#cb101-2" aria-hidden="true" tabindex="-1"></a>path.ls()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="50">
+<pre><code>(#12) [Path('.ragatouille/colbert/indexes/toy_example/0.residuals.pt'),Path('.ragatouille/colbert/indexes/toy_example/collection.json'),Path('.ragatouille/colbert/indexes/toy_example/pid_docid_map.json'),Path('.ragatouille/colbert/indexes/toy_example/metadata.json'),Path('.ragatouille/colbert/indexes/toy_example/buckets.pt'),Path('.ragatouille/colbert/indexes/toy_example/doclens.0.json'),Path('.ragatouille/colbert/indexes/toy_example/centroids.pt'),Path('.ragatouille/colbert/indexes/toy_example/0.codes.pt'),Path('.ragatouille/colbert/indexes/toy_example/avg_residual.pt'),Path('.ragatouille/colbert/indexes/toy_example/plan.json'),Path('.ragatouille/colbert/indexes/toy_example/0.metadata.json'),Path('.ragatouille/colbert/indexes/toy_example/ivf.pid.pt')]</code></pre>
+</div>
+</div>
+<p>Each passage contains 13 tokens:</p>
+<div class="cell" data-outputid="dd501c7a-e88c-47e3-976e-ba35ab16ea64" data-execution_count="51">
+<div class="sourceCode cell-code" id="cb103"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb103-1"><a href="#cb103-1" aria-hidden="true" tabindex="-1"></a>json.load(<span class="bu">open</span>(path<span class="op">/</span><span class="st">'doclens.0.json'</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="51">
+<pre><code>[13, 13, 13]</code></pre>
+</div>
+</div>
+<p>For a total of 39 token embeddings:</p>
+<div class="cell" data-outputid="581f9d8a-5883-4c48-ac05-a3d596ee86ae" data-execution_count="52">
+<div class="sourceCode cell-code" id="cb105"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb105-1"><a href="#cb105-1" aria-hidden="true" tabindex="-1"></a>metadata <span class="op">=</span> json.load(<span class="bu">open</span>(path<span class="op">/</span><span class="st">'0.metadata.json'</span>))</span>
+<span id="cb105-2"><a href="#cb105-2" aria-hidden="true" tabindex="-1"></a>metadata</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="52">
+<pre><code>{'passage_offset': 0,
+ 'num_passages': 3,
+ 'num_embeddings': 39,
+ 'embedding_offset': 0}</code></pre>
+</div>
+</div>
+<p>There are indeed 64 centroids.</p>
+<div class="cell" data-outputid="445ac68c-7e3b-47bb-f634-02b363076e03" data-execution_count="53">
+<div class="sourceCode cell-code" id="cb107"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb107-1"><a href="#cb107-1" aria-hidden="true" tabindex="-1"></a>centroids <span class="op">=</span> torch.load(path<span class="op">/</span><span class="st">'centroids.pt'</span>, weights_only<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb107-2"><a href="#cb107-2" aria-hidden="true" tabindex="-1"></a>centroids.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="53">
+<pre><code>torch.Size([64, 128])</code></pre>
+</div>
+</div>
+<p>There exists a mapping between the 64 centroid IDs and the 39 passage token embeddings</p>
+<div class="cell" data-outputid="ab6ba143-47c3-4137-ad8e-fe8dd91c59fa" data-execution_count="54">
+<div class="sourceCode cell-code" id="cb109"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb109-1"><a href="#cb109-1" aria-hidden="true" tabindex="-1"></a>codes <span class="op">=</span> torch.load(path<span class="op">/</span><span class="st">'0.codes.pt'</span>, weights_only<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb109-2"><a href="#cb109-2" aria-hidden="true" tabindex="-1"></a>codes.shape, codes.<span class="bu">min</span>(), codes.<span class="bu">max</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="54">
+<pre><code>(torch.Size([39]), tensor(0, dtype=torch.int32), tensor(61, dtype=torch.int32))</code></pre>
+</div>
+</div>
+<p>There exists 39 residuals, one for each passage token! I’m not sure why there are only 64 dimensions.</p>
+<div class="cell" data-outputid="0d13cdc5-103e-46d0-cc2f-e7f7fa85f828" data-execution_count="55">
+<div class="sourceCode cell-code" id="cb111"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb111-1"><a href="#cb111-1" aria-hidden="true" tabindex="-1"></a>residuals <span class="op">=</span> torch.load(path<span class="op">/</span><span class="st">'0.residuals.pt'</span>, weights_only<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb111-2"><a href="#cb111-2" aria-hidden="true" tabindex="-1"></a>residuals.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="55">
+<pre><code>torch.Size([39, 64])</code></pre>
+</div>
+</div>
+<p>The values of the residuals are integers!</p>
+<div class="cell" data-outputid="96d44ade-01ab-4d05-8e91-1034be9b86ec" data-execution_count="56">
+<div class="sourceCode cell-code" id="cb113"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb113-1"><a href="#cb113-1" aria-hidden="true" tabindex="-1"></a>residuals[<span class="dv">0</span>][:<span class="dv">5</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="56">
+<pre><code>tensor([191, 183,  50,  66, 203], dtype=torch.uint8)</code></pre>
+</div>
+</div>
+<p>Okay, that’s enough of an aside. The final piece of interest in <code>generate_candidates</code> are the lines</p>
+<div class="sourceCode" id="cb115"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb115-1"><a href="#cb115-1" aria-hidden="true" tabindex="-1"></a>pids, centroid_scores <span class="op">=</span> <span class="va">self</span>.generate_candidate_pids(Q, ncells)</span>
+<span id="cb115-2"><a href="#cb115-2" aria-hidden="true" tabindex="-1"></a>sorter <span class="op">=</span> pids.sort()</span>
+<span id="cb115-3"><a href="#cb115-3" aria-hidden="true" tabindex="-1"></a>pids <span class="op">=</span> sorter.values</span>
+<span id="cb115-4"><a href="#cb115-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb115-5"><a href="#cb115-5" aria-hidden="true" tabindex="-1"></a>pids, pids_counts <span class="op">=</span> torch.unique_consecutive(pids, return_counts<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell" data-outputid="7442a075-ac5a-4cb5-965d-c9b26ea9fda5" data-execution_count="57">
+<div class="sourceCode cell-code" id="cb116"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb116-1"><a href="#cb116-1" aria-hidden="true" tabindex="-1"></a>pids, centroid_scores <span class="op">=</span> searcher.ranker.generate_candidate_pids(Q, ncells<span class="op">=</span><span class="dv">4</span>)</span>
+<span id="cb116-2"><a href="#cb116-2" aria-hidden="true" tabindex="-1"></a>pids.shape, centroid_scores.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="57">
+<pre><code>(torch.Size([10]), torch.Size([64, 32]))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="b831553f-f3f6-4821-8a5b-e60781ed0d9b" data-execution_count="58">
+<div class="sourceCode cell-code" id="cb118"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb118-1"><a href="#cb118-1" aria-hidden="true" tabindex="-1"></a>sorter <span class="op">=</span> pids.sort()</span>
+<span id="cb118-2"><a href="#cb118-2" aria-hidden="true" tabindex="-1"></a>sorter</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="58">
+<pre><code>torch.return_types.sort(
+values=tensor([0, 0, 0, 0, 0, 1, 1, 2, 2, 2], device='cuda:0', dtype=torch.int32),
+indices=tensor([1, 0, 8, 3, 9, 4, 2, 7, 5, 6], device='cuda:0'))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="c5e52d1e-077f-4b94-99df-2dda31dec572" data-execution_count="59">
+<div class="sourceCode cell-code" id="cb120"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb120-1"><a href="#cb120-1" aria-hidden="true" tabindex="-1"></a>pids <span class="op">=</span> sorter.values</span>
+<span id="cb120-2"><a href="#cb120-2" aria-hidden="true" tabindex="-1"></a>pids, pids_counts <span class="op">=</span> torch.unique_consecutive(pids, return_counts<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb120-3"><a href="#cb120-3" aria-hidden="true" tabindex="-1"></a>pids.shape, pids_counts.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="59">
+<pre><code>(torch.Size([3]), torch.Size([3]))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="4970859c-2f07-4c1d-9572-b7d29ddc2c12" data-execution_count="60">
+<div class="sourceCode cell-code" id="cb122"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb122-1"><a href="#cb122-1" aria-hidden="true" tabindex="-1"></a>pids</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="60">
+<pre><code>tensor([0, 1, 2], device='cuda:0', dtype=torch.int32)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="23f5ecd1-471f-4b75-8bb4-f3a86670b0e5" data-execution_count="61">
+<div class="sourceCode cell-code" id="cb124"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb124-1"><a href="#cb124-1" aria-hidden="true" tabindex="-1"></a>pids_counts</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="61">
+<pre><code>tensor([5, 2, 3], device='cuda:0')</code></pre>
+</div>
+</div>
+<p>Let’s recap what we’ve done:</p>
+<ul>
+<li>We picked a number of centroid IDs nearest to each query token that we’re interested in (<code>ncells = 4</code>)</li>
+<li>We calculated the cosine similarity between centroids and query tokens (<code>searcher.ranker.codec.centroids @ Q.T</code>)</li>
+<li>We picked the top-4 scores per query token (<code>scores.topk</code>) and grabbed their indices along dim=0 (rows).</li>
+<li>We then reduced those 32 x 4 = 128 centroid IDs down to the 10 unique ones.</li>
+<li>And looked them up in our index to get the corresponding 10 passage IDs.</li>
+<li>We reduced those to the 3 unique passage IDs.</li>
+</ul>
+<p>These are our candidate passages at the end of Stage 1!</p>
+</section>
+</section>
+<section id="stage-2-centroid-interaction-with-pruning" class="level2">
+<h2 class="anchored" data-anchor-id="stage-2-centroid-interaction-with-pruning">Stage 2: Centroid Interaction with Pruning</h2>
+<p>We now want to keep PIDs corresponding to centroids that exceed a minimum threshold cosine similarity with query tokens.</p>
+<p>Now that we’ve gotten the initial candidate <code>pids</code>, the next line of interest in <code>rank</code> is:</p>
+<div class="sourceCode" id="cb126"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb126-1"><a href="#cb126-1" aria-hidden="true" tabindex="-1"></a>scores, pids <span class="op">=</span> <span class="va">self</span>.score_pids(config, Q, pids, centroid_scores)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell" data-outputid="36c10cbe-9555-4eac-b579-36c06a2c0c0e" data-execution_count="62">
+<div class="sourceCode cell-code" id="cb127"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb127-1"><a href="#cb127-1" aria-hidden="true" tabindex="-1"></a>searcher.ranker.score_pids</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="62">
+<div style="max-width:800px; border: 1px solid var(--colab-border-color);"><style>
+      pre.function-repr-contents {
+        overflow-x: auto;
+        padding: 8px 12px;
+        max-height: 500px;
+      }
+
+      pre.function-repr-contents.function-repr-contents-collapsed {
+        cursor: pointer;
+        max-height: 100px;
+      }
+    </style>
+    <pre style="white-space: initial; background:
+         var(--colab-secondary-surface-color); padding: 8px 12px;
+         border-bottom: 1px solid var(--colab-border-color);"><b>colbert.search.index_storage.IndexScorer.score_pids</b><br>def score_pids(config, Q, pids, centroid_scores)</pre><pre class="function-repr-contents function-repr-contents-collapsed" style=""><a class="filepath" style="display:none" href="#">/usr/local/lib/python3.10/dist-packages/colbert/search/index_storage.py</a>Always supply a flat list or tensor for `pids`.
+
+Supply sizes Q = (1 | num_docs, *, dim) and D = (num_docs, *, dim).
+If Q.size(0) is 1, the matrix will be compared with all passages.
+Otherwise, each query matrix will be compared against the *aligned* passage.</pre>
+      <script>
+      if (google.colab.kernel.accessAllowed && google.colab.files && google.colab.files.view) {
+        for (const element of document.querySelectorAll('.filepath')) {
+          element.style.display = 'block'
+          element.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            google.colab.files.view(element.textContent, 111);
+          };
+        }
+      }
+      for (const element of document.querySelectorAll('.function-repr-contents')) {
+        element.onclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          element.classList.toggle('function-repr-contents-collapsed');
+        };
+      }
+      </script>
+      </div>
+</div>
+</div>
+<p><code>score_pids</code> will handle both Stage 2 and Stage 3.</p>
+<section id="picking-centroids-with-scores-above-threshold" class="level3">
+<h3 class="anchored" data-anchor-id="picking-centroids-with-scores-above-threshold">Picking centroids with scores above threshold</h3>
+<p>The first important line in <code>score_pids</code> is the following:</p>
+<div class="sourceCode" id="cb128"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb128-1"><a href="#cb128-1" aria-hidden="true" tabindex="-1"></a>idx <span class="op">=</span> centroid_scores.<span class="bu">max</span>(<span class="op">-</span><span class="dv">1</span>).values <span class="op">&gt;=</span> config.centroid_score_threshold</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>I’ll refresh our <code>pids</code> and <code>centroid_scores</code> to the values they would have inside of <code>rank</code>:</p>
+<div class="cell" data-outputid="e93cd71f-ead6-48e4-b76a-ec375004c1bc" data-execution_count="63">
+<div class="sourceCode cell-code" id="cb129"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb129-1"><a href="#cb129-1" aria-hidden="true" tabindex="-1"></a>Q <span class="op">=</span> searcher.encode(q)</span>
+<span id="cb129-2"><a href="#cb129-2" aria-hidden="true" tabindex="-1"></a>Q.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="63">
+<pre><code>torch.Size([1, 32, 128])</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="ff882296-ba0b-45b1-df87-35db539b4e39" data-execution_count="64">
+<div class="sourceCode cell-code" id="cb131"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb131-1"><a href="#cb131-1" aria-hidden="true" tabindex="-1"></a>pids, centroid_scores <span class="op">=</span> searcher.ranker.retrieve(searcher.config, Q)</span>
+<span id="cb131-2"><a href="#cb131-2" aria-hidden="true" tabindex="-1"></a>pids.shape, centroid_scores.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="64">
+<pre><code>(torch.Size([3]), torch.Size([64, 32]))</code></pre>
+</div>
+</div>
+<p>The centroid score threshold is set in the <code>config</code></p>
+<div class="cell" data-outputid="f2890fb8-bd7a-4155-c710-3abfb0f0ec03" data-execution_count="65">
+<div class="sourceCode cell-code" id="cb133"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb133-1"><a href="#cb133-1" aria-hidden="true" tabindex="-1"></a>searcher.config.centroid_score_threshold</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="65">
+<pre><code>0.5</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="0d115378-2cd9-4389-d419-c47f0280cb22" data-execution_count="66">
+<div class="sourceCode cell-code" id="cb135"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb135-1"><a href="#cb135-1" aria-hidden="true" tabindex="-1"></a>idx <span class="op">=</span> centroid_scores.<span class="bu">max</span>(<span class="op">-</span><span class="dv">1</span>).values <span class="op">&gt;=</span> searcher.config.centroid_score_threshold</span>
+<span id="cb135-2"><a href="#cb135-2" aria-hidden="true" tabindex="-1"></a>idx.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="66">
+<pre><code>torch.Size([64])</code></pre>
+</div>
+</div>
+<p><code>idx</code> is a boolean tensor, <code>True</code> for rows where the maximum cosine similarity is at or above the threshold and <code>False</code> for where it’s under it.</p>
+<div class="cell" data-outputid="3a5dec17-f8a6-493e-b362-f7cb0b97cae7" data-execution_count="67">
+<div class="sourceCode cell-code" id="cb137"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb137-1"><a href="#cb137-1" aria-hidden="true" tabindex="-1"></a>idx</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="67">
+<pre><code>tensor([False, False, False, False, False, False, False,  True,  True, False,
+        False, False, False, False,  True, False, False, False, False,  True,
+        False, False, False, False, False, False, False, False, False,  True,
+        False,  True, False, False, False, False, False, False,  True, False,
+        False,  True, False, False, False, False, False, False, False, False,
+        False, False, False, False, False, False, False, False, False, False,
+        False,  True, False, False], device='cuda:0')</code></pre>
+</div>
+</div>
+</section>
+<section id="looking-up-codes-centroid-ids-corresponding-to-passage-tokens" class="level3">
+<h3 class="anchored" data-anchor-id="looking-up-codes-centroid-ids-corresponding-to-passage-tokens">Looking up codes (centroid IDs corresponding to passage tokens)</h3>
+<p>The next line of interest in <code>score_pids</code> is:</p>
+<div class="sourceCode" id="cb139"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb139-1"><a href="#cb139-1" aria-hidden="true" tabindex="-1"></a>codes_packed, codes_lengths <span class="op">=</span> <span class="va">self</span>.embeddings_strided.lookup_codes(pids_)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell" data-outputid="fb70d130-b532-48be-93d0-4a2012ccf387" data-execution_count="68">
+<div class="sourceCode cell-code" id="cb140"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb140-1"><a href="#cb140-1" aria-hidden="true" tabindex="-1"></a>searcher.ranker.embeddings_strided</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="68">
+<pre><code>&lt;colbert.indexing.codecs.residual_embeddings_strided.ResidualEmbeddingsStrided at 0x7d0a4f48d180&gt;</code></pre>
+</div>
+</div>
+<p>A key point here, which aligns with what I understood from the paper: we are looking up centroid IDs corresponding to the <em>passage tokens</em> in our passage IDs. Note that there are 39 values in <code>codes_packed</code> which correspond to the 39 passage token embeddings. I’ll leave me exploration for how I got this conclusion for a future video/blog post.</p>
+<div class="cell" data-outputid="86ada23f-a306-472a-b667-f51d4d7e5e77" data-execution_count="69">
+<div class="sourceCode cell-code" id="cb142"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb142-1"><a href="#cb142-1" aria-hidden="true" tabindex="-1"></a>codes_packed, codes_lengths <span class="op">=</span> searcher.ranker.embeddings_strided.lookup_codes(pids)</span>
+<span id="cb142-2"><a href="#cb142-2" aria-hidden="true" tabindex="-1"></a>codes_packed.shape, codes_lengths.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="69">
+<pre><code>(torch.Size([39]), torch.Size([3]))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="24fd298d-dcc6-4f3b-ac0f-8fbda9d8d59f" data-execution_count="70">
+<div class="sourceCode cell-code" id="cb144"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb144-1"><a href="#cb144-1" aria-hidden="true" tabindex="-1"></a>codes_packed</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="70">
+<pre><code>tensor([41,  8, 61,  7,  7, 47, 60, 19, 19,  1, 42, 46, 41, 24, 58, 58, 14, 14,
+         2,  3, 60, 23, 12,  2, 16, 48, 29, 38, 31, 37,  9,  6, 57,  5, 17, 13,
+         0,  0, 29], device='cuda:0', dtype=torch.int32)</code></pre>
+</div>
+</div>
+<p>Note that <code>codes_lengths</code> tells us how many tokens there are in each passage.</p>
+<div class="cell" data-outputid="da17ddfb-81c5-46f1-ea56-5ac4aeaaa7a8" data-execution_count="71">
+<div class="sourceCode cell-code" id="cb146"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb146-1"><a href="#cb146-1" aria-hidden="true" tabindex="-1"></a>codes_lengths</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="71">
+<pre><code>tensor([13, 13, 13])</code></pre>
+</div>
+</div>
+<p>From the PLAID paper (emphasis mine):</p>
+<blockquote class="blockquote">
+<p>The procedure works as follows. Recall that <span class="math inline">\(S_{c,q}\)</span> from Equation 2 stores the relevance scores for each centroid with respect to the query tokens. Suppose <span class="math inline">\(I\)</span> is <strong>the list of the centroid indices mapped to each of the tokens in the candidate set</strong>. Furthermore, let <span class="math inline">\(S_{c,q}\)</span> denote the i-th row of <span class="math inline">\(S_{c,q}\)</span>. Then PLAID constructs the centroid-based approximate scores <span class="math inline">\(\tilde{D}\)</span> as:</p>
+</blockquote>
+</section>
+<section id="picking-scores-for-centroid-ids-corresponding-to-passage-tokens" class="level3">
+<h3 class="anchored" data-anchor-id="picking-scores-for-centroid-ids-corresponding-to-passage-tokens">Picking scores for centroid IDs corresponding to passage tokens</h3>
+<p>The next line in <code>score_pids</code> does just that: pick the centroid IDs that correspond to the passage tokens of interest:</p>
+<div class="cell" data-outputid="b258b905-4606-4f9f-828a-763f100965ae" data-execution_count="72">
+<div class="sourceCode cell-code" id="cb148"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb148-1"><a href="#cb148-1" aria-hidden="true" tabindex="-1"></a>idx_ <span class="op">=</span> idx[codes_packed.<span class="bu">long</span>()]</span>
+<span id="cb148-2"><a href="#cb148-2" aria-hidden="true" tabindex="-1"></a>idx_.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="72">
+<pre><code>torch.Size([39])</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="621559b8-2af6-4694-8f74-2216dc066afa" data-execution_count="73">
+<div class="sourceCode cell-code" id="cb150"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb150-1"><a href="#cb150-1" aria-hidden="true" tabindex="-1"></a>idx_</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="73">
+<pre><code>tensor([ True,  True,  True,  True,  True, False, False,  True,  True, False,
+        False, False,  True, False, False, False,  True,  True, False, False,
+        False, False, False, False, False, False,  True,  True,  True, False,
+        False, False, False, False, False, False, False, False,  True],
+       device='cuda:0')</code></pre>
+</div>
+</div>
+<p>We then use this to index back into <code>codes_packed</code> to select the centroid IDs that are at or above the threshold of 0.5. There are 14 such centroid IDs.</p>
+<div class="cell" data-outputid="0c38ced6-9d9a-41ad-e7ac-39f31949d246" data-execution_count="74">
+<div class="sourceCode cell-code" id="cb152"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb152-1"><a href="#cb152-1" aria-hidden="true" tabindex="-1"></a>codes_packed_ <span class="op">=</span> codes_packed[idx_]</span>
+<span id="cb152-2"><a href="#cb152-2" aria-hidden="true" tabindex="-1"></a>codes_packed_, codes_packed_.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="74">
+<pre><code>(tensor([41,  8, 61,  7,  7, 19, 19, 41, 14, 14, 29, 38, 31, 29],
+        device='cuda:0', dtype=torch.int32),
+ torch.Size([14]))</code></pre>
+</div>
+</div>
+<p>Finally, we can index into our scores and pick out the scores that correspond to these centroid IDs:</p>
+<div class="cell" data-outputid="5de36e31-3d15-42ee-fc56-4239f69beeb1" data-execution_count="75">
+<div class="sourceCode cell-code" id="cb154"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb154-1"><a href="#cb154-1" aria-hidden="true" tabindex="-1"></a>approx_scores_ <span class="op">=</span> centroid_scores[codes_packed_.<span class="bu">long</span>()]</span>
+<span id="cb154-2"><a href="#cb154-2" aria-hidden="true" tabindex="-1"></a>approx_scores_.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="75">
+<pre><code>torch.Size([14, 32])</code></pre>
+</div>
+</div>
+<p>We now have the scores between 14 centroids that are mapped to our candidate passage ID’s tokens and all 32 query tokens.</p>
+</section>
+<section id="max-reducing-scores-to-get-1-score-per-passage-id" class="level3">
+<h3 class="anchored" data-anchor-id="max-reducing-scores-to-get-1-score-per-passage-id">Max-reducing scores to get 1 score per passage ID</h3>
+<p>The last step of Stage 2 is to max-reduce the scores down to 1 per passage. The following lines are of interest:</p>
+<div class="sourceCode" id="cb156"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb156-1"><a href="#cb156-1" aria-hidden="true" tabindex="-1"></a>pruned_codes_strided <span class="op">=</span> StridedTensor(idx_, codes_lengths, use_gpu<span class="op">=</span><span class="va">self</span>.use_gpu)</span>
+<span id="cb156-2"><a href="#cb156-2" aria-hidden="true" tabindex="-1"></a>pruned_codes_padded, pruned_codes_mask <span class="op">=</span> pruned_codes_strided.as_padded_tensor()</span>
+<span id="cb156-3"><a href="#cb156-3" aria-hidden="true" tabindex="-1"></a>pruned_codes_lengths <span class="op">=</span> (pruned_codes_padded <span class="op">*</span> pruned_codes_mask).<span class="bu">sum</span>(dim<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb156-4"><a href="#cb156-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb156-5"><a href="#cb156-5" aria-hidden="true" tabindex="-1"></a>...</span>
+<span id="cb156-6"><a href="#cb156-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb156-7"><a href="#cb156-7" aria-hidden="true" tabindex="-1"></a>approx_scores_strided <span class="op">=</span> StridedTensor(approx_scores_, pruned_codes_lengths, use_gpu<span class="op">=</span><span class="va">self</span>.use_gpu)</span>
+<span id="cb156-8"><a href="#cb156-8" aria-hidden="true" tabindex="-1"></a>approx_scores_padded, approx_scores_mask <span class="op">=</span> approx_scores_strided.as_padded_tensor()</span>
+<span id="cb156-9"><a href="#cb156-9" aria-hidden="true" tabindex="-1"></a>approx_scores_ <span class="op">=</span> colbert_score_reduce(approx_scores_padded, approx_scores_mask, config)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell" data-execution_count="76">
+<div class="sourceCode cell-code" id="cb157"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb157-1"><a href="#cb157-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> colbert.search.strided_tensor <span class="im">import</span> StridedTensor, StridedTensorCore</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="b39c3799-5e2c-4f14-845f-8a32abbcf118" data-execution_count="77">
+<div class="sourceCode cell-code" id="cb158"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb158-1"><a href="#cb158-1" aria-hidden="true" tabindex="-1"></a>idx_.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="77">
+<pre><code>torch.Size([39])</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="f1ee182c-bce3-4a39-a0d5-5d4f4d019b00" data-execution_count="78">
+<div class="sourceCode cell-code" id="cb160"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb160-1"><a href="#cb160-1" aria-hidden="true" tabindex="-1"></a>pruned_codes_strided <span class="op">=</span> StridedTensor(idx_, codes_lengths)</span>
+<span id="cb160-2"><a href="#cb160-2" aria-hidden="true" tabindex="-1"></a>pruned_codes_strided</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="78">
+<pre><code>&lt;colbert.search.strided_tensor.StridedTensor at 0x7d0a4f688e20&gt;</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="996c7d02-fb8c-4a5f-9f21-e2aa7bb21b0c" data-execution_count="79">
+<div class="sourceCode cell-code" id="cb162"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb162-1"><a href="#cb162-1" aria-hidden="true" tabindex="-1"></a>pruned_codes_padded, pruned_codes_mask <span class="op">=</span> pruned_codes_strided.as_padded_tensor()</span>
+<span id="cb162-2"><a href="#cb162-2" aria-hidden="true" tabindex="-1"></a>pruned_codes_padded.shape, pruned_codes_mask.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="79">
+<pre><code>(torch.Size([3, 13]), torch.Size([3, 13]))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="82517510-0348-43be-8690-523fc6f5ae9c" data-execution_count="80">
+<div class="sourceCode cell-code" id="cb164"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb164-1"><a href="#cb164-1" aria-hidden="true" tabindex="-1"></a>pruned_codes_padded</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="80">
+<pre><code>tensor([[ True,  True,  True,  True,  True, False, False,  True,  True, False,
+         False, False,  True],
+        [False, False, False,  True,  True, False, False, False, False, False,
+         False, False, False],
+        [ True,  True,  True, False, False, False, False, False, False, False,
+         False, False,  True]], device='cuda:0')</code></pre>
+</div>
+</div>
+<p>My understanding of <code>StridedTensor</code> is still spotty, but from what I can see it allows the reshaping of values from a 1-D 39 to 3 x 13. In this way, we are organizing centroid IDs by both passage ID and by passage token.</p>
+<div class="cell" data-outputid="e7433db9-70ab-44af-fa41-18fe6404cf1b" data-execution_count="81">
+<div class="sourceCode cell-code" id="cb166"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb166-1"><a href="#cb166-1" aria-hidden="true" tabindex="-1"></a>pruned_codes_lengths <span class="op">=</span> (pruned_codes_padded <span class="op">*</span> pruned_codes_mask).<span class="bu">sum</span>(dim<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb166-2"><a href="#cb166-2" aria-hidden="true" tabindex="-1"></a>pruned_codes_lengths</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="81">
+<pre><code>tensor([8, 2, 4], device='cuda:0')</code></pre>
+</div>
+</div>
+<p>There are 8 centroids corresponding to tokens in the first passage that cross the score threshold, 2 for the second passage and 4 for the third.</p>
+<p>Note that <code>pruned_codes_mask</code> is <code>True</code> everywhere so multiplying <code>pruned_codes_padded</code> by it keeps all of its values intact:</p>
+<div class="cell" data-outputid="7e98c61b-266a-4b77-f81e-0299b1ab355b" data-execution_count="82">
+<div class="sourceCode cell-code" id="cb168"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb168-1"><a href="#cb168-1" aria-hidden="true" tabindex="-1"></a>pruned_codes_mask</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="82">
+<pre><code>tensor([[True, True, True, True, True, True, True, True, True, True, True, True,
+         True],
+        [True, True, True, True, True, True, True, True, True, True, True, True,
+         True],
+        [True, True, True, True, True, True, True, True, True, True, True, True,
+         True]], device='cuda:0')</code></pre>
+</div>
+</div>
+<p>The next lines reshapes our <code>approx_scores_</code> similarly.</p>
+<div class="cell" data-outputid="06dba42e-0787-4a39-f9ec-8175c0d480b1" data-execution_count="83">
+<div class="sourceCode cell-code" id="cb170"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb170-1"><a href="#cb170-1" aria-hidden="true" tabindex="-1"></a>approx_scores_.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="83">
+<pre><code>torch.Size([14, 32])</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="5635151e-8e69-4ff1-ee67-a4ac607766eb" data-execution_count="84">
+<div class="sourceCode cell-code" id="cb172"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb172-1"><a href="#cb172-1" aria-hidden="true" tabindex="-1"></a>approx_scores_strided <span class="op">=</span> StridedTensor(approx_scores_, pruned_codes_lengths)</span>
+<span id="cb172-2"><a href="#cb172-2" aria-hidden="true" tabindex="-1"></a>approx_scores_padded, approx_scores_mask <span class="op">=</span> approx_scores_strided.as_padded_tensor()</span>
+<span id="cb172-3"><a href="#cb172-3" aria-hidden="true" tabindex="-1"></a>approx_scores_padded.shape, approx_scores_mask.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="84">
+<pre><code>(torch.Size([3, 8, 32]), torch.Size([3, 8, 1]))</code></pre>
+</div>
+</div>
+<p>What’s interesting to note here is <code>approx_scores_mask</code>. We know from <code>pruned_codes_lengths</code> that there are 8 centroid IDs for the first passage, 2 for the second, and 4 for the third. <code>approx_scores_mask</code> flags <code>True</code> for valid values and <code>False</code> for padding values.</p>
+<div class="cell" data-outputid="b978dcbb-6664-40e2-80ce-377875829f91" data-execution_count="85">
+<div class="sourceCode cell-code" id="cb174"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb174-1"><a href="#cb174-1" aria-hidden="true" tabindex="-1"></a>approx_scores_mask</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="85">
+<pre><code>tensor([[[ True],
+         [ True],
+         [ True],
+         [ True],
+         [ True],
+         [ True],
+         [ True],
+         [ True]],
+
+        [[ True],
+         [ True],
+         [False],
+         [False],
+         [False],
+         [False],
+         [False],
+         [False]],
+
+        [[ True],
+         [ True],
+         [ True],
+         [ True],
+         [False],
+         [False],
+         [False],
+         [False]]], device='cuda:0')</code></pre>
+</div>
+</div>
+<p>We then pass these padded scores to <code>colbert_reduce</code> which performs the famous MaxSim operation:</p>
+<div class="cell" data-execution_count="86">
+<div class="sourceCode cell-code" id="cb176"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb176-1"><a href="#cb176-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> colbert.modeling.colbert <span class="im">import</span> colbert_score, colbert_score_packed, colbert_score_reduce</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="16c19812-d57a-4acd-fd42-d1a454d35caf" data-execution_count="87">
+<div class="sourceCode cell-code" id="cb177"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb177-1"><a href="#cb177-1" aria-hidden="true" tabindex="-1"></a>approx_scores_ <span class="op">=</span> colbert_score_reduce(approx_scores_padded, approx_scores_mask, searcher.config)</span>
+<span id="cb177-2"><a href="#cb177-2" aria-hidden="true" tabindex="-1"></a>approx_scores_</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="87">
+<pre><code>tensor([27.2812, 12.9844, 22.1719], device='cuda:0', dtype=torch.float16)</code></pre>
+</div>
+</div>
+<p>Note that these are not the same values as our RAGatouille results. Instead, these are intermediate scores.</p>
+<p>Taking a look at <a href="https://github.com/stanford-futuredata/ColBERT/blob/7067ef598b5011edaa1f4a731a2c269dbac864e4/colbert/modeling/colbert.py#L132"><code>colbert_score_reduce</code></a> there are four main lines of interest in my opinion:</p>
+<div class="sourceCode" id="cb179"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb179-1"><a href="#cb179-1" aria-hidden="true" tabindex="-1"></a>D_padding <span class="op">=</span> <span class="op">~</span>D_mask.view(scores_padded.size(<span class="dv">0</span>), scores_padded.size(<span class="dv">1</span>)).<span class="bu">bool</span>()</span>
+<span id="cb179-2"><a href="#cb179-2" aria-hidden="true" tabindex="-1"></a>scores_padded[D_padding] <span class="op">=</span> <span class="op">-</span><span class="dv">9999</span></span>
+<span id="cb179-3"><a href="#cb179-3" aria-hidden="true" tabindex="-1"></a>scores <span class="op">=</span> scores_padded.<span class="bu">max</span>(<span class="dv">1</span>).values</span>
+<span id="cb179-4"><a href="#cb179-4" aria-hidden="true" tabindex="-1"></a>scores.<span class="bu">sum</span>(<span class="op">-</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell" data-outputid="089876b1-d49d-4115-89a2-a1b1b7f8ae1a" data-execution_count="88">
+<div class="sourceCode cell-code" id="cb180"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb180-1"><a href="#cb180-1" aria-hidden="true" tabindex="-1"></a>D_padding <span class="op">=</span> <span class="op">~</span>approx_scores_mask.view(approx_scores_padded.size(<span class="dv">0</span>), approx_scores_padded.size(<span class="dv">1</span>)).<span class="bu">bool</span>()</span>
+<span id="cb180-2"><a href="#cb180-2" aria-hidden="true" tabindex="-1"></a>approx_scores_padded[D_padding] <span class="op">=</span> <span class="op">-</span><span class="dv">9999</span></span>
+<span id="cb180-3"><a href="#cb180-3" aria-hidden="true" tabindex="-1"></a>approx_scores_padded.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="88">
+<pre><code>torch.Size([3, 8, 32])</code></pre>
+</div>
+</div>
+<p>We take the max along dim=1, which is the dimension with centroid IDs corresponding to passage tokens. So, in other words, we are finding the maximum score between centroid and query token for each query token per passage.</p>
+<div class="cell" data-outputid="a8ad482d-d01d-40e1-f180-eaff91d04c45" data-execution_count="89">
+<div class="sourceCode cell-code" id="cb182"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb182-1"><a href="#cb182-1" aria-hidden="true" tabindex="-1"></a>scores <span class="op">=</span> approx_scores_padded.<span class="bu">max</span>(<span class="dv">1</span>).values</span>
+<span id="cb182-2"><a href="#cb182-2" aria-hidden="true" tabindex="-1"></a>scores.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="89">
+<pre><code>torch.Size([3, 32])</code></pre>
+</div>
+</div>
+<p>Finally, we sum across query tokens per passage ID.</p>
+<div class="cell" data-outputid="49fcb173-d810-4288-bc97-5039c5b9622b" data-execution_count="90">
+<div class="sourceCode cell-code" id="cb184"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb184-1"><a href="#cb184-1" aria-hidden="true" tabindex="-1"></a>scores.<span class="bu">sum</span>(<span class="op">-</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="90">
+<pre><code>tensor([27.2812, 12.9844, 22.1719], device='cuda:0', dtype=torch.float16)</code></pre>
+</div>
+</div>
+</section>
+<section id="picking-the-top-ndocs-passages" class="level3">
+<h3 class="anchored" data-anchor-id="picking-the-top-ndocs-passages">Picking the top-ndocs passages</h3>
+<p>The last step is to pick the top-<code>ndocs</code> passage IDs.</p>
+<div class="cell" data-outputid="230765fc-4cdb-49d7-f107-24b83b2c0756" data-execution_count="91">
+<div class="sourceCode cell-code" id="cb186"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb186-1"><a href="#cb186-1" aria-hidden="true" tabindex="-1"></a>searcher.config.ndocs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="91">
+<pre><code>256</code></pre>
+</div>
+</div>
+<p><code>ndocs</code> is 256, much larger than the number of passages we have, so I’ll rank with <code>k=3</code>:</p>
+<div class="cell" data-execution_count="92">
+<div class="sourceCode cell-code" id="cb188"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb188-1"><a href="#cb188-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> searcher.config.ndocs <span class="op">//</span> <span class="dv">4</span> <span class="op">&lt;</span> <span class="bu">len</span>(approx_scores_):</span>
+<span id="cb188-2"><a href="#cb188-2" aria-hidden="true" tabindex="-1"></a>    pids <span class="op">=</span> pids[torch.topk(approx_scores_, k<span class="op">=</span>(searcher.config.ndocs <span class="op">//</span> <span class="dv">4</span>)).indices]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="3bff81bf-0e59-49c7-95bf-25d63367f8a4" data-execution_count="93">
+<div class="sourceCode cell-code" id="cb189"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb189-1"><a href="#cb189-1" aria-hidden="true" tabindex="-1"></a>pids <span class="op">=</span> pids[torch.topk(approx_scores_, k<span class="op">=</span><span class="dv">3</span>).indices]</span>
+<span id="cb189-2"><a href="#cb189-2" aria-hidden="true" tabindex="-1"></a>pids</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="93">
+<pre><code>tensor([0, 2, 1], device='cuda:0', dtype=torch.int32)</code></pre>
+</div>
+</div>
+<p>To recap Stage 2:</p>
+<ul>
+<li>We select centroid IDs that were both at/above our threshold of 0.5 AND corresponded to passage tokens for the passage IDs in our initial candidate pool from Stage 1.</li>
+<li>We then do some reshaping so we can calculate the MaxSim score for each passage ID.</li>
+<li>We pick the top-<code>ndocs</code> passages.</li>
+</ul>
+</section>
+</section>
+<section id="stage-3-centroid-interaction-wo-pruning" class="level2">
+<h2 class="anchored" data-anchor-id="stage-3-centroid-interaction-wo-pruning">Stage 3: Centroid Interaction w/o Pruning</h2>
+<p>We now have our candidate set from Stage 2. We lookup the centroid IDs for the passage tokens in these passage IDs:</p>
+<div class="cell" data-outputid="a72ebd87-0213-4961-8129-4a8258cfe40d" data-execution_count="94">
+<div class="sourceCode cell-code" id="cb191"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb191-1"><a href="#cb191-1" aria-hidden="true" tabindex="-1"></a>codes_packed, codes_lengths <span class="op">=</span> searcher.ranker.embeddings_strided.lookup_codes(pids)</span>
+<span id="cb191-2"><a href="#cb191-2" aria-hidden="true" tabindex="-1"></a>codes_packed.shape, codes_lengths.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="94">
+<pre><code>(torch.Size([39]), torch.Size([3]))</code></pre>
+</div>
+</div>
+<p>We don’t use the threshold for this step—all centroids, even those who have a maximum cosine similarity with query tokens being less than our threshold:</p>
+<div class="cell" data-outputid="b2f5cc5d-b29c-464f-a01f-3b5234f36639" data-execution_count="95">
+<div class="sourceCode cell-code" id="cb193"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb193-1"><a href="#cb193-1" aria-hidden="true" tabindex="-1"></a>approx_scores <span class="op">=</span> centroid_scores[codes_packed.<span class="bu">long</span>()]</span>
+<span id="cb193-2"><a href="#cb193-2" aria-hidden="true" tabindex="-1"></a>approx_scores.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="95">
+<pre><code>torch.Size([39, 32])</code></pre>
+</div>
+</div>
+<p>Note how we are now dealing with 39 centroids, not 14 like we did in Stage 2.</p>
+<p>We do the same reshaping/padding as we did in Stage 2, and use <code>colbert_score_reduce</code> again:</p>
+<div class="cell" data-outputid="0718761e-be31-48b6-9ce7-934557b67051" data-execution_count="96">
+<div class="sourceCode cell-code" id="cb195"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb195-1"><a href="#cb195-1" aria-hidden="true" tabindex="-1"></a>approx_scores_strided <span class="op">=</span> StridedTensor(approx_scores, codes_lengths)</span>
+<span id="cb195-2"><a href="#cb195-2" aria-hidden="true" tabindex="-1"></a>approx_scores_padded, approx_scores_mask <span class="op">=</span> approx_scores_strided.as_padded_tensor()</span>
+<span id="cb195-3"><a href="#cb195-3" aria-hidden="true" tabindex="-1"></a>approx_scores <span class="op">=</span> colbert_score_reduce(approx_scores_padded, approx_scores_mask, searcher.config)</span>
+<span id="cb195-4"><a href="#cb195-4" aria-hidden="true" tabindex="-1"></a>approx_scores</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="96">
+<pre><code>tensor([27.2812, 22.1875, 13.7266], device='cuda:0', dtype=torch.float16)</code></pre>
+</div>
+</div>
+<p>We then pick the top-<code>ndocs//4</code> passage IDs, in this case all 3 of our passage IDs.</p>
+<div class="cell" data-execution_count="97">
+<div class="sourceCode cell-code" id="cb197"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb197-1"><a href="#cb197-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> searcher.config.ndocs <span class="op">//</span> <span class="dv">4</span> <span class="op">&lt;</span> <span class="bu">len</span>(approx_scores):</span>
+<span id="cb197-2"><a href="#cb197-2" aria-hidden="true" tabindex="-1"></a>    pids <span class="op">=</span> pids[torch.topk(approx_scores, k<span class="op">=</span>(searcher.config.ndocs <span class="op">//</span> <span class="dv">4</span>)).indices]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="b688dbdb-376c-49f4-a878-2f43979cf23b" data-execution_count="98">
+<div class="sourceCode cell-code" id="cb198"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb198-1"><a href="#cb198-1" aria-hidden="true" tabindex="-1"></a>pids <span class="op">=</span> pids[torch.topk(approx_scores, k<span class="op">=</span><span class="dv">3</span>).indices]</span>
+<span id="cb198-2"><a href="#cb198-2" aria-hidden="true" tabindex="-1"></a>pids</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="98">
+<pre><code>tensor([0, 2, 1], device='cuda:0', dtype=torch.int32)</code></pre>
+</div>
+</div>
+<p>This is the candidate set at the end of Stage 3. Note that the scores are still not quite the same as RAGatouille, as these are intermediate scores.</p>
+</section>
+<section id="stage-4-final-ranking-with-decompression" class="level2">
+<h2 class="anchored" data-anchor-id="stage-4-final-ranking-with-decompression">Stage 4: Final ranking with decompression</h2>
+<p>We’re now in the final Stage of the PLAID scoring pipeline. We now get the full 128-dimension vectors for all of our passage ID’s tokens:</p>
+<div class="cell" data-outputid="38c13003-3d32-4f12-81f9-dc4155f2e279" data-execution_count="99">
+<div class="sourceCode cell-code" id="cb200"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb200-1"><a href="#cb200-1" aria-hidden="true" tabindex="-1"></a>D_packed, D_mask <span class="op">=</span> searcher.ranker.lookup_pids(pids)</span>
+<span id="cb200-2"><a href="#cb200-2" aria-hidden="true" tabindex="-1"></a>D_packed.shape, D_mask.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="99">
+<pre><code>(torch.Size([39, 128]), torch.Size([3]))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="64f16da5-3c21-42bb-bae9-f1f0bb4ef83a" data-execution_count="100">
+<div class="sourceCode cell-code" id="cb202"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb202-1"><a href="#cb202-1" aria-hidden="true" tabindex="-1"></a>D_packed[<span class="dv">0</span>][<span class="dv">0</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="100">
+<pre><code>tensor(-0.0102, device='cuda:0', dtype=torch.float16)</code></pre>
+</div>
+</div>
+<p>Since we only have one query:</p>
+<div class="cell" data-outputid="2451029d-5f1d-4ed0-cc96-efcad8ac5c6e" data-execution_count="101">
+<div class="sourceCode cell-code" id="cb204"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb204-1"><a href="#cb204-1" aria-hidden="true" tabindex="-1"></a>Q.size(<span class="dv">0</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="101">
+<pre><code>1</code></pre>
+</div>
+</div>
+<p>We use the following lines of code:</p>
+<div class="cell" data-outputid="5add352b-4bb2-4ef3-ad1b-8a489b2f12c3" data-execution_count="102">
+<div class="sourceCode cell-code" id="cb206"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb206-1"><a href="#cb206-1" aria-hidden="true" tabindex="-1"></a>colbert_score_packed(Q, D_packed, D_mask, searcher.config)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="102">
+<pre><code>tensor([27.6875, 22.2812, 13.9531], device='cuda:0', dtype=torch.float16)</code></pre>
+</div>
+</div>
+<p>Looking into <code>colbert_score_packed</code>, here are the lines of interest:</p>
+<div class="cell" data-outputid="c7b81dc9-d4d5-4883-ecc4-a00b06410a07" data-execution_count="103">
+<div class="sourceCode cell-code" id="cb208"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb208-1"><a href="#cb208-1" aria-hidden="true" tabindex="-1"></a>Q <span class="op">=</span> Q.squeeze(<span class="dv">0</span>)</span>
+<span id="cb208-2"><a href="#cb208-2" aria-hidden="true" tabindex="-1"></a>Q.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="103">
+<pre><code>torch.Size([32, 128])</code></pre>
+</div>
+</div>
+<p>We calculate the cosine similarity between each passage token and each query token:</p>
+<div class="cell" data-outputid="35cfe4d1-0ff8-4689-9b9a-4fd9641ed38f" data-execution_count="104">
+<div class="sourceCode cell-code" id="cb210"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb210-1"><a href="#cb210-1" aria-hidden="true" tabindex="-1"></a>scores <span class="op">=</span> D_packed <span class="op">@</span> Q.to(dtype<span class="op">=</span>D_packed.dtype).T</span>
+<span id="cb210-2"><a href="#cb210-2" aria-hidden="true" tabindex="-1"></a>scores.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="104">
+<pre><code>torch.Size([39, 32])</code></pre>
+</div>
+</div>
+<p>Reshape them so we can max-reduce them by passage ID:</p>
+<div class="cell" data-outputid="4952176c-4b95-4f3e-92b1-a821d4167301" data-execution_count="105">
+<div class="sourceCode cell-code" id="cb212"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb212-1"><a href="#cb212-1" aria-hidden="true" tabindex="-1"></a>scores_padded, scores_mask <span class="op">=</span> StridedTensor(scores, D_mask).as_padded_tensor()</span>
+<span id="cb212-2"><a href="#cb212-2" aria-hidden="true" tabindex="-1"></a>scores_padded.shape, scores_mask.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="105">
+<pre><code>(torch.Size([3, 13, 32]), torch.Size([3, 13, 1]))</code></pre>
+</div>
+</div>
+<p>And max-reduce with <code>colbert_score_reduce</code>:</p>
+<div class="cell" data-outputid="a50d137e-4304-4f6a-f858-0eb907400deb" data-execution_count="106">
+<div class="sourceCode cell-code" id="cb214"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb214-1"><a href="#cb214-1" aria-hidden="true" tabindex="-1"></a>colbert_score_reduce(scores_padded, scores_mask, searcher.config)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="106">
+<pre><code>tensor([27.6875, 22.2812, 13.9531], device='cuda:0', dtype=torch.float16)</code></pre>
+</div>
+</div>
+<p>This matches exactly the scores we got using RAGatouille!</p>
+<div class="cell" data-outputid="309baa66-6c65-41e0-f89b-6a111e571a5b" data-execution_count="107">
+<div class="sourceCode cell-code" id="cb216"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb216-1"><a href="#cb216-1" aria-hidden="true" tabindex="-1"></a>results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="107">
+<pre><code>[{'content': 'Python is a programming language. It is easy to learn',
+  'score': 27.6875,
+  'rank': 1,
+  'document_id': '8aa5aade-10d5-4144-b634-c7866578b43c',
+  'passage_id': 0},
+ {'content': 'Python was created by Guido van Rossum in 1991',
+  'score': 22.28125,
+  'rank': 2,
+  'document_id': '12352328-9bb1-4a51-896e-a002d3548adc',
+  'passage_id': 2},
+ {'content': 'Java is a popular coding language used in many applications',
+  'score': 13.953125,
+  'rank': 3,
+  'document_id': '1fe9788e-ccec-4b9e-a004-14acc657915e',
+  'passage_id': 1}]</code></pre>
+</div>
+</div>
+<p>To recap Stage 4:</p>
+<ul>
+<li>We lookup the full vectors corresponding to all passage tokens in our passage IDs.</li>
+<li>We reshape them to allow for max-reduction by passage ID.</li>
+<li>We calculate the MaxSim score for each passage.</li>
+</ul>
+<p>In this way, we were able to recreate the entire 4-stage PLAID pipeline to match RAGatouille results!</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<script>var lightboxQuarto = GLightbox({"loop":true,"closeEffect":"zoom","descPosition":"bottom","selector":".lightbox","openEffect":"zoom"});</script>
+
+
+
+</body></html>
