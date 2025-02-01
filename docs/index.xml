@@ -10,7 +10,280 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.2.335</generator>
-<lastBuildDate>Tue, 24 Dec 2024 08:00:00 GMT</lastBuildDate>
+<lastBuildDate>Sat, 01 Feb 2025 08:00:00 GMT</lastBuildDate>
+<item>
+  <title>DoRA’s Magnitude Vector</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-02-01-DoRA-Magnitude-Vector/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<section id="setup" class="level2">
+<h2 class="anchored" data-anchor-id="setup">Setup</h2>
+<div class="cell" data-execution_count="15">
+<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im" style="color: #00769E;">from</span> peft <span class="im" style="color: #00769E;">import</span> LoraConfig, get_peft_model</span>
+<span id="cb1-2"><span class="im" style="color: #00769E;">import</span> transformers</span>
+<span id="cb1-3"></span>
+<span id="cb1-4"><span class="co" style="color: #5E5E5E;"># the following imports are from dora.py</span></span>
+<span id="cb1-5"><span class="im" style="color: #00769E;">from</span> copy <span class="im" style="color: #00769E;">import</span> deepcopy</span>
+<span id="cb1-6"></span>
+<span id="cb1-7"><span class="im" style="color: #00769E;">import</span> torch</span>
+<span id="cb1-8"><span class="im" style="color: #00769E;">import</span> torch.nn.functional <span class="im" style="color: #00769E;">as</span> F</span>
+<span id="cb1-9"><span class="im" style="color: #00769E;">from</span> torch <span class="im" style="color: #00769E;">import</span> nn</span>
+<span id="cb1-10"></span>
+<span id="cb1-11"><span class="im" style="color: #00769E;">from</span> peft.utils.integrations <span class="im" style="color: #00769E;">import</span> dequantize_module_weight, gather_params_ctx</span>
+<span id="cb1-12"><span class="im" style="color: #00769E;">from</span> peft.utils.other <span class="im" style="color: #00769E;">import</span> transpose</span></code></pre></div>
+</div>
+</section>
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>I am currently re-reading the DoRA (Weight-Decomposed Low-Rank Adaptation) <a href="https://arxiv.org/abs/2402.09353">paper</a>. I took a bit of a detour and worked through the fantastic article <a href="https://magazine.sebastianraschka.com/p/lora-and-dora-from-scratch">Improving LoRA: Implementing Weight-Decomposed Low-Rank Adaptation (DoRA) from Scratch</a> by Sebastian Raschka (I am also reading his book <a href="https://www.manning.com/books/build-a-large-language-model-from-scratch">Building a Large Language Model (from scratch)</a> as part of a fastai study group). The article is full of helpful diagrams and breakdowns of concepts as well as easily digestible implementation in code. One particular breakthrough for me while reading the article was his demonstration of the distributive law of multiplication:</p>
+<blockquote class="blockquote">
+<p><strong>x.(W+ΔW) = x.W + x.ΔW</strong></p>
+<p>Similarly, we can write the following for LoRA:</p>
+<p><strong>x.(W+A.B) = x.W + x.A.B</strong></p>
+</blockquote>
+<p>Reading this made it click for me why and how LoRA adapters are such an efficient way of handling downstream tasks.</p>
+<p>I also took a deep dive into the peft library’s implementation of DoRA. I recently made <a href="https://youtu.be/GE6jRudHhzY">a video</a> of this deep dive.</p>
+<p>In this blog post I am going to compare Raschka’s article’s implementation with peft’s and highlight a key difference that I found between them in how they implement the decomposition of a weight matrix into its magnitude and directional components.</p>
+<p>I’ll start by reviewing both approaches.</p>
+</section>
+<section id="raschkas-implementation" class="level2">
+<h2 class="anchored" data-anchor-id="raschkas-implementation">Raschka’s Implementation</h2>
+<p>I want to add a caveat that this implementation I assume is by no means a “final” or “production” implementation, as I understand it to be more educational and illustrative.</p>
+<p>I’ll start by copy/pasting relevant code: <code>LoRALayer</code> (DoRA uses LoRA to fine-tune the directional component) and <code>LinearWithDoRAMerged</code>.</p>
+<div class="cell" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="kw" style="color: #003B4F;">class</span> LoRALayer(nn.Module):</span>
+<span id="cb2-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, in_dim, out_dim, rank, alpha):</span>
+<span id="cb2-3">        <span class="bu" style="color: null;">super</span>().<span class="fu" style="color: #4758AB;">__init__</span>()</span>
+<span id="cb2-4">        std_dev <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">/</span> torch.sqrt(torch.tensor(rank).<span class="bu" style="color: null;">float</span>())</span>
+<span id="cb2-5">        <span class="va" style="color: #111111;">self</span>.A <span class="op" style="color: #5E5E5E;">=</span> nn.Parameter(torch.randn(in_dim, rank) <span class="op" style="color: #5E5E5E;">*</span> std_dev)</span>
+<span id="cb2-6">        <span class="va" style="color: #111111;">self</span>.B <span class="op" style="color: #5E5E5E;">=</span> nn.Parameter(torch.zeros(rank, out_dim))</span>
+<span id="cb2-7">        <span class="va" style="color: #111111;">self</span>.alpha <span class="op" style="color: #5E5E5E;">=</span> alpha</span>
+<span id="cb2-8"></span>
+<span id="cb2-9">    <span class="kw" style="color: #003B4F;">def</span> forward(<span class="va" style="color: #111111;">self</span>, x):</span>
+<span id="cb2-10">        x <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.alpha <span class="op" style="color: #5E5E5E;">*</span> (x <span class="op" style="color: #5E5E5E;">@</span> <span class="va" style="color: #111111;">self</span>.A <span class="op" style="color: #5E5E5E;">@</span> <span class="va" style="color: #111111;">self</span>.B)</span>
+<span id="cb2-11">        <span class="cf" style="color: #003B4F;">return</span> x</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="5">
+<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="kw" style="color: #003B4F;">class</span> LinearWithDoRAMerged(nn.Module):</span>
+<span id="cb3-2"></span>
+<span id="cb3-3">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, linear, rank, alpha):</span>
+<span id="cb3-4">        <span class="bu" style="color: null;">super</span>().<span class="fu" style="color: #4758AB;">__init__</span>()</span>
+<span id="cb3-5">        <span class="va" style="color: #111111;">self</span>.linear <span class="op" style="color: #5E5E5E;">=</span> linear</span>
+<span id="cb3-6">        <span class="va" style="color: #111111;">self</span>.lora <span class="op" style="color: #5E5E5E;">=</span> LoRALayer(</span>
+<span id="cb3-7">            linear.in_features, linear.out_features, rank, alpha</span>
+<span id="cb3-8">        )</span>
+<span id="cb3-9">        <span class="va" style="color: #111111;">self</span>.m <span class="op" style="color: #5E5E5E;">=</span> nn.Parameter(</span>
+<span id="cb3-10">            <span class="va" style="color: #111111;">self</span>.linear.weight.norm(p<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>, dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>, keepdim<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>))</span>
+<span id="cb3-11"></span>
+<span id="cb3-12"></span>
+<span id="cb3-13">  <span class="co" style="color: #5E5E5E;"># Code loosely inspired by</span></span>
+<span id="cb3-14">  <span class="co" style="color: #5E5E5E;"># https://github.com/catid/dora/blob/main/dora.py</span></span>
+<span id="cb3-15"></span>
+<span id="cb3-16">    <span class="kw" style="color: #003B4F;">def</span> forward(<span class="va" style="color: #111111;">self</span>, x):</span>
+<span id="cb3-17">        lora <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.lora.A <span class="op" style="color: #5E5E5E;">@</span> <span class="va" style="color: #111111;">self</span>.lora.B</span>
+<span id="cb3-18">        numerator <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.linear.weight <span class="op" style="color: #5E5E5E;">+</span> <span class="va" style="color: #111111;">self</span>.lora.alpha<span class="op" style="color: #5E5E5E;">*</span>lora.T</span>
+<span id="cb3-19">        denominator <span class="op" style="color: #5E5E5E;">=</span> numerator.norm(p<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>, dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>, keepdim<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>)</span>
+<span id="cb3-20">        directional_component <span class="op" style="color: #5E5E5E;">=</span> numerator <span class="op" style="color: #5E5E5E;">/</span> denominator</span>
+<span id="cb3-21">        new_weight <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.m <span class="op" style="color: #5E5E5E;">*</span> directional_component</span>
+<span id="cb3-22">        <span class="cf" style="color: #003B4F;">return</span> F.linear(x, new_weight, <span class="va" style="color: #111111;">self</span>.linear.bias)</span></code></pre></div>
+</div>
+<p>I’ll also create a regular linear layer using one of the in/out feature values in the Raschka article:</p>
+<div class="cell" data-outputid="5a631bc3-b6ef-49b4-c1df-1c32dab0254f" data-execution_count="6">
+<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1">linear <span class="op" style="color: #5E5E5E;">=</span> nn.Linear(in_features<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">784</span>, out_features<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">128</span>, bias<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>)</span>
+<span id="cb4-2">linear</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<pre><code>Linear(in_features=784, out_features=128, bias=True)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="f7d1e34c-c79b-4135-e904-3d1cfa69f834" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1">dora_layer <span class="op" style="color: #5E5E5E;">=</span> LinearWithDoRAMerged(linear, <span class="dv" style="color: #AD0000;">256</span>, <span class="dv" style="color: #AD0000;">512</span>)</span>
+<span id="cb6-2">dora_layer</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<pre><code>LinearWithDoRAMerged(
+  (linear): Linear(in_features=784, out_features=128, bias=True)
+  (lora): LoRALayer()
+)</code></pre>
+</div>
+</div>
+<p>Here’s the key value: the shape of the magnitude vector. In Raschka’s code, it’s 1 x 784, where 784 is the number of linear <code>in_features</code>.</p>
+<div class="cell" data-outputid="6dd100d0-55e6-42bc-c49a-9d0eecf0d5a2" data-execution_count="11">
+<div class="sourceCode cell-code" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1">dora_layer.m.shape</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<pre><code>torch.Size([1, 784])</code></pre>
+</div>
+</div>
+<p>Looking at <code>LinearWithDoRAMerged.__init__</code>:</p>
+<div class="sourceCode" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><span class="va" style="color: #111111;">self</span>.m <span class="op" style="color: #5E5E5E;">=</span> nn.Parameter(</span>
+<span id="cb10-2">            <span class="va" style="color: #111111;">self</span>.linear.weight.norm(p<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>, dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>, keepdim<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>))</span></code></pre></div>
+<p>The <code>norm</code> is taking over <code>dim=0</code>, which is the dimension of <code>out_features</code>:</p>
+<div class="cell" data-outputid="c9bf9bab-831b-4c3a-ea4a-f0c54642b4a0" data-execution_count="13">
+<div class="sourceCode cell-code" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1">linear.weight.shape</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<pre><code>torch.Size([128, 784])</code></pre>
+</div>
+</div>
+<p>In other words, we end up with 1 magnitude value for each of the 784 input neurons.</p>
+</section>
+<section id="peft-implementation" class="level2">
+<h2 class="anchored" data-anchor-id="peft-implementation"><code>peft</code> Implementation</h2>
+<p>From <a href="https://github.com/huggingface/peft/blob/main/src/peft/tuners/lora/dora.py"><code>src/peft/tuners/lora/dora.py</code></a>:</p>
+<div class="sourceCode" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><span class="kw" style="color: #003B4F;">class</span> DoraLinearLayer(nn.Module):</span>
+<span id="cb13-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, fan_in_fan_out):</span>
+<span id="cb13-3">        <span class="bu" style="color: null;">super</span>().<span class="fu" style="color: #4758AB;">__init__</span>()</span>
+<span id="cb13-4">        <span class="va" style="color: #111111;">self</span>.fan_in_fan_out <span class="op" style="color: #5E5E5E;">=</span> fan_in_fan_out</span>
+<span id="cb13-5"></span>
+<span id="cb13-6">    <span class="kw" style="color: #003B4F;">def</span> get_weight_norm(<span class="va" style="color: #111111;">self</span>, weight, lora_weight, scaling) <span class="op" style="color: #5E5E5E;">-&gt;</span> torch.Tensor:</span>
+<span id="cb13-7">        <span class="co" style="color: #5E5E5E;"># calculate L2 norm of weight matrix, column-wise</span></span>
+<span id="cb13-8">        weight <span class="op" style="color: #5E5E5E;">=</span> transpose(weight, <span class="va" style="color: #111111;">self</span>.fan_in_fan_out)</span>
+<span id="cb13-9">        weight <span class="op" style="color: #5E5E5E;">=</span> weight <span class="op" style="color: #5E5E5E;">+</span> scaling <span class="op" style="color: #5E5E5E;">*</span> lora_weight</span>
+<span id="cb13-10">        weight_norm <span class="op" style="color: #5E5E5E;">=</span> torch.linalg.norm(weight, dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>).to(weight.dtype)</span>
+<span id="cb13-11">        <span class="cf" style="color: #003B4F;">return</span> weight_norm</span>
+<span id="cb13-12"></span>
+<span id="cb13-13">    ...</span></code></pre></div>
+<p>The very important attribute here is <code>fan_in_fan_out</code>. I found a few places in the peft codebase which documented it as follows:</p>
+<pre><code>Set this to True if the layer to replace stores weight like (fan_in, fan_out)</code></pre>
+<ul>
+<li><a href="https://github.com/huggingface/peft/blob/0facdebf6208139cbd8f3586875acb378813dd97/src/peft/tuners/ia3/config.py#L79">src/peft/tuners/ia3/config.py</a></li>
+<li><a href="https://github.com/huggingface/peft/blob/0facdebf6208139cbd8f3586875acb378813dd97/src/peft/tuners/vblora/layer.py#L122">src/peft/tuners/vblora/layer.py</a></li>
+<li><a href="https://github.com/huggingface/peft/blob/0facdebf6208139cbd8f3586875acb378813dd97/src/peft/tuners/vblora/layer.py#L122">src/peft/tuners/vblora/layer.py</a></li>
+</ul>
+<p>How I interpret this: if the weights are stored as (in, out), <code>fan_in_fan_out</code> is <code>True</code>, if stored as (out, in) <code>fan_in_fan_out</code> is <code>False</code>.</p>
+<p>Looking at an example, I’ll peft-ify SmolLM2-135M:</p>
+<div class="cell" data-outputid="f2fdc27d-3a29-4b72-9c84-ce1d79ea74d9" data-execution_count="14">
+<div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1">model_nm <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">'HuggingFaceTB/SmolLM2-135M'</span></span>
+<span id="cb15-2">model_nm</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<pre><code>'HuggingFaceTB/SmolLM2-135M'</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1">model <span class="op" style="color: #5E5E5E;">=</span> transformers.AutoModelForSequenceClassification.from_pretrained(model_nm, num_labels<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>)</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="17">
+<div class="sourceCode cell-code" id="cb18" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1">peft_config <span class="op" style="color: #5E5E5E;">=</span> LoraConfig(r<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">256</span>, use_rslora<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">False</span>, use_dora<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>, target_modules<span class="op" style="color: #5E5E5E;">=</span>[<span class="st" style="color: #20794D;">'down_proj'</span>, <span class="st" style="color: #20794D;">'gate_proj'</span>, <span class="st" style="color: #20794D;">'k_proj'</span>, <span class="st" style="color: #20794D;">'o_proj'</span>, <span class="st" style="color: #20794D;">'q_proj'</span>, <span class="st" style="color: #20794D;">'up_proj'</span>, <span class="st" style="color: #20794D;">'v_proj'</span>])</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="4166bf0b-8ce5-44df-bc5f-43ac8a7e4bc2" data-execution_count="18">
+<div class="sourceCode cell-code" id="cb19" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1">model <span class="op" style="color: #5E5E5E;">=</span> get_peft_model(model, peft_config)</span>
+<span id="cb19-2">model.print_trainable_parameters()</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>trainable params: 78,307,200 || all params: 212,823,360 || trainable%: 36.7945</code></pre>
+</div>
+</div>
+<p>Looking at one of the layers which has a different number of input and output features, <code>k_proj</code>:</p>
+<div class="cell" data-outputid="c9b363b2-1042-4507-e625-7065bdaa5d89" data-execution_count="19">
+<div class="sourceCode cell-code" id="cb21" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1">k_proj <span class="op" style="color: #5E5E5E;">=</span> model.base_model.model.model.layers[<span class="dv" style="color: #AD0000;">0</span>].self_attn.k_proj</span>
+<span id="cb21-2">k_proj</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="19">
+<pre><code>lora.Linear(
+  (base_layer): Linear(in_features=576, out_features=192, bias=False)
+  (lora_dropout): ModuleDict(
+    (default): Identity()
+  )
+  (lora_A): ModuleDict(
+    (default): Linear(in_features=576, out_features=256, bias=False)
+  )
+  (lora_B): ModuleDict(
+    (default): Linear(in_features=256, out_features=192, bias=False)
+  )
+  (lora_embedding_A): ParameterDict()
+  (lora_embedding_B): ParameterDict()
+  (lora_magnitude_vector): ModuleDict(
+    (default): lora.dora.DoraLinearLayer()
+  )
+)</code></pre>
+</div>
+</div>
+<p>The base layer has 576 <code>in_features</code> and 192 <code>out_features</code>:</p>
+<div class="cell" data-outputid="937ded35-e1fd-4b5c-d98b-4a4781871a2d" data-execution_count="22">
+<div class="sourceCode cell-code" id="cb23" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1">k_proj.base_layer.weight.shape</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="22">
+<pre><code>torch.Size([192, 576])</code></pre>
+</div>
+</div>
+<p>The <code>fan_in_fan_out</code> attribute is <code>False</code> which checks out by looking at the shape above which is (out, in).</p>
+<div class="cell" data-outputid="a2b509cf-8cba-425d-95ae-d29baf2d806c" data-execution_count="24">
+<div class="sourceCode cell-code" id="cb25" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1">k_proj.fan_in_fan_out</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="24">
+<pre><code>False</code></pre>
+</div>
+</div>
+<p>Why is <code>fan_in_fan_out</code> such a big deal to me? Well, because look at how <code>get_weight_norm</code> is written:</p>
+<div class="sourceCode" id="cb27" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><span class="kw" style="color: #003B4F;">def</span> get_weight_norm(<span class="va" style="color: #111111;">self</span>, weight, lora_weight, scaling) <span class="op" style="color: #5E5E5E;">-&gt;</span> torch.Tensor:</span>
+<span id="cb27-2">    <span class="co" style="color: #5E5E5E;"># calculate L2 norm of weight matrix, column-wise</span></span>
+<span id="cb27-3">    weight <span class="op" style="color: #5E5E5E;">=</span> transpose(weight, <span class="va" style="color: #111111;">self</span>.fan_in_fan_out)</span>
+<span id="cb27-4">    weight <span class="op" style="color: #5E5E5E;">=</span> weight <span class="op" style="color: #5E5E5E;">+</span> scaling <span class="op" style="color: #5E5E5E;">*</span> lora_weight</span>
+<span id="cb27-5">    weight_norm <span class="op" style="color: #5E5E5E;">=</span> torch.linalg.norm(weight, dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>).to(weight.dtype)</span>
+<span id="cb27-6">    <span class="cf" style="color: #003B4F;">return</span> weight_norm</span></code></pre></div>
+<p>I’ll walk through each line, starting with the base layers weight matrix:</p>
+<div class="cell" data-outputid="b473b742-2715-4f33-d00b-259cf0805815" data-execution_count="25">
+<div class="sourceCode cell-code" id="cb28" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1">weight <span class="op" style="color: #5E5E5E;">=</span> k_proj.base_layer.weight</span>
+<span id="cb28-2">weight.shape</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="25">
+<pre><code>torch.Size([192, 576])</code></pre>
+</div>
+</div>
+<p>We then pass the weight and <code>fan_in_fan_out</code> to <code>transpose</code>:</p>
+<div class="cell" data-outputid="d762eab8-6ab5-4627-c458-26759b37999c" data-execution_count="26">
+<div class="sourceCode cell-code" id="cb30" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1">weight <span class="op" style="color: #5E5E5E;">=</span> transpose(weight, k_proj.fan_in_fan_out)</span>
+<span id="cb30-2">weight.shape</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="26">
+<pre><code>torch.Size([192, 576])</code></pre>
+</div>
+</div>
+<p>It doesn’t transpose it! That’s because <a href="https://github.com/huggingface/peft/blob/0facdebf6208139cbd8f3586875acb378813dd97/src/peft/utils/other.py#L559">in <code>tranpose</code></a> if <code>fan_in_fan_out</code> is <code>False</code> it returns the <code>weight</code> as is:</p>
+<div class="sourceCode" id="cb32" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><span class="kw" style="color: #003B4F;">def</span> transpose(weight, fan_in_fan_out):</span>
+<span id="cb32-2">    <span class="cf" style="color: #003B4F;">if</span> <span class="kw" style="color: #003B4F;">not</span> fan_in_fan_out:</span>
+<span id="cb32-3">        <span class="cf" style="color: #003B4F;">return</span> weight</span>
+<span id="cb32-4"></span>
+<span id="cb32-5">    <span class="cf" style="color: #003B4F;">if</span> <span class="bu" style="color: null;">isinstance</span>(weight, torch.nn.Parameter):</span>
+<span id="cb32-6">        <span class="cf" style="color: #003B4F;">return</span> torch.nn.Parameter(weight.T)</span>
+<span id="cb32-7">    <span class="cf" style="color: #003B4F;">return</span> weight.T</span></code></pre></div>
+<p>This is absolutely critical in determining the shape of the magnitude vector:</p>
+<div class="cell" data-outputid="769830c0-55ff-49cd-85bc-399aa864a4f9" data-execution_count="27">
+<div class="sourceCode cell-code" id="cb33" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1">weight_norm <span class="op" style="color: #5E5E5E;">=</span> torch.linalg.norm(weight, dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>).to(weight.dtype)</span>
+<span id="cb33-2">weight_norm.shape</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="27">
+<pre><code>torch.Size([192])</code></pre>
+</div>
+</div>
+<p>Note two things here: - they take the <code>norm</code> across <code>dim=1</code> (the number of <code>in_features</code>) - we end up with 1 magnitude value for each of the 192 <em>output</em> neurons. Contrast this with Raschka’s article where we had 1 magnitude value for each of the <em>input</em> neurons.</p>
+</section>
+<section id="aside-claude-conversation" class="level2">
+<h2 class="anchored" data-anchor-id="aside-claude-conversation">Aside: Claude Conversation</h2>
+<p>While I was re-reading the DoRA paper, I found the emphasis on <em>column-wise</em> vector norm interesting so I asked Claude about it:</p>
+<blockquote class="blockquote">
+<p><strong>Prompt</strong>: Why columns? What is special about doing this for columns and not rows. Is there something fundamental about columns in a matrix of pretrained weights?</p>
+</blockquote>
+<blockquote class="blockquote">
+<p><strong>Response</strong>: For neural networks, columns of weight matrices map features from one layer’s dimension to another’s. Each column represents all the connections to a single output neuron. So columns form natural functional units, making column-wise normalization more meaningful than row-wise for understanding and modifying the network’s learned transformations.</p>
+</blockquote>
+<blockquote class="blockquote">
+<p><strong>Prompt</strong>: So suppose we have an input vector <code>x</code> which contains values corresponding to each input variable, the pretrained weight matrix would is d x k so <code>x</code> would be 1 x d.&nbsp;Each row in pretrained weight matrix would represent one input variable. Multiplying 1 x d with d x k gives us 1 x k where k is the number of activations (i.e.&nbsp;the number of neurons).</p>
+</blockquote>
+<blockquote class="blockquote">
+<p><strong>Response</strong>: Yes, that’s correct. The output for a single neuron (one column of the weight matrix) is the dot product between the input vector and that column’s weights. So when we do column-wise normalization, we’re normalizing the set of weights that feed into each individual output neuron. This helps explain why column-wise normalization is natural - each column represents a complete “unit” in terms of how the network processes information to produce one output activation.</p>
+</blockquote>
+<p>So, it seems like decomposing the weight matrix into a magnitude vector and direction matrix <em>corresponding to output neurons</em> seems really important.</p>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>Explorations like this is why I’m grateful for open source code. The efforts of folks like HuggingFace and Raschka to democratize LLMs allows folks like me to curate insightful explorations for myself, and I’m obviously happy to share them out in this blog post. If you find something incorrect in my interpretation of Raschka’s or peft’s code, please at me on Twitter <span class="citation" data-cites="vishal_learner">@vishal_learner</span>.</p>
+<p>A future exercise that I want to do: train DoRA implementations with a column-wise norm and a row-wise norm and compare results. This would truly highlight whether it’s important to align the decomposition with the output neurons of the weight matrix.</p>
+
+
+</section>
+
+ ]]></description>
+  <category>python</category>
+  <category>deep learning</category>
+  <category>machine learning</category>
+  <category>LLM</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-02-01-DoRA-Magnitude-Vector/index.html</guid>
+  <pubDate>Sat, 01 Feb 2025 08:00:00 GMT</pubDate>
+</item>
 <item>
   <title>Recreating the PLAID ColBERTv2 Scoring Pipeline: From Research Code to RAGatouille</title>
   <dc:creator>Vishal Bakshi</dc:creator>
@@ -26282,940 +26555,6 @@ dtype: float64</code></pre>
   <category>computer vision</category>
   <category>TypefaceClassifier</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2024-09-09-typefaceclassifier-corner-ratio/index.html</guid>
-  <pubDate>Mon, 09 Sep 2024 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>Calculating the Ratio of 2D FFT Magnitude and Phase of a Text Image</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2024-09-09-typefaceclassifier-fourier-ratios/index.html</link>
-  <description><![CDATA[ 
-
-
-
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<p>In this notebook I’ll walk through an algorithm suggested by Claude to distinguish one typeface (like <code>display</code>) from another (like <code>serif</code>) in which we calculate two ratios:</p>
-<ul>
-<li>the ratio of the mean of 2D FFT magnitude to the count of non-zero binarized pixels (“FFT Magnitude Ratio”)</li>
-<li>the ratio of the sum of the absolute value of 2D FFT phase to the sum of binarized pixels (“FFT Phase Ratio”)</li>
-</ul>
-<p>This algorithm is part of my exploration of non-ML baselines to classify text images into various typeface categories (e.g., “humanist sans,” “grotesque sans,” “script,” “display,” etc.). Once the non-ML baseline is established, I’ll train a neural network for this task. This is one of many notebooks in my <a href="https://vishalbakshi.github.io/blog/#category=TypefaceClassifier">TypefaceClassifier project series</a>.</p>
-<p>I’m not very familiar with Fourier transforms (especially for images), so I did a bit of review by watching the following two YouTube videos:</p>
-<ul>
-<li><a href="https://www.youtube.com/watch?v=tlwIWjeuu8U">Introduction to Image Processing with 2D Fourier Transform</a></li>
-<li><a href="https://www.youtube.com/watch?v=3gAZ0U66AEA&amp;t=0s">2D Fourier Transform Explained with Examples</a></li>
-</ul>
-<p>A couple of key takeaways from those videos that apply to this algorithm:</p>
-<ul>
-<li>A 2D Fourier transform is centered at the center of the plot (i.e.&nbsp;0-frequency is at the center of the image, so, for a 512x512px image the 0-frequency would be at (256, 256))</li>
-<li>The frequency increases as you radiate away from the center of the plot to the edges.</li>
-<li>The phase, and not just the amplitude, is very important for capturing information about a 2D image.</li>
-</ul>
-<p>I’ll try to illustrate these key points as I walk through the algorithm.</p>
-<div class="cell" data-execution_count="1">
-<details>
-<summary>Show imports</summary>
-<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im" style="color: #00769E;">import</span> cv2</span>
-<span id="cb1-2"><span class="im" style="color: #00769E;">import</span> numpy <span class="im" style="color: #00769E;">as</span> np</span>
-<span id="cb1-3"><span class="im" style="color: #00769E;">import</span> pandas <span class="im" style="color: #00769E;">as</span> pd</span>
-<span id="cb1-4"><span class="im" style="color: #00769E;">import</span> matplotlib.pyplot <span class="im" style="color: #00769E;">as</span> plt</span>
-<span id="cb1-5"><span class="im" style="color: #00769E;">from</span> mpl_toolkits.mplot3d <span class="im" style="color: #00769E;">import</span> Axes3D</span>
-<span id="cb1-6"><span class="im" style="color: #00769E;">from</span> google.colab.patches <span class="im" style="color: #00769E;">import</span> cv2_imshow</span></code></pre></div>
-</details>
-</div>
-</section>
-<section id="load-and-binarize-the-image" class="level2">
-<h2 class="anchored" data-anchor-id="load-and-binarize-the-image">Load and Binarize the Image</h2>
-<p>We start, as we usually do, by loading and binarizing the image.</p>
-<div class="cell" data-outputid="d5b3003e-6020-4765-e092-ac4cefc9eb93" data-execution_count="134">
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">path <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">'serif-76px.png'</span></span>
-<span id="cb2-2">img <span class="op" style="color: #5E5E5E;">=</span> cv2.imread(path, cv2.IMREAD_GRAYSCALE)</span>
-<span id="cb2-3">_, binary <span class="op" style="color: #5E5E5E;">=</span> cv2.threshold(img, <span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">255</span>, cv2.THRESH_BINARY_INV <span class="op" style="color: #5E5E5E;">+</span> cv2.THRESH_OTSU)</span>
-<span id="cb2-4">binary</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="134">
-<style>
-      .ndarray_repr .ndarray_raw_data {
-        display: none;
-      }
-      .ndarray_repr.show_array .ndarray_raw_data {
-        display: block;
-      }
-      .ndarray_repr.show_array .ndarray_image_preview {
-        display: none;
-      }
-      </style>
-      <div id="id-38940db3-fb5b-427b-8c69-be452afbc153" class="ndarray_repr"><pre>ndarray (512, 512) <button style="padding: 0 2px;">show data</button></pre><img src="https://vishalbakshi.github.io/blog/posts/2024-09-09-typefaceclassifier-fourier-ratios/data:image/png;base64,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" class="ndarray_image_preview"><pre class="ndarray_raw_data">array([[0, 0, 0, ..., 0, 0, 0],
-       [0, 0, 0, ..., 0, 0, 0],
-       [0, 0, 0, ..., 0, 0, 0],
-       ...,
-       [0, 0, 0, ..., 0, 0, 0],
-       [0, 0, 0, ..., 0, 0, 0],
-       [0, 0, 0, ..., 0, 0, 0]], dtype=uint8)</pre></div><script>
-      (() => {
-      const titles = ['show data', 'hide data'];
-      let index = 0
-      document.querySelector('#id-38940db3-fb5b-427b-8c69-be452afbc153 button').onclick = (e) => {
-        document.querySelector('#id-38940db3-fb5b-427b-8c69-be452afbc153').classList.toggle('show_array');
-        index = (++index) % 2;
-        document.querySelector('#id-38940db3-fb5b-427b-8c69-be452afbc153 button').textContent = titles[index];
-        e.preventDefault();
-        e.stopPropagation();
-      }
-      })();
-    </script>
-</div>
-</div>
-</section>
-<section id="calculating-the-2d-fast-fourier-transform" class="level2">
-<h2 class="anchored" data-anchor-id="calculating-the-2d-fast-fourier-transform">Calculating the 2D Fast Fourier Transform</h2>
-<p>Using NumPy, I calculate the 2D FFT:</p>
-<div class="cell" data-execution_count="135">
-<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1">f <span class="op" style="color: #5E5E5E;">=</span> np.fft.fft2(binary)</span></code></pre></div>
-</div>
-<div class="cell" data-outputid="7c58b319-dfd6-477f-d397-566ecdf303fc" data-execution_count="136">
-<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1">f.shape</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="136">
-<pre><code>(512, 512)</code></pre>
-</div>
-</div>
-<p>I’ll use a Claude-generated helper function to plot this in 3D:</p>
-<div class="cell" data-execution_count="85">
-<details>
-<summary>Show <code>plot_fft2_3d</code> function</summary>
-<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><span class="kw" style="color: #003B4F;">def</span> plot_fft2_3d(image_path):</span>
-<span id="cb6-2">    <span class="co" style="color: #5E5E5E;"># Read the image</span></span>
-<span id="cb6-3">    img <span class="op" style="color: #5E5E5E;">=</span> cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)</span>
-<span id="cb6-4"></span>
-<span id="cb6-5">    <span class="co" style="color: #5E5E5E;"># Compute the 2D Fourier Transform</span></span>
-<span id="cb6-6">    f <span class="op" style="color: #5E5E5E;">=</span> np.fft.fft2(img)</span>
-<span id="cb6-7"></span>
-<span id="cb6-8">    <span class="co" style="color: #5E5E5E;"># Shift the zero-frequency component to the center of the spectrum</span></span>
-<span id="cb6-9">    f_shift <span class="op" style="color: #5E5E5E;">=</span> np.fft.fftshift(f)</span>
-<span id="cb6-10"></span>
-<span id="cb6-11">    <span class="co" style="color: #5E5E5E;"># Compute the magnitude spectrum</span></span>
-<span id="cb6-12">    magnitude_spectrum <span class="op" style="color: #5E5E5E;">=</span> np.log(np.<span class="bu" style="color: null;">abs</span>(f_shift) <span class="op" style="color: #5E5E5E;">+</span> <span class="dv" style="color: #AD0000;">1</span>)  <span class="co" style="color: #5E5E5E;"># Adding 1 to avoid log(0)</span></span>
-<span id="cb6-13"></span>
-<span id="cb6-14">    <span class="co" style="color: #5E5E5E;"># Compute the phase spectrum</span></span>
-<span id="cb6-15">    phase_spectrum <span class="op" style="color: #5E5E5E;">=</span> np.angle(f_shift)</span>
-<span id="cb6-16"></span>
-<span id="cb6-17">    <span class="co" style="color: #5E5E5E;"># Calculate and print the min and max values of the phase spectrum</span></span>
-<span id="cb6-18">    phase_min <span class="op" style="color: #5E5E5E;">=</span> np.<span class="bu" style="color: null;">min</span>(phase_spectrum)</span>
-<span id="cb6-19">    phase_max <span class="op" style="color: #5E5E5E;">=</span> np.<span class="bu" style="color: null;">max</span>(phase_spectrum)</span>
-<span id="cb6-20">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"Minimum phase value: </span><span class="sc" style="color: #5E5E5E;">{</span>phase_min<span class="sc" style="color: #5E5E5E;">:.4f}</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb6-21">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"Maximum phase value: </span><span class="sc" style="color: #5E5E5E;">{</span>phase_max<span class="sc" style="color: #5E5E5E;">:.4f}</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb6-22"></span>
-<span id="cb6-23">    <span class="co" style="color: #5E5E5E;"># Create a grid for the 3D plots</span></span>
-<span id="cb6-24">    rows, cols <span class="op" style="color: #5E5E5E;">=</span> magnitude_spectrum.shape</span>
-<span id="cb6-25">    x <span class="op" style="color: #5E5E5E;">=</span> np.linspace(<span class="dv" style="color: #AD0000;">0</span>, cols, cols)</span>
-<span id="cb6-26">    y <span class="op" style="color: #5E5E5E;">=</span> np.linspace(<span class="dv" style="color: #AD0000;">0</span>, rows, rows)</span>
-<span id="cb6-27">    x, y <span class="op" style="color: #5E5E5E;">=</span> np.meshgrid(x, y)</span>
-<span id="cb6-28"></span>
-<span id="cb6-29">    <span class="co" style="color: #5E5E5E;"># Create the 3D plots</span></span>
-<span id="cb6-30">    fig <span class="op" style="color: #5E5E5E;">=</span> plt.figure(figsize<span class="op" style="color: #5E5E5E;">=</span>(<span class="dv" style="color: #AD0000;">10</span>,<span class="dv" style="color: #AD0000;">8</span>))</span>
-<span id="cb6-31"></span>
-<span id="cb6-32">    <span class="co" style="color: #5E5E5E;"># Magnitude spectrum subplot</span></span>
-<span id="cb6-33">    ax1 <span class="op" style="color: #5E5E5E;">=</span> fig.add_subplot(<span class="dv" style="color: #AD0000;">121</span>, projection<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'3d'</span>)</span>
-<span id="cb6-34">    surf1 <span class="op" style="color: #5E5E5E;">=</span> ax1.plot_surface(x, y, magnitude_spectrum, cmap<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'viridis'</span>)</span>
-<span id="cb6-35">    ax1.set_xlabel(<span class="st" style="color: #20794D;">'Frequency (x)'</span>)</span>
-<span id="cb6-36">    ax1.set_ylabel(<span class="st" style="color: #20794D;">'Frequency (y)'</span>)</span>
-<span id="cb6-37">    ax1.set_zlabel(<span class="st" style="color: #20794D;">'Magnitude (log scale)'</span>)</span>
-<span id="cb6-38">    ax1.set_title(<span class="st" style="color: #20794D;">'Magnitude Spectrum'</span>)</span>
-<span id="cb6-39">    fig.colorbar(surf1, shrink<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">0.5</span>, aspect<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">20</span>, ax<span class="op" style="color: #5E5E5E;">=</span>ax1, pad<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">0.1</span>)</span>
-<span id="cb6-40"></span>
-<span id="cb6-41">    <span class="co" style="color: #5E5E5E;"># Phase spectrum subplot</span></span>
-<span id="cb6-42">    ax2 <span class="op" style="color: #5E5E5E;">=</span> fig.add_subplot(<span class="dv" style="color: #AD0000;">122</span>, projection<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'3d'</span>)</span>
-<span id="cb6-43">    surf2 <span class="op" style="color: #5E5E5E;">=</span> ax2.plot_surface(x, y, phase_spectrum, cmap<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'hsv'</span>)</span>
-<span id="cb6-44">    ax2.set_xlabel(<span class="st" style="color: #20794D;">'Frequency (x)'</span>)</span>
-<span id="cb6-45">    ax2.set_ylabel(<span class="st" style="color: #20794D;">'Frequency (y)'</span>)</span>
-<span id="cb6-46">    ax2.set_zlabel(<span class="st" style="color: #20794D;">'Phase (radians)'</span>)</span>
-<span id="cb6-47">    ax2.set_title(<span class="st" style="color: #20794D;">'Phase Spectrum'</span>)</span>
-<span id="cb6-48">    fig.colorbar(surf2, shrink<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">0.5</span>, aspect<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">20</span>, ax<span class="op" style="color: #5E5E5E;">=</span>ax2, pad<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">0.1</span>)</span>
-<span id="cb6-49"></span>
-<span id="cb6-50">    plt.suptitle(<span class="st" style="color: #20794D;">'3D Plots of 2D Fourier Transform'</span>, fontsize<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">16</span>)</span>
-<span id="cb6-51">    plt.tight_layout()</span>
-<span id="cb6-52">    plt.show()</span></code></pre></div>
-</details>
-</div>
-<p>A few things to point out (other than it looks cool, which it does):</p>
-<ul>
-<li>The very lowest frequencies have the highest magnitudes.</li>
-<li>The magnitude plot is symmetrical in both axes (which is usual for images).</li>
-<li>The phase values oscillate between negative and positive <img src="https://latex.codecogs.com/png.latex?%5Cpi"> radians.</li>
-</ul>
-<div class="cell" data-outputid="bbf308cc-0b29-4ff8-c817-70553229d56d" data-execution_count="86">
-<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1">plot_fft2_3d(<span class="st" style="color: #20794D;">'serif-76px.png'</span>)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Minimum phase value: -3.1415
-Maximum phase value: 3.1416</code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-7-output-2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-09-typefaceclassifier-fourier-ratios/index_files/figure-html/cell-7-output-2.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<p>Next, to illustrate the difference between high and low frequencies and the magnitude and phase in the frequency domain, I’ll use another Claude-generated helper function to plot the <em>inverse</em> 2D FFT of the following four things:</p>
-<ul>
-<li>high frequencies, magnitude only</li>
-<li>low frequencies, magnitude only</li>
-<li>high frequencies, phase only</li>
-<li>low frequencies, phase only</li>
-</ul>
-<div class="cell" data-execution_count="95">
-<details>
-<summary>Show <code>visualize_inverse_fft</code> function</summary>
-<div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><span class="kw" style="color: #003B4F;">def</span> visualize_inverse_fft(image_path):</span>
-<span id="cb9-2">    <span class="co" style="color: #5E5E5E;"># Read the image</span></span>
-<span id="cb9-3">    img <span class="op" style="color: #5E5E5E;">=</span> cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)</span>
-<span id="cb9-4"></span>
-<span id="cb9-5">    <span class="co" style="color: #5E5E5E;"># Apply threshold</span></span>
-<span id="cb9-6">    _, binary <span class="op" style="color: #5E5E5E;">=</span> cv2.threshold(img, <span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">255</span>, cv2.THRESH_BINARY_INV <span class="op" style="color: #5E5E5E;">+</span> cv2.THRESH_OTSU)</span>
-<span id="cb9-7"></span>
-<span id="cb9-8">    <span class="co" style="color: #5E5E5E;"># Compute the 2D Fourier Transform</span></span>
-<span id="cb9-9">    f <span class="op" style="color: #5E5E5E;">=</span> np.fft.fft2(binary)</span>
-<span id="cb9-10"></span>
-<span id="cb9-11">    <span class="co" style="color: #5E5E5E;"># Shift the zero-frequency component to the center of the spectrum</span></span>
-<span id="cb9-12">    f_shift <span class="op" style="color: #5E5E5E;">=</span> np.fft.fftshift(f)</span>
-<span id="cb9-13"></span>
-<span id="cb9-14">    <span class="co" style="color: #5E5E5E;"># Get the magnitude and phase spectrums</span></span>
-<span id="cb9-15">    magnitude_spectrum <span class="op" style="color: #5E5E5E;">=</span> np.<span class="bu" style="color: null;">abs</span>(f_shift)</span>
-<span id="cb9-16">    phase_spectrum <span class="op" style="color: #5E5E5E;">=</span> np.angle(f_shift)</span>
-<span id="cb9-17"></span>
-<span id="cb9-18">    <span class="co" style="color: #5E5E5E;"># Create a high-pass filter</span></span>
-<span id="cb9-19">    rows, cols <span class="op" style="color: #5E5E5E;">=</span> binary.shape</span>
-<span id="cb9-20">    crow, ccol <span class="op" style="color: #5E5E5E;">=</span> rows <span class="op" style="color: #5E5E5E;">//</span> <span class="dv" style="color: #AD0000;">2</span>, cols <span class="op" style="color: #5E5E5E;">//</span> <span class="dv" style="color: #AD0000;">2</span></span>
-<span id="cb9-21">    mask <span class="op" style="color: #5E5E5E;">=</span> np.ones((rows, cols), np.uint8)</span>
-<span id="cb9-22">    mask[crow<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">30</span>:crow<span class="op" style="color: #5E5E5E;">+</span><span class="dv" style="color: #AD0000;">30</span>, ccol<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">30</span>:ccol<span class="op" style="color: #5E5E5E;">+</span><span class="dv" style="color: #AD0000;">30</span>] <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">0</span></span>
-<span id="cb9-23"></span>
-<span id="cb9-24">    <span class="co" style="color: #5E5E5E;"># Apply high-pass and low-pass filters</span></span>
-<span id="cb9-25">    f_high <span class="op" style="color: #5E5E5E;">=</span> f_shift <span class="op" style="color: #5E5E5E;">*</span> mask</span>
-<span id="cb9-26">    f_low <span class="op" style="color: #5E5E5E;">=</span> f_shift <span class="op" style="color: #5E5E5E;">*</span> (<span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">-</span> mask)</span>
-<span id="cb9-27"></span>
-<span id="cb9-28">    <span class="co" style="color: #5E5E5E;"># Create subplots</span></span>
-<span id="cb9-29">    fig, axs <span class="op" style="color: #5E5E5E;">=</span> plt.subplots(<span class="dv" style="color: #AD0000;">2</span>, <span class="dv" style="color: #AD0000;">2</span>, figsize<span class="op" style="color: #5E5E5E;">=</span>(<span class="dv" style="color: #AD0000;">8</span>, <span class="dv" style="color: #AD0000;">8</span>))</span>
-<span id="cb9-30">    fig.suptitle(<span class="st" style="color: #20794D;">'Inverse FFT Visualizations'</span>, fontsize<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">16</span>)</span>
-<span id="cb9-31"></span>
-<span id="cb9-32">    <span class="co" style="color: #5E5E5E;"># Function to perform inverse FFT and display result</span></span>
-<span id="cb9-33">    <span class="kw" style="color: #003B4F;">def</span> plot_ifft(ax, f, title):</span>
-<span id="cb9-34">        f_ishift <span class="op" style="color: #5E5E5E;">=</span> np.fft.ifftshift(f)</span>
-<span id="cb9-35">        img_back <span class="op" style="color: #5E5E5E;">=</span> np.fft.ifft2(f_ishift)</span>
-<span id="cb9-36">        img_back <span class="op" style="color: #5E5E5E;">=</span> np.<span class="bu" style="color: null;">abs</span>(img_back)</span>
-<span id="cb9-37">        ax.imshow(img_back, cmap<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'gray'</span>)</span>
-<span id="cb9-38">        ax.set_title(title)</span>
-<span id="cb9-39">        ax.axis(<span class="st" style="color: #20794D;">'off'</span>)</span>
-<span id="cb9-40"></span>
-<span id="cb9-41">    <span class="co" style="color: #5E5E5E;"># High frequencies, magnitude only</span></span>
-<span id="cb9-42">    plot_ifft(axs[<span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">0</span>], np.<span class="bu" style="color: null;">abs</span>(f_high), <span class="st" style="color: #20794D;">'High Freq, Magnitude Only'</span>)</span>
-<span id="cb9-43"></span>
-<span id="cb9-44">    <span class="co" style="color: #5E5E5E;"># Low frequencies, magnitude only</span></span>
-<span id="cb9-45">    plot_ifft(axs[<span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">1</span>], np.<span class="bu" style="color: null;">abs</span>(f_low), <span class="st" style="color: #20794D;">'Low Freq, Magnitude Only'</span>)</span>
-<span id="cb9-46"></span>
-<span id="cb9-47">    <span class="co" style="color: #5E5E5E;"># High frequencies, phase only</span></span>
-<span id="cb9-48">    plot_ifft(axs[<span class="dv" style="color: #AD0000;">1</span>, <span class="dv" style="color: #AD0000;">0</span>], np.exp(<span class="ot" style="color: #003B4F;">1j</span> <span class="op" style="color: #5E5E5E;">*</span> np.angle(f_high)), <span class="st" style="color: #20794D;">'High Freq, Phase Only'</span>)</span>
-<span id="cb9-49"></span>
-<span id="cb9-50">    <span class="co" style="color: #5E5E5E;"># Low frequencies, phase only</span></span>
-<span id="cb9-51">    plot_ifft(axs[<span class="dv" style="color: #AD0000;">1</span>, <span class="dv" style="color: #AD0000;">1</span>], np.exp(<span class="ot" style="color: #003B4F;">1j</span> <span class="op" style="color: #5E5E5E;">*</span> np.angle(f_low)), <span class="st" style="color: #20794D;">'Low Freq, Phase Only'</span>)</span>
-<span id="cb9-52"></span>
-<span id="cb9-53">    plt.tight_layout()</span>
-<span id="cb9-54">    plt.show()</span></code></pre></div>
-</details>
-</div>
-<p>As you can see below (bottom left of both groups of plots—<code>serif-76px.png</code> and <code>display-76px.png</code>) most of the information of the letter contours is captured by the high frequency phase of the 2D FFT.</p>
-<div class="cell" data-outputid="27bbc143-abdb-4b38-bae1-915c57b36e9c" data-execution_count="96">
-<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1">visualize_inverse_fft(<span class="st" style="color: #20794D;">'serif-76px.png'</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-9-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-09-typefaceclassifier-fourier-ratios/index_files/figure-html/cell-9-output-1.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<div class="cell" data-outputid="8021c0d0-4987-4551-ab56-00a7e7cc5d79" data-execution_count="97">
-<div class="sourceCode cell-code" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1">visualize_inverse_fft(<span class="st" style="color: #20794D;">'display-76px.png'</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-10-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-09-typefaceclassifier-fourier-ratios/index_files/figure-html/cell-10-output-1.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-</section>
-<section id="two-ratios-fft-magnitude-and-fft-phase" class="level2">
-<h2 class="anchored" data-anchor-id="two-ratios-fft-magnitude-and-fft-phase">Two Ratios: FFT Magnitude and FFT Phase</h2>
-<p>I’ll calculate two ratios (in a way such that the values are somewhat constrained to 0-1):</p>
-<ul>
-<li>the ratio of the mean of FFT magnitude to the count of non-zero binarized pixels (“FFT Magnitude Ratio”)</li>
-<li>the ratio of the sum of the absolute value of FFT phase to the sum of binarized pixels (“FFT Phase Ratio”)</li>
-</ul>
-<p>Whew! Those were a mouthful. In short, I’m trying to capture the difference between FFT magnitude (and the difference between FFT phase) between images of text and do it in a way that the resulting values are somewhat between <code>0</code> and <code>1</code>.</p>
-<div class="cell" data-execution_count="137">
-<div class="sourceCode cell-code" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1">magnitude_mean <span class="op" style="color: #5E5E5E;">=</span> np.mean(np.<span class="bu" style="color: null;">abs</span>(f))</span>
-<span id="cb12-2">phase_sum <span class="op" style="color: #5E5E5E;">=</span> np.<span class="bu" style="color: null;">sum</span>(np.<span class="bu" style="color: null;">abs</span>(np.angle(f)))</span></code></pre></div>
-</div>
-<div class="cell" data-outputid="4c4c58d5-0569-4bbe-9dbb-05c9120a6c90" data-execution_count="138">
-<div class="sourceCode cell-code" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1">magnitude_mean <span class="op" style="color: #5E5E5E;">/</span> np.count_nonzero(binary), phase_sum <span class="op" style="color: #5E5E5E;">/</span> np.<span class="bu" style="color: null;">sum</span>(binary)</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="138">
-<pre><code>(0.6622262512288943, 0.0717868879051193)</code></pre>
-</div>
-</div>
-</section>
-<section id="calculating-fft-magnitude-ratio-and-fft-phase-ratio-for-different-images" class="level2">
-<h2 class="anchored" data-anchor-id="calculating-fft-magnitude-ratio-and-fft-phase-ratio-for-different-images">Calculating FFT Magnitude Ratio and FFT Phase Ratio for Different Images</h2>
-<p>I’ll now wrap the above functionality into two functions and calculate them for a wide variety of images (of two typefaces, <code>display</code> and <code>serif</code> and 8 different font sizes).</p>
-<div class="cell" data-execution_count="2">
-<div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><span class="kw" style="color: #003B4F;">def</span> fft_magnitude_ratio(path):</span>
-<span id="cb15-2">  img <span class="op" style="color: #5E5E5E;">=</span> cv2.imread(path, cv2.IMREAD_GRAYSCALE)</span>
-<span id="cb15-3">  _, binary <span class="op" style="color: #5E5E5E;">=</span> cv2.threshold(img, <span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">255</span>, cv2.THRESH_BINARY_INV <span class="op" style="color: #5E5E5E;">+</span> cv2.THRESH_OTSU)</span>
-<span id="cb15-4"></span>
-<span id="cb15-5">  f <span class="op" style="color: #5E5E5E;">=</span> np.fft.fft2(binary)</span>
-<span id="cb15-6"></span>
-<span id="cb15-7">  magnitude_mean <span class="op" style="color: #5E5E5E;">=</span> np.mean(np.<span class="bu" style="color: null;">abs</span>(f))</span>
-<span id="cb15-8"></span>
-<span id="cb15-9">  total_pixels <span class="op" style="color: #5E5E5E;">=</span> np.count_nonzero(binary)</span>
-<span id="cb15-10"></span>
-<span id="cb15-11">  ratio <span class="op" style="color: #5E5E5E;">=</span> magnitude_mean <span class="op" style="color: #5E5E5E;">/</span> total_pixels</span>
-<span id="cb15-12"></span>
-<span id="cb15-13">  <span class="cf" style="color: #003B4F;">return</span> ratio</span></code></pre></div>
-</div>
-<div class="cell" data-execution_count="3">
-<div class="sourceCode cell-code" id="cb16" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><span class="kw" style="color: #003B4F;">def</span> fft_phase_ratio(path):</span>
-<span id="cb16-2">  img <span class="op" style="color: #5E5E5E;">=</span> cv2.imread(path, cv2.IMREAD_GRAYSCALE)</span>
-<span id="cb16-3">  _, binary <span class="op" style="color: #5E5E5E;">=</span> cv2.threshold(img, <span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">255</span>, cv2.THRESH_BINARY_INV <span class="op" style="color: #5E5E5E;">+</span> cv2.THRESH_OTSU)</span>
-<span id="cb16-4"></span>
-<span id="cb16-5">  f <span class="op" style="color: #5E5E5E;">=</span> np.fft.fft2(binary)</span>
-<span id="cb16-6"></span>
-<span id="cb16-7">  phase_sum <span class="op" style="color: #5E5E5E;">=</span> np.<span class="bu" style="color: null;">sum</span>(np.<span class="bu" style="color: null;">abs</span>(np.angle(f)))</span>
-<span id="cb16-8">  total_pixels <span class="op" style="color: #5E5E5E;">=</span> np.<span class="bu" style="color: null;">sum</span>(binary)</span>
-<span id="cb16-9"></span>
-<span id="cb16-10">  <span class="cf" style="color: #003B4F;">return</span> phase_sum <span class="op" style="color: #5E5E5E;">/</span> total_pixels</span></code></pre></div>
-</div>
-<p>Both the average FFT magnitude ratio (the mean of the FFT magnitude divided by the number of non-zero binarized pixels) and the average FFT phase ratio (the sum of the FFT phase divided by the sum of the binarized pixels) are higher for <code>serif</code> images than for the sans serif <code>display</code> images.</p>
-<div class="cell" data-outputid="a51f793e-ca98-48e9-b38f-4d11035ddc32" data-execution_count="4">
-<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1">szs <span class="op" style="color: #5E5E5E;">=</span> [<span class="dv" style="color: #AD0000;">8</span>, <span class="dv" style="color: #AD0000;">18</span>, <span class="dv" style="color: #AD0000;">24</span>, <span class="dv" style="color: #AD0000;">36</span>, <span class="dv" style="color: #AD0000;">76</span>, <span class="dv" style="color: #AD0000;">240</span>, <span class="dv" style="color: #AD0000;">330</span>, <span class="dv" style="color: #AD0000;">420</span>]</span>
-<span id="cb17-2">ts <span class="op" style="color: #5E5E5E;">=</span> [<span class="st" style="color: #20794D;">'display'</span>, <span class="st" style="color: #20794D;">'serif'</span>]</span>
-<span id="cb17-3">res <span class="op" style="color: #5E5E5E;">=</span> []</span>
-<span id="cb17-4"></span>
-<span id="cb17-5"><span class="cf" style="color: #003B4F;">for</span> t <span class="kw" style="color: #003B4F;">in</span> ts:</span>
-<span id="cb17-6">    <span class="cf" style="color: #003B4F;">for</span> sz <span class="kw" style="color: #003B4F;">in</span> szs:</span>
-<span id="cb17-7">        image_path <span class="op" style="color: #5E5E5E;">=</span> <span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>t<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">-</span><span class="sc" style="color: #5E5E5E;">{</span>sz<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">px.png"</span></span>
-<span id="cb17-8">        mr <span class="op" style="color: #5E5E5E;">=</span> fft_magnitude_ratio(image_path)</span>
-<span id="cb17-9">        pr <span class="op" style="color: #5E5E5E;">=</span> fft_phase_ratio(image_path)</span>
-<span id="cb17-10">        res.append([t, sz, mr, pr])</span>
-<span id="cb17-11"></span>
-<span id="cb17-12">res <span class="op" style="color: #5E5E5E;">=</span> pd.DataFrame(res, columns<span class="op" style="color: #5E5E5E;">=</span>[<span class="st" style="color: #20794D;">'typeface'</span>, <span class="st" style="color: #20794D;">'font-size'</span>, <span class="st" style="color: #20794D;">'fft-magnitude-ratio'</span>, <span class="st" style="color: #20794D;">'fft-phase-ratio'</span>])</span>
-<span id="cb17-13">res.groupby(<span class="st" style="color: #20794D;">'typeface'</span>)[[<span class="st" style="color: #20794D;">'fft-magnitude-ratio'</span>, <span class="st" style="color: #20794D;">'fft-phase-ratio'</span>]].agg([<span class="st" style="color: #20794D;">'mean'</span>, <span class="st" style="color: #20794D;">'median'</span>])</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="4">
-
-
-  <div id="df-80a7998a-7d35-4c66-9f2f-718fef01ad57" class="colab-df-container">
-    <div>
-
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th colspan="2" halign="left">fft-magnitude-ratio</th>
-      <th colspan="2" halign="left">fft-phase-ratio</th>
-    </tr>
-    <tr>
-      <th></th>
-      <th>mean</th>
-      <th>median</th>
-      <th>mean</th>
-      <th>median</th>
-    </tr>
-    <tr>
-      <th>typeface</th>
-      <th></th>
-      <th></th>
-      <th></th>
-      <th></th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>display</th>
-      <td>0.621523</td>
-      <td>0.464047</td>
-      <td>0.077332</td>
-      <td>0.042748</td>
-    </tr>
-    <tr>
-      <th>serif</th>
-      <td>0.801844</td>
-      <td>0.691680</td>
-      <td>0.095694</td>
-      <td>0.058342</td>
-    </tr>
-  </tbody>
-</table>
-</div>
-    <div class="colab-df-buttons">
-
-  <div class="colab-df-container">
-    <button class="colab-df-convert" onclick="convertToInteractive('df-80a7998a-7d35-4c66-9f2f-718fef01ad57')" title="Convert this dataframe to an interactive table." style="display:none;">
-
-  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
-    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
-  </svg>
-    </button>
-
-  <style>
-    .colab-df-container {
-      display:flex;
-      gap: 12px;
-    }
-
-    .colab-df-convert {
-      background-color: #E8F0FE;
-      border: none;
-      border-radius: 50%;
-      cursor: pointer;
-      display: none;
-      fill: #1967D2;
-      height: 32px;
-      padding: 0 0 0 0;
-      width: 32px;
-    }
-
-    .colab-df-convert:hover {
-      background-color: #E2EBFA;
-      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
-      fill: #174EA6;
-    }
-
-    .colab-df-buttons div {
-      margin-bottom: 4px;
-    }
-
-    [theme=dark] .colab-df-convert {
-      background-color: #3B4455;
-      fill: #D2E3FC;
-    }
-
-    [theme=dark] .colab-df-convert:hover {
-      background-color: #434B5C;
-      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
-      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
-      fill: #FFFFFF;
-    }
-  </style>
-
-    <script>
-      const buttonEl =
-        document.querySelector('#df-80a7998a-7d35-4c66-9f2f-718fef01ad57 button.colab-df-convert');
-      buttonEl.style.display =
-        google.colab.kernel.accessAllowed ? 'block' : 'none';
-
-      async function convertToInteractive(key) {
-        const element = document.querySelector('#df-80a7998a-7d35-4c66-9f2f-718fef01ad57');
-        const dataTable =
-          await google.colab.kernel.invokeFunction('convertToInteractive',
-                                                    [key], {});
-        if (!dataTable) return;
-
-        const docLinkHtml = 'Like what you see? Visit the ' +
-          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
-          + ' to learn more about interactive tables.';
-        element.innerHTML = '';
-        dataTable['output_type'] = 'display_data';
-        await google.colab.output.renderOutput(dataTable, element);
-        const docLink = document.createElement('div');
-        docLink.innerHTML = docLinkHtml;
-        element.appendChild(docLink);
-      }
-    </script>
-  </div>
-
-
-<div id="df-d54bc739-8d82-41b9-bc7f-d212b5354fb3">
-  <button class="colab-df-quickchart" onclick="quickchart('df-d54bc739-8d82-41b9-bc7f-d212b5354fb3')" title="Suggest charts" style="display:none;">
-
-<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
-    <g>
-        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
-    </g>
-</svg>
-  </button>
-
-<style>
-  .colab-df-quickchart {
-      --bg-color: #E8F0FE;
-      --fill-color: #1967D2;
-      --hover-bg-color: #E2EBFA;
-      --hover-fill-color: #174EA6;
-      --disabled-fill-color: #AAA;
-      --disabled-bg-color: #DDD;
-  }
-
-  [theme=dark] .colab-df-quickchart {
-      --bg-color: #3B4455;
-      --fill-color: #D2E3FC;
-      --hover-bg-color: #434B5C;
-      --hover-fill-color: #FFFFFF;
-      --disabled-bg-color: #3B4455;
-      --disabled-fill-color: #666;
-  }
-
-  .colab-df-quickchart {
-    background-color: var(--bg-color);
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
-    display: none;
-    fill: var(--fill-color);
-    height: 32px;
-    padding: 0;
-    width: 32px;
-  }
-
-  .colab-df-quickchart:hover {
-    background-color: var(--hover-bg-color);
-    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
-    fill: var(--button-hover-fill-color);
-  }
-
-  .colab-df-quickchart-complete:disabled,
-  .colab-df-quickchart-complete:disabled:hover {
-    background-color: var(--disabled-bg-color);
-    fill: var(--disabled-fill-color);
-    box-shadow: none;
-  }
-
-  .colab-df-spinner {
-    border: 2px solid var(--fill-color);
-    border-color: transparent;
-    border-bottom-color: var(--fill-color);
-    animation:
-      spin 1s steps(1) infinite;
-  }
-
-  @keyframes spin {
-    0% {
-      border-color: transparent;
-      border-bottom-color: var(--fill-color);
-      border-left-color: var(--fill-color);
-    }
-    20% {
-      border-color: transparent;
-      border-left-color: var(--fill-color);
-      border-top-color: var(--fill-color);
-    }
-    30% {
-      border-color: transparent;
-      border-left-color: var(--fill-color);
-      border-top-color: var(--fill-color);
-      border-right-color: var(--fill-color);
-    }
-    40% {
-      border-color: transparent;
-      border-right-color: var(--fill-color);
-      border-top-color: var(--fill-color);
-    }
-    60% {
-      border-color: transparent;
-      border-right-color: var(--fill-color);
-    }
-    80% {
-      border-color: transparent;
-      border-right-color: var(--fill-color);
-      border-bottom-color: var(--fill-color);
-    }
-    90% {
-      border-color: transparent;
-      border-bottom-color: var(--fill-color);
-    }
-  }
-</style>
-
-  <script>
-    async function quickchart(key) {
-      const quickchartButtonEl =
-        document.querySelector('#' + key + ' button');
-      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
-      quickchartButtonEl.classList.add('colab-df-spinner');
-      try {
-        const charts = await google.colab.kernel.invokeFunction(
-            'suggestCharts', [key], {});
-      } catch (error) {
-        console.error('Error during call to suggestCharts:', error);
-      }
-      quickchartButtonEl.classList.remove('colab-df-spinner');
-      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
-    }
-    (() => {
-      let quickchartButtonEl =
-        document.querySelector('#df-d54bc739-8d82-41b9-bc7f-d212b5354fb3 button');
-      quickchartButtonEl.style.display =
-        google.colab.kernel.accessAllowed ? 'block' : 'none';
-    })();
-  </script>
-</div>
-
-    </div>
-  </div>
-</div>
-</div>
-<p>For all font sizes except for 240px, the trend is consistent: both the magnitude and the phase ratio are higher for <code>serif</code> than <code>display</code>:</p>
-<div class="cell" data-outputid="4ed5ab8c-7e56-4692-b7c9-395f3ee6c16a" data-execution_count="5">
-<div class="sourceCode cell-code" id="cb18" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1">res.sort_values(by<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'font-size'</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="5">
-
-
-  <div id="df-cd5d96d2-fc7a-413c-92cb-34f0db0b5b97" class="colab-df-container">
-    <div>
-
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>typeface</th>
-      <th>font-size</th>
-      <th>fft-magnitude-ratio</th>
-      <th>fft-phase-ratio</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>display</td>
-      <td>8</td>
-      <td>2.028167</td>
-      <td>0.309951</td>
-    </tr>
-    <tr>
-      <th>8</th>
-      <td>serif</td>
-      <td>8</td>
-      <td>2.165248</td>
-      <td>0.341165</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>display</td>
-      <td>18</td>
-      <td>0.791710</td>
-      <td>0.064684</td>
-    </tr>
-    <tr>
-      <th>9</th>
-      <td>serif</td>
-      <td>18</td>
-      <td>1.143785</td>
-      <td>0.098539</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>display</td>
-      <td>24</td>
-      <td>0.587993</td>
-      <td>0.039971</td>
-    </tr>
-    <tr>
-      <th>10</th>
-      <td>serif</td>
-      <td>24</td>
-      <td>0.809721</td>
-      <td>0.056169</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>display</td>
-      <td>36</td>
-      <td>0.514101</td>
-      <td>0.040205</td>
-    </tr>
-    <tr>
-      <th>11</th>
-      <td>serif</td>
-      <td>36</td>
-      <td>0.721134</td>
-      <td>0.054290</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>display</td>
-      <td>76</td>
-      <td>0.413993</td>
-      <td>0.046105</td>
-    </tr>
-    <tr>
-      <th>12</th>
-      <td>serif</td>
-      <td>76</td>
-      <td>0.662226</td>
-      <td>0.071787</td>
-    </tr>
-    <tr>
-      <th>5</th>
-      <td>display</td>
-      <td>240</td>
-      <td>0.272433</td>
-      <td>0.045290</td>
-    </tr>
-    <tr>
-      <th>13</th>
-      <td>serif</td>
-      <td>240</td>
-      <td>0.318485</td>
-      <td>0.040843</td>
-    </tr>
-    <tr>
-      <th>6</th>
-      <td>display</td>
-      <td>330</td>
-      <td>0.196193</td>
-      <td>0.038930</td>
-    </tr>
-    <tr>
-      <th>14</th>
-      <td>serif</td>
-      <td>330</td>
-      <td>0.288490</td>
-      <td>0.042242</td>
-    </tr>
-    <tr>
-      <th>7</th>
-      <td>display</td>
-      <td>420</td>
-      <td>0.167595</td>
-      <td>0.033520</td>
-    </tr>
-    <tr>
-      <th>15</th>
-      <td>serif</td>
-      <td>420</td>
-      <td>0.305663</td>
-      <td>0.060515</td>
-    </tr>
-  </tbody>
-</table>
-</div>
-    <div class="colab-df-buttons">
-
-  <div class="colab-df-container">
-    <button class="colab-df-convert" onclick="convertToInteractive('df-cd5d96d2-fc7a-413c-92cb-34f0db0b5b97')" title="Convert this dataframe to an interactive table." style="display:none;">
-
-  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
-    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
-  </svg>
-    </button>
-
-  <style>
-    .colab-df-container {
-      display:flex;
-      gap: 12px;
-    }
-
-    .colab-df-convert {
-      background-color: #E8F0FE;
-      border: none;
-      border-radius: 50%;
-      cursor: pointer;
-      display: none;
-      fill: #1967D2;
-      height: 32px;
-      padding: 0 0 0 0;
-      width: 32px;
-    }
-
-    .colab-df-convert:hover {
-      background-color: #E2EBFA;
-      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
-      fill: #174EA6;
-    }
-
-    .colab-df-buttons div {
-      margin-bottom: 4px;
-    }
-
-    [theme=dark] .colab-df-convert {
-      background-color: #3B4455;
-      fill: #D2E3FC;
-    }
-
-    [theme=dark] .colab-df-convert:hover {
-      background-color: #434B5C;
-      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
-      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
-      fill: #FFFFFF;
-    }
-  </style>
-
-    <script>
-      const buttonEl =
-        document.querySelector('#df-cd5d96d2-fc7a-413c-92cb-34f0db0b5b97 button.colab-df-convert');
-      buttonEl.style.display =
-        google.colab.kernel.accessAllowed ? 'block' : 'none';
-
-      async function convertToInteractive(key) {
-        const element = document.querySelector('#df-cd5d96d2-fc7a-413c-92cb-34f0db0b5b97');
-        const dataTable =
-          await google.colab.kernel.invokeFunction('convertToInteractive',
-                                                    [key], {});
-        if (!dataTable) return;
-
-        const docLinkHtml = 'Like what you see? Visit the ' +
-          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
-          + ' to learn more about interactive tables.';
-        element.innerHTML = '';
-        dataTable['output_type'] = 'display_data';
-        await google.colab.output.renderOutput(dataTable, element);
-        const docLink = document.createElement('div');
-        docLink.innerHTML = docLinkHtml;
-        element.appendChild(docLink);
-      }
-    </script>
-  </div>
-
-
-<div id="df-12b843c4-e6ff-44b0-b08e-a06e4c37287d">
-  <button class="colab-df-quickchart" onclick="quickchart('df-12b843c4-e6ff-44b0-b08e-a06e4c37287d')" title="Suggest charts" style="display:none;">
-
-<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
-    <g>
-        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
-    </g>
-</svg>
-  </button>
-
-<style>
-  .colab-df-quickchart {
-      --bg-color: #E8F0FE;
-      --fill-color: #1967D2;
-      --hover-bg-color: #E2EBFA;
-      --hover-fill-color: #174EA6;
-      --disabled-fill-color: #AAA;
-      --disabled-bg-color: #DDD;
-  }
-
-  [theme=dark] .colab-df-quickchart {
-      --bg-color: #3B4455;
-      --fill-color: #D2E3FC;
-      --hover-bg-color: #434B5C;
-      --hover-fill-color: #FFFFFF;
-      --disabled-bg-color: #3B4455;
-      --disabled-fill-color: #666;
-  }
-
-  .colab-df-quickchart {
-    background-color: var(--bg-color);
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
-    display: none;
-    fill: var(--fill-color);
-    height: 32px;
-    padding: 0;
-    width: 32px;
-  }
-
-  .colab-df-quickchart:hover {
-    background-color: var(--hover-bg-color);
-    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
-    fill: var(--button-hover-fill-color);
-  }
-
-  .colab-df-quickchart-complete:disabled,
-  .colab-df-quickchart-complete:disabled:hover {
-    background-color: var(--disabled-bg-color);
-    fill: var(--disabled-fill-color);
-    box-shadow: none;
-  }
-
-  .colab-df-spinner {
-    border: 2px solid var(--fill-color);
-    border-color: transparent;
-    border-bottom-color: var(--fill-color);
-    animation:
-      spin 1s steps(1) infinite;
-  }
-
-  @keyframes spin {
-    0% {
-      border-color: transparent;
-      border-bottom-color: var(--fill-color);
-      border-left-color: var(--fill-color);
-    }
-    20% {
-      border-color: transparent;
-      border-left-color: var(--fill-color);
-      border-top-color: var(--fill-color);
-    }
-    30% {
-      border-color: transparent;
-      border-left-color: var(--fill-color);
-      border-top-color: var(--fill-color);
-      border-right-color: var(--fill-color);
-    }
-    40% {
-      border-color: transparent;
-      border-right-color: var(--fill-color);
-      border-top-color: var(--fill-color);
-    }
-    60% {
-      border-color: transparent;
-      border-right-color: var(--fill-color);
-    }
-    80% {
-      border-color: transparent;
-      border-right-color: var(--fill-color);
-      border-bottom-color: var(--fill-color);
-    }
-    90% {
-      border-color: transparent;
-      border-bottom-color: var(--fill-color);
-    }
-  }
-</style>
-
-  <script>
-    async function quickchart(key) {
-      const quickchartButtonEl =
-        document.querySelector('#' + key + ' button');
-      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
-      quickchartButtonEl.classList.add('colab-df-spinner');
-      try {
-        const charts = await google.colab.kernel.invokeFunction(
-            'suggestCharts', [key], {});
-      } catch (error) {
-        console.error('Error during call to suggestCharts:', error);
-      }
-      quickchartButtonEl.classList.remove('colab-df-spinner');
-      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
-    }
-    (() => {
-      let quickchartButtonEl =
-        document.querySelector('#df-12b843c4-e6ff-44b0-b08e-a06e4c37287d button');
-      quickchartButtonEl.style.display =
-        google.colab.kernel.accessAllowed ? 'block' : 'none';
-    })();
-  </script>
-</div>
-
-    </div>
-  </div>
-</div>
-</div>
-</section>
-<section id="final-thoughts" class="level2">
-<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
-<p>I was hesitant to implement this algorithm because my general rule when using AI-generated code is: don’t use it if I don’t understand it or can’t explain it. I initially started out with a much more involved algorithm generated by Claude, where it was calculating the ratio of the sum of low-frequency magnitudes to the sum of high-frequency magnitudes (after calculating 2D FFT of a binarized image). Instead of pursuing that algorithm, with the help of Claude I stripped it down to a bare minimum that I could understand and explain after putting in about an hour’s worth of reading and watching different 2D FFT explanations. I still have a long ways to go before I can consider myself proficient with Fourier analysis, but this was a good start.</p>
-<p>The two ratios that I calculated in this are relatively consistent in distinguishing <code>serif</code> typeface (high ratios) from <code>display</code> typeface (low ratios). This makes them a good candidate as a non-ML baseline.</p>
-<p>I hope you enjoyed this blog post! Follow me on Twitter <a href="https://twitter.com/vishal_learner"><span class="citation" data-cites="vishal_learner">@vishal_learner</span></a>.</p>
-
-
-</section>
-
- ]]></description>
-  <category>python</category>
-  <category>computer vision</category>
-  <category>TypefaceClassifier</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2024-09-09-typefaceclassifier-fourier-ratios/index.html</guid>
   <pubDate>Mon, 09 Sep 2024 07:00:00 GMT</pubDate>
 </item>
 </channel>
