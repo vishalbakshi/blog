@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2025-02-08">
+<meta name="description" content="I calculate the Recall@10 metric for answerai-colbert-small-v1 retrieval (via RAGatouille) on the ConditionalQA dataset (via UKLab/DAPR dataset) using the pytrec and ranx libraries.">
+
+<title>Vishal Bakshi’s Blog - Evaluating the DAPR ConditionalQA Dataset with RAGatouille</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Vishal Bakshi’s Blog</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#setup" id="toc-setup" class="nav-link active" data-scroll-target="#setup">Setup</a></li>
+  <li><a href="#background" id="toc-background" class="nav-link" data-scroll-target="#background">Background</a></li>
+  <li><a href="#load-and-view-data" id="toc-load-and-view-data" class="nav-link" data-scroll-target="#load-and-view-data">Load and View Data</a></li>
+  <li><a href="#build-the-index-and-run-search" id="toc-build-the-index-and-run-search" class="nav-link" data-scroll-target="#build-the-index-and-run-search">Build the index and run search</a></li>
+  <li><a href="#evaluation" id="toc-evaluation" class="nav-link" data-scroll-target="#evaluation">Evaluation</a></li>
+  <li><a href="#final-thoughts" id="toc-final-thoughts" class="nav-link" data-scroll-target="#final-thoughts">Final Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Evaluating the DAPR ConditionalQA Dataset with RAGatouille</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">python</div>
+    <div class="quarto-category">information retrieval</div>
+    <div class="quarto-category">deep learning</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    I calculate the Recall@10 metric for answerai-colbert-small-v1 retrieval (via RAGatouille) on the ConditionalQA dataset (via UKLab/DAPR dataset) using the pytrec and ranx libraries.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">February 8, 2025</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="setup" class="level2">
+<h2 class="anchored" data-anchor-id="setup">Setup</h2>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>pip install datasets ragatouille pytrec_eval ranx</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="1">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> datasets <span class="im">import</span> load_dataset</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ragatouille <span class="im">import</span> RAGPretrainedModel</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pytrec_eval</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ranx <span class="im">import</span> evaluate</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ranx <span class="im">import</span> Qrels, Run</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>I wanted to get familiar with classic information retrieval datasets, especially those with explicit documents. I searched with Perplexity and ChatGPT and came across <a href="https://huggingface.co/datasets/UKPLab/dapr">DAPR: Document-Aware Passage Retrieval</a> which sounded perfect for my use case.</p>
+<p>In this blog post I’ll work through evaluating the test split of the <em>ConditionalQA</em> dataset in DAPR using RAGatouille and the <code>answerai-colbert-small-v1</code> model for retrieval and the pytrec and ranx libraries for evaluation. I’ll use the simple Recall@10 metric as it’s the easiest to manually check.</p>
+</section>
+<section id="load-and-view-data" class="level2">
+<h2 class="anchored" data-anchor-id="load-and-view-data">Load and View Data</h2>
+<p>Here are the three datasets we are going to use for this evaluation:</p>
+<ul>
+<li><code>ConditionalQA-corpus</code>, our <em>passages</em></li>
+<li><code>ConditionalQA_queries</code>, our <em>queries</em></li>
+<li>and <code>ConditionalQA_qrels</code>, the mapping between queries and passages.</li>
+</ul>
+<div class="cell" data-outputid="ceab6651-e1f3-4b5a-8373-82e45f396356" data-execution_count="3">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>passages <span class="op">=</span> load_dataset(<span class="st">"UKPLab/dapr"</span>, <span class="st">"ConditionalQA-corpus"</span>, split<span class="op">=</span><span class="st">"test"</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>passages</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>Dataset({
+    features: ['_id', 'text', 'title', 'doc_id', 'paragraph_no', 'total_paragraphs', 'is_candidate'],
+    num_rows: 69199
+})</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="e8490f49-f5ff-4825-d72d-1f7ea5e95830" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>passages[<span class="dv">0</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<pre><code>{'_id': '0-0',
+ 'text': 'Overview',
+ 'title': 'Child Tax Credit',
+ 'doc_id': '0',
+ 'paragraph_no': 0,
+ 'total_paragraphs': 77,
+ 'is_candidate': True}</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="b8182782-913d-452c-9309-cf3619b76b74" data-execution_count="6">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>queries <span class="op">=</span> load_dataset(<span class="st">"UKPLab/dapr"</span>, <span class="st">"ConditionalQA-queries"</span>, split<span class="op">=</span><span class="st">"test"</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>queries</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<pre><code>Dataset({
+    features: ['_id', 'text'],
+    num_rows: 271
+})</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="d6c6b29f-4247-4d08-a3c2-0127dfbd2976" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>queries[<span class="dv">0</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<pre><code>{'_id': 'dev-0',
+ 'text': 'My brother and his wife are in prison for carrying out a large fraud scheme. Their 7 and 8 year old children have been living with me for the last 4 years. I want to become their Special Guardian to look after them permanently How long will it be before I hear back from the court?'}</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="3143c688-ff8e-4d82-c86f-45cc6a5740c6" data-execution_count="9">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>qrels_rows <span class="op">=</span> load_dataset(<span class="st">"UKPLab/dapr"</span>, <span class="st">"ConditionalQA-qrels"</span>, split<span class="op">=</span><span class="st">"test"</span>)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>qrels_rows</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="9">
+<pre><code>Dataset({
+    features: ['query_id', 'corpus_id', 'score'],
+    num_rows: 1165
+})</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="4f02605d-6926-402d-a9fa-d64c632e8d45" data-execution_count="10">
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>qrels_rows[<span class="dv">0</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<pre><code>{'query_id': 'dev-0', 'corpus_id': '86-41', 'score': 1}</code></pre>
+</div>
+</div>
+<p>Load <code>answerai-colbert-small-v1</code>:</p>
+<div class="cell" data-outputid="26b62465-2651-46fc-dd7c-b2d4f18cbf11" data-execution_count="12">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>RAG <span class="op">=</span> RAGPretrainedModel.from_pretrained(<span class="st">"answerdotai/answerai-colbert-small-v1"</span>)</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>RAG</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<pre><code>&lt;ragatouille.RAGPretrainedModel.RAGPretrainedModel at 0x7e5328fdced0&gt;</code></pre>
+</div>
+</div>
+<p>Structure the passages for indexing:</p>
+<div class="cell" data-outputid="0a932d5e-c59b-4730-c312-b1fdbecf20c7" data-execution_count="13">
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>passages[:<span class="dv">5</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<pre><code>{'_id': ['0-0', '0-1', '0-2', '0-3', '0-4'],
+ 'text': ['Overview',
+  'You can only make a claim for Child Tax Credit if you already get Working Tax Credit.',
+  'If you cannot apply for Child Tax Credit, you can apply for Universal Credit instead.',
+  'You might be able to apply for Pension Credit if you and your partner are State Pension age or over.',
+  'What you’ll get'],
+ 'title': ['Child Tax Credit',
+  'Child Tax Credit',
+  'Child Tax Credit',
+  'Child Tax Credit',
+  'Child Tax Credit'],
+ 'doc_id': ['0', '0', '0', '0', '0'],
+ 'paragraph_no': [0, 1, 2, 3, 4],
+ 'total_paragraphs': [77, 77, 77, 77, 77],
+ 'is_candidate': [True, True, True, True, True]}</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="06d8e8e2-5646-4526-a747-90b40a622637" data-execution_count="14">
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>passage_texts <span class="op">=</span> [p[<span class="st">'text'</span>] <span class="cf">for</span> p <span class="kw">in</span> passages]</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>passage_texts[:<span class="dv">5</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<pre><code>['Overview',
+ 'You can only make a claim for Child Tax Credit if you already get Working Tax Credit.',
+ 'If you cannot apply for Child Tax Credit, you can apply for Universal Credit instead.',
+ 'You might be able to apply for Pension Credit if you and your partner are State Pension age or over.',
+ 'What you’ll get']</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="5b1b49c9-3b17-460c-a60d-4219b7ab425e" data-execution_count="15">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>passage_ids <span class="op">=</span> [p[<span class="st">'_id'</span>] <span class="cf">for</span> p <span class="kw">in</span> passages]</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>passage_ids[:<span class="dv">5</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<pre><code>['0-0', '0-1', '0-2', '0-3', '0-4']</code></pre>
+</div>
+</div>
+</section>
+<section id="build-the-index-and-run-search" class="level2">
+<h2 class="anchored" data-anchor-id="build-the-index-and-run-search">Build the index and run search</h2>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>index_path <span class="op">=</span> RAG.index(</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>    index_name<span class="op">=</span><span class="st">"conditionalqa_index"</span>,</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    collection<span class="op">=</span>passage_texts,</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    document_ids<span class="op">=</span>passage_ids</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Taking a look at the results for a single query. Each result has a <code>content</code>, <code>score</code>, <code>rank</code>, <code>document_id</code>, and <code>passage_id</code>. Note a bit of confusing terminology: <code>document_id</code> is actually the id of the item in the <code>passages</code> dataset and <code>passage_id</code> is an identifier created by RAGatouille, unrelated to the datasets.</p>
+<div class="cell" data-outputid="4e79a9a3-9bc4-4613-d584-aedc0e59c16c" data-execution_count="18">
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> RAG.search(queries[<span class="dv">0</span>][<span class="st">'text'</span>], k<span class="op">=</span><span class="dv">10</span>)</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="18">
+<pre><code>[{'content': 'You must advertise your claim within 14 days from the day you get a date for the first court hearing. The advert must appear in a print or online newspaper that covers the missing person’s last known usual address.',
+  'score': 70.0,
+  'rank': 1,
+  'document_id': '107-103',
+  'passage_id': 10480},
+ {'content': 'The guardianship order will make you a guardian for a maximum of 4 years.',
+  'score': 70.0,
+  'rank': 2,
+  'document_id': '107-242',
+  'passage_id': 10619},
+ {'content': 'You can claim joint Housing Benefit for up to 13 weeks if one of you has gone to prison and is likely to return home in 13 weeks or less - including any time on remand.',
+  'score': 69.9375,
+  'rank': 3,
+  'document_id': '8-67',
+  'passage_id': 911},
+ {'content': 'The date will be either 14 or 28 days after your court hearing. If you’re in an exceptionally difficult situation, you may be able to convince the judge to delay this for up to 6 weeks.',
+  'score': 69.9375,
+  'rank': 4,
+  'document_id': '496-116',
+  'passage_id': 47939},
+ {'content': 'You can claim or continue to claim joint Council Tax Reduction if your partner’s expected to be in prison for 13 weeks or less – including any time on remand.',
+  'score': 69.875,
+  'rank': 5,
+  'document_id': '8-80',
+  'passage_id': 924},
+ {'content': 'Sometimes you’ll be given a 2 to 4 week period that you’ll need to keep free - this is known as a ‘warned period’ or ‘floating trial’. If this happens, you’ll be given 1 working day’s notice before you are due to go to court.',
+  'score': 69.875,
+  'rank': 6,
+  'document_id': '254-4',
+  'passage_id': 23999},
+ {'content': 'Your Child Benefit payments will stop after 8 weeks if your child goes to prison or is on remand. You’ll get arrears if they’re cleared of the offence.',
+  'score': 69.8125,
+  'rank': 7,
+  'document_id': '8-116',
+  'passage_id': 960},
+ {'content': 'You may be able to make a claim if you’re the dependant of someone who suffered from a dust-related disease but who has died. A dependant claim must be made within 12 months of the death of the sufferer.',
+  'score': 69.8125,
+  'rank': 8,
+  'document_id': '45-133',
+  'passage_id': 4921},
+ {'content': 'You’ll be responsible for looking after the child until they’re 18 (unless the court takes your responsibility away earlier).',
+  'score': 69.8125,
+  'rank': 9,
+  'document_id': '86-2',
+  'passage_id': 8150},
+ {'content': 'If it’s less than 90 days since the person went missing, explain you need the guardianship order urgently, for example, because the person is going to lose their house.',
+  'score': 69.8125,
+  'rank': 10,
+  'document_id': '107-43',
+  'passage_id': 10420}]</code></pre>
+</div>
+</div>
+</section>
+<section id="evaluation" class="level2">
+<h2 class="anchored" data-anchor-id="evaluation">Evaluation</h2>
+<p>I’ll prepare <code>qrels</code> for the pytrec evaluator as is done in the DAPR dataset card example on HF:</p>
+<div class="cell" data-execution_count="19">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>qrels <span class="op">=</span> {}</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> qrel_row <span class="kw">in</span> qrels_rows:</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    qid <span class="op">=</span> qrel_row[<span class="st">"query_id"</span>]</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>    pid <span class="op">=</span> qrel_row[<span class="st">"corpus_id"</span>]</span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>    rel <span class="op">=</span> qrel_row[<span class="st">"score"</span>]</span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>    qrels.setdefault(qid, {})</span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>    qrels[qid][pid] <span class="op">=</span> rel</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p><code>dev-5</code> is a query ID with multiple passages so I’ve chosen it as the test example:</p>
+<div class="cell" data-execution_count="20">
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>qid <span class="op">=</span> <span class="st">'dev-5'</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="0cab7461-acd2-49c9-f942-456f2daae9a3" data-execution_count="21">
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>qrels[qid]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="21">
+<pre><code>{'61-1': 1, '61-4': 1, '61-5': 1, '61-17': 1, '61-37': 1, '61-39': 1}</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="fcb898ec-c639-4b1a-bb0c-69cf15d6fcfe" data-execution_count="22">
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>pytrec_results <span class="op">=</span> {}</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>pytrec_results</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="22">
+<pre><code>{}</code></pre>
+</div>
+</div>
+<p>Next we’ll run retrieval and structure results for the pytrec evaluator, again copying the DAPR example which structures the retrieval results as:</p>
+<div class="sourceCode" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>retrieval_scores[query_id][passage_id] <span class="op">=</span> score</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Note again that <code>document_id</code> means passage_id.</p>
+<div class="cell" data-execution_count="23">
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> q <span class="kw">in</span> queries:</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>    results <span class="op">=</span> RAG.search(q[<span class="st">'text'</span>], k<span class="op">=</span><span class="dv">10</span>)</span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    pytrec_results[q[<span class="st">'_id'</span>]] <span class="op">=</span> {result[<span class="st">'document_id'</span>]: <span class="bu">float</span>(result[<span class="st">'score'</span>]) <span class="cf">for</span> result <span class="kw">in</span> results}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>We can see the 10 passages and each one has a corresponding score.</p>
+<div class="cell" data-outputid="3d972b82-3755-4937-9ac6-ad20f8c672fc" data-execution_count="36">
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>pytrec_results[qid]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="36">
+<pre><code>{'61-1': 71.125,
+ '423-16': 70.5625,
+ '61-27': 70.4375,
+ '61-109': 70.375,
+ '61-110': 70.25,
+ '61-113': 70.25,
+ '61-114': 70.25,
+ '426-22': 70.1875,
+ '420-42': 70.1875,
+ '423-7': 70.125}</code></pre>
+</div>
+</div>
+<p>Calculate Recall for all queries and viewing a single query’s Recall:</p>
+<div class="cell" data-execution_count="24">
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>evaluator <span class="op">=</span> pytrec_eval.RelevanceEvaluator(qrels, {<span class="st">'recall.10'</span>})</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>There are 271 queries and 271 metrics (one per query):</p>
+<div class="cell" data-outputid="571e47c0-b984-4d5c-dba4-7b501c02f139" data-execution_count="25">
+<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>metrics <span class="op">=</span> evaluator.evaluate(pytrec_results)</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(metrics)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="25">
+<pre><code>271</code></pre>
+</div>
+</div>
+<p>For our <code>dev-5</code> query the Recall@10 is 0.167 or 1/6.</p>
+<div class="cell" data-outputid="07661f1e-4732-4c1f-ca8b-896b1afff7e0" data-execution_count="26">
+<div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>metrics[qid]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="26">
+<pre><code>{'recall_10': 0.16666666666666666}</code></pre>
+</div>
+</div>
+<p>Here are the 6 passages that we needed to retrieve to fully answer this question:</p>
+<div class="cell" data-outputid="2d1792f4-7e92-4f3e-bab5-a8d0ff79fbdf" data-execution_count="27">
+<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a>qrels[qid]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="27">
+<pre><code>{'61-1': 1, '61-4': 1, '61-5': 1, '61-17': 1, '61-37': 1, '61-39': 1}</code></pre>
+</div>
+</div>
+<p>And here are the results again—only 1 relevant passage, <code>61-1</code>, was retrieved.</p>
+<div class="cell" data-outputid="b638ed99-ba08-486a-ee92-bba78540238a" data-execution_count="28">
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a>pytrec_results[qid]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="28">
+<pre><code>{'61-1': 71.125,
+ '423-16': 70.5625,
+ '61-27': 70.4375,
+ '61-109': 70.375,
+ '61-110': 70.25,
+ '61-113': 70.25,
+ '61-114': 70.25,
+ '426-22': 70.1875,
+ '420-42': 70.1875,
+ '423-7': 70.125}</code></pre>
+</div>
+</div>
+<p>Calculating mean Recall across all queries to get our mean Recall@10 for the entire collection of queries:</p>
+<div class="cell" data-outputid="ab74903a-5984-4afb-90df-d77c18d0cc50" data-execution_count="29">
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>mean_recall <span class="op">=</span> <span class="bu">sum</span>(metrics[qid][<span class="st">'recall_10'</span>] <span class="cf">for</span> qid <span class="kw">in</span> metrics.keys()) <span class="op">/</span> <span class="bu">len</span>(metrics)</span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>mean_recall</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="29">
+<pre><code>0.28046940381859803</code></pre>
+</div>
+</div>
+<p>So, about 28% of all queries’ relevant passages were present in the top-10 passages retrieved.</p>
+<p>I wanted to confirm my calculation so I’ll also calculate Recall@10 using the ranx library.</p>
+<div class="cell" data-execution_count="31">
+<div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>qrels_ranx <span class="op">=</span> Qrels(qrels)</span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>ranx_results <span class="op">=</span> Run(pytrec_results)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="8924772d-4e13-4e1e-c1d6-1edbeba5faff" data-execution_count="35">
+<div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a>evaluate(qrels_ranx, ranx_results, <span class="st">"recall@10"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="35">
+<pre><code>0.2804694038185978</code></pre>
+</div>
+</div>
+<p>And we get the same results. Great!</p>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>In a future blog post I’ll calculate Recall@10 (and other metrics) on all of the datasets included in DAPR:</p>
+<ul>
+<li>ConditionalQA</li>
+<li>MS MARCO</li>
+<li>Genomics</li>
+<li>MIRACL</li>
+<li>Natural Questions</li>
+</ul>
+<p>Once that’s done, I’ll pick a few different retrieval models and compare their results across these datasets.</p>
+<p>I think by the end of these experiments I’ll have a better grasp on how to work with classic IR datasets and metrics.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>
