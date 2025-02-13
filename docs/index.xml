@@ -10,7 +10,124 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.2.335</generator>
-<lastBuildDate>Sat, 08 Feb 2025 08:00:00 GMT</lastBuildDate>
+<lastBuildDate>Wed, 12 Feb 2025 08:00:00 GMT</lastBuildDate>
+<item>
+  <title>Estimating Storage and CPU RAM Requirements for Indexing 12.6M Documents</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>After a few days of flailing about trying to index the 12.6M document <em>Genomics</em> dataset (from <a href="https://huggingface.co/datasets/UKPLab/dapr">UKPLab/DAPR</a>) in Google Colab Pro using RAGatouille, I decided to plan the attempt in a more organized way. In this blog post I’ll share my findings and next actions.</p>
+<p>Here’s an example text from the corpus:</p>
+<pre><code>The 33D1 rat MoAb92  identifies a low-density Ag on mouse (marginal zone) spleen DC. The antibody does not stain DC in cryostat sections and does not react with LC. No biochemical data on the Ag are available. Nonetheless, this antibody has proved extremely useful for C lysis of mouse spleen DC.\r\n</code></pre>
+<p>The average length of text in this corpus is ~540 characters.</p>
+</section>
+<section id="rag.index" class="level2">
+<h2 class="anchored" data-anchor-id="rag.index"><code>RAG.index</code></h2>
+<p>The main function of interest if <code>RAG.index</code> which takes a list of documents and indexes them in preparation for retrieval.</p>
+<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">index_path <span class="op" style="color: #5E5E5E;">=</span> RAG.index(</span>
+<span id="cb2-2">            index_name<span class="op" style="color: #5E5E5E;">=</span><span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_index"</span>,</span>
+<span id="cb2-3">            collection<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"text"</span>],</span>
+<span id="cb2-4">            document_ids<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"_id"</span>]</span>
+<span id="cb2-5">        )</span></code></pre></div>
+<p>I used the following code to log the RAM memory usage, with <code>ndocs</code> being defined globally:</p>
+<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="kw" style="color: #003B4F;">def</span> memory_monitor(stop_event, readings):</span>
+<span id="cb3-2">    <span class="cf" style="color: #003B4F;">while</span> <span class="kw" style="color: #003B4F;">not</span> stop_event.is_set():</span>
+<span id="cb3-3">        mem <span class="op" style="color: #5E5E5E;">=</span> psutil.Process().memory_info().rss <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span></span>
+<span id="cb3-4">        readings.append((datetime.now(), mem))</span>
+<span id="cb3-5">        time.sleep(<span class="dv" style="color: #AD0000;">5</span>)</span>
+<span id="cb3-6"></span>
+<span id="cb3-7"><span class="kw" style="color: #003B4F;">def</span> log_memory_during_index():</span>
+<span id="cb3-8">    stop_event <span class="op" style="color: #5E5E5E;">=</span> threading.Event()</span>
+<span id="cb3-9">    readings <span class="op" style="color: #5E5E5E;">=</span> []</span>
+<span id="cb3-10">    monitor_thread <span class="op" style="color: #5E5E5E;">=</span> threading.Thread(target<span class="op" style="color: #5E5E5E;">=</span>memory_monitor, args<span class="op" style="color: #5E5E5E;">=</span>(stop_event, readings))</span>
+<span id="cb3-11">    monitor_thread.start()</span>
+<span id="cb3-12">    </span>
+<span id="cb3-13">    <span class="cf" style="color: #003B4F;">try</span>:</span>
+<span id="cb3-14">        index_path <span class="op" style="color: #5E5E5E;">=</span> RAG.index(</span>
+<span id="cb3-15">            index_name<span class="op" style="color: #5E5E5E;">=</span><span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_index"</span>,</span>
+<span id="cb3-16">            collection<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"text"</span>],</span>
+<span id="cb3-17">            document_ids<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"_id"</span>]</span>
+<span id="cb3-18">        )</span>
+<span id="cb3-19">    <span class="cf" style="color: #003B4F;">finally</span>:</span>
+<span id="cb3-20">        stop_event.<span class="bu" style="color: null;">set</span>()</span>
+<span id="cb3-21">        monitor_thread.join()</span>
+<span id="cb3-22">    </span>
+<span id="cb3-23">    <span class="cf" style="color: #003B4F;">return</span> index_path, readings</span>
+<span id="cb3-24"></span>
+<span id="cb3-25">index_path, memory_readings <span class="op" style="color: #5E5E5E;">=</span> log_memory_during_index()</span></code></pre></div>
+</section>
+<section id="memory-logging-results" class="level2">
+<h2 class="anchored" data-anchor-id="memory-logging-results">Memory Logging Results</h2>
+<p>I used two machines for these experiments:</p>
+<ul>
+<li>T4 GPU (16 GB vRAM, 51GB RAM) using Google Colab Pro.</li>
+<li>RTX6000Ada (48GB vRAM, 128GB RAM) using Jarvis Labs.</li>
+</ul>
+<p>I chose the following number of documents to index: - 100k - 250k - 500k - 1M - 2M</p>
+<p>Here are the results:</p>
+<p><em>RTX6000Ada (48GB vRAM, 128GB RAM)</em> |# Docs|index_path Size|Max RAM|Time |:-:|:-:|:-:|:-:| |100k|0.41 GB|6.96 GB| 4 min |250k|1.1 GB|8.4 GB| 6.4 min |500k|2.2 GB|11.4 GB| 12 min |1M|4.5 GB|16.3 GB|24 min |2M|9.1 GB|24 GB|47 min</p>
+<p><em>T4 w/High-RAM (16GB vRAM, 51GB RAM)</em> |# Docs|index_path Size|Max RAM|Time |:-:|:-:|:-:|:-:| |100k|0.41 GB|6.5 GB|8 min |250k|1.1 GB|8.8 GB|20 min |500k|2.2 GB|11.8 GB|36 min |1M|4.5 GB|18.8 GB|78 min |2M|9.1 GB|28.6 GB|145 min</p>
+<p>I also used the A100 instance on Google Colab Pro for some initial experiments. It’s interesting to note the difference in speed of encoding 25k passages:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">GPU</th>
+<th style="text-align: center;">seconds/25k</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">RTX6000Ada</td>
+<td style="text-align: center;">12</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">A100</td>
+<td style="text-align: center;">22</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">T4</td>
+<td style="text-align: center;">44</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="extrapolating-to-12.6m-documents" class="level2">
+<h2 class="anchored" data-anchor-id="extrapolating-to-12.6m-documents">Extrapolating to 12.6M Documents</h2>
+<p>I’ll start with the easier one: the size of the directory created by <code>RAG.index</code>. Doubling the number of documents doubles its size (approximately) so if 1M documents takes up 4.5GB of space I expect 12.6M documents to take up ~54GB of space. I’ll set my storage size to 100GB just in case.</p>
+<p>The maximum RAM used (by the CPU, not the GPU vRAM) for 12.6M documents is a bit more involved. I’m planning to use the RTX6000Ada machine so I’ll use its numbers.</p>
+<p><em>RTX6000Ada (48GB vRAM, 128GB RAM)</em> |# Docs|Max RAM|Increase |:-:|:-:|:-:| |100k|6.96 GB| – |250k|8.4 GB| 20% |500k|11.4 GB| 36% |1M|16.3 GB| 43% |2M|24 GB| 47%</p>
+<p>The percent increase amount is slowing down. Let’s say it plateaus at a 50% increase going from 2M to 4M documents (doubling). 2M to 12.6M is ~2.66 doublings (is that a word?). 24 GB x 1.5^2.66 = 70GB. If I was using Colab numbers: 28.6 x 1.5^2.66 = 84 GB. When I tried to index 12.6M documents with an A100 High-RAM (83.5 GB CPU) instance on Google Colab Pro, the runtime crashed as it ran out of System RAM so this checks out.</p>
+<p>Finally, let’s say the time it takes to index documents doubles when the number of documents doubles from 2M onwards. 47 min x 2^2.66 = 300 minutes or 5 hours. At about $1/hr, this would take $5 on an RTX6000Ada.</p>
+<p>I should note that in all my experiments, the GPU vRAM usage didn’t go past 3-4 GB.</p>
+<p>While the peak CPU RAM usage varied, in all instances the plots looked like the following (2M documents on RTX6000Ada):</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="RTX6000/2M.png" class="lightbox" title="System RAM Usage over Indexing Time" data-gallery="quarto-lightbox-gallery-1"><img src="https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/RTX6000/2M.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">System RAM Usage over Indexing Time</figcaption><p></p>
+</figure>
+</div>
+<p>I couldn’t figure out from my profiler the exact function call during that largest spike. Also note the spike near the end before indexing is finished.</p>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>Time will tell if these calculations are worth anything, but it seems like my best option is to use Jarvis Labs’ RTX6000Ada machine with 128GB CPU RAM. Once I successfully index the 12.6M-document <em>Genomics</em> dataset, I’ll have a better estimate for how much it will cost to index the largest dataset in the DAPR collection: MIRACL (32.9M documents). Stay tuned!</p>
+
+
+</section>
+
+ ]]></description>
+  <category>python</category>
+  <category>information retrieval</category>
+  <category>deep learning</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/index.html</guid>
+  <pubDate>Wed, 12 Feb 2025 08:00:00 GMT</pubDate>
+  <media:content url="https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/RTX6000/2M.png" medium="image" type="image/png" height="114" width="144"/>
+</item>
 <item>
   <title>Evaluating the DAPR ConditionalQA Dataset with RAGatouille</title>
   <dc:creator>Vishal Bakshi</dc:creator>
@@ -358,123 +475,6 @@
   <category>deep learning</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2025-02-08-ConditionalQA-RAGatouille/index.html</guid>
   <pubDate>Sat, 08 Feb 2025 08:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>Estimating Storage and CPU RAM Requirements for Indexing 12.6M Documents</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/index.html</link>
-  <description><![CDATA[ 
-
-
-
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<p>After a few days of flailing about trying to index the 12.6M document <em>Genomics</em> dataset (from <a href="https://huggingface.co/datasets/UKPLab/dapr">UKPLab/DAPR</a>) in Google Colab Pro using RAGatouille, I decided to plan the attempt in a more organized way. In this blog post I’ll share my findings and next actions.</p>
-<p>Here’s an example text from the corpus:</p>
-<pre><code>The 33D1 rat MoAb92  identifies a low-density Ag on mouse (marginal zone) spleen DC. The antibody does not stain DC in cryostat sections and does not react with LC. No biochemical data on the Ag are available. Nonetheless, this antibody has proved extremely useful for C lysis of mouse spleen DC.\r\n</code></pre>
-<p>The average length of text in this corpus is ~540 characters.</p>
-</section>
-<section id="rag.index" class="level2">
-<h2 class="anchored" data-anchor-id="rag.index"><code>RAG.index</code></h2>
-<p>The main function of interest if <code>RAG.index</code> which takes a list of documents and indexes them in preparation for retrieval.</p>
-<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">index_path <span class="op" style="color: #5E5E5E;">=</span> RAG.index(</span>
-<span id="cb2-2">            index_name<span class="op" style="color: #5E5E5E;">=</span><span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_index"</span>,</span>
-<span id="cb2-3">            collection<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"text"</span>],</span>
-<span id="cb2-4">            document_ids<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"_id"</span>]</span>
-<span id="cb2-5">        )</span></code></pre></div>
-<p>I used the following code to log the RAM memory usage, with <code>ndocs</code> being defined globally:</p>
-<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="kw" style="color: #003B4F;">def</span> memory_monitor(stop_event, readings):</span>
-<span id="cb3-2">    <span class="cf" style="color: #003B4F;">while</span> <span class="kw" style="color: #003B4F;">not</span> stop_event.is_set():</span>
-<span id="cb3-3">        mem <span class="op" style="color: #5E5E5E;">=</span> psutil.Process().memory_info().rss <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span></span>
-<span id="cb3-4">        readings.append((datetime.now(), mem))</span>
-<span id="cb3-5">        time.sleep(<span class="dv" style="color: #AD0000;">5</span>)</span>
-<span id="cb3-6"></span>
-<span id="cb3-7"><span class="kw" style="color: #003B4F;">def</span> log_memory_during_index():</span>
-<span id="cb3-8">    stop_event <span class="op" style="color: #5E5E5E;">=</span> threading.Event()</span>
-<span id="cb3-9">    readings <span class="op" style="color: #5E5E5E;">=</span> []</span>
-<span id="cb3-10">    monitor_thread <span class="op" style="color: #5E5E5E;">=</span> threading.Thread(target<span class="op" style="color: #5E5E5E;">=</span>memory_monitor, args<span class="op" style="color: #5E5E5E;">=</span>(stop_event, readings))</span>
-<span id="cb3-11">    monitor_thread.start()</span>
-<span id="cb3-12">    </span>
-<span id="cb3-13">    <span class="cf" style="color: #003B4F;">try</span>:</span>
-<span id="cb3-14">        index_path <span class="op" style="color: #5E5E5E;">=</span> RAG.index(</span>
-<span id="cb3-15">            index_name<span class="op" style="color: #5E5E5E;">=</span><span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_index"</span>,</span>
-<span id="cb3-16">            collection<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"text"</span>],</span>
-<span id="cb3-17">            document_ids<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"_id"</span>]</span>
-<span id="cb3-18">        )</span>
-<span id="cb3-19">    <span class="cf" style="color: #003B4F;">finally</span>:</span>
-<span id="cb3-20">        stop_event.<span class="bu" style="color: null;">set</span>()</span>
-<span id="cb3-21">        monitor_thread.join()</span>
-<span id="cb3-22">    </span>
-<span id="cb3-23">    <span class="cf" style="color: #003B4F;">return</span> index_path, readings</span>
-<span id="cb3-24"></span>
-<span id="cb3-25">index_path, memory_readings <span class="op" style="color: #5E5E5E;">=</span> log_memory_during_index()</span></code></pre></div>
-</section>
-<section id="memory-logging-results" class="level2">
-<h2 class="anchored" data-anchor-id="memory-logging-results">Memory Logging Results</h2>
-<p>I used two machines for these experiments:</p>
-<ul>
-<li>T4 GPU (16 GB vRAM, 51GB RAM) using Google Colab Pro.</li>
-<li>RTX6000Ada (48GB vRAM, 128GB RAM) using Jarvis Labs.</li>
-</ul>
-<p>I chose the following number of documents to index: - 100k - 250k - 500k - 1M - 2M</p>
-<p>Here are the results:</p>
-<p><em>RTX6000Ada (48GB vRAM, 128GB RAM)</em> |# Docs|index_path Size|Max RAM|Time |:-:|:-:|:-:|:-:| |100k|0.41 GB|6.96 GB| 4 min |250k|1.1 GB|8.4 GB| 6.4 min |500k|2.2 GB|11.4 GB| 12 min |1M|4.5 GB|16.3 GB|24 min |2M|9.1 GB|24 GB|47 min</p>
-<p><em>T4 w/High-RAM (16GB vRAM, 51GB RAM)</em> |# Docs|index_path Size|Max RAM|Time |:-:|:-:|:-:|:-:| |100k|0.41 GB|6.5 GB|8 min |250k|1.1 GB|8.8 GB|20 min |500k|2.2 GB|11.8 GB|36 min |1M|4.5 GB|18.8 GB|78 min |2M|9.1 GB|28.6 GB|145 min</p>
-<p>I also used the A100 instance on Google Colab Pro for some initial experiments. It’s interesting to note the difference in speed of encoding 25k passages:</p>
-<table class="table">
-<thead>
-<tr class="header">
-<th style="text-align: center;">GPU</th>
-<th style="text-align: center;">seconds/25k</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: center;">RTX6000Ada</td>
-<td style="text-align: center;">12</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">A100</td>
-<td style="text-align: center;">22</td>
-</tr>
-<tr class="odd">
-<td style="text-align: center;">T4</td>
-<td style="text-align: center;">44</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="extrapolating-to-12.6m-documents" class="level2">
-<h2 class="anchored" data-anchor-id="extrapolating-to-12.6m-documents">Extrapolating to 12.6M Documents</h2>
-<p>I’ll start with the easier one: the size of the directory created by <code>RAG.index</code>. Doubling the number of documents doubles its size (approximately) so if 1M documents takes up 4.5GB of space I expect 12.6M documents to take up ~54GB of space. I’ll set my storage size to 100GB just in case.</p>
-<p>The maximum RAM used (by the CPU, not the GPU vRAM) for 12.6M documents is a bit more involved. I’m planning to use the RTX6000Ada machine so I’ll use its numbers.</p>
-<p><em>RTX6000Ada (48GB vRAM, 128GB RAM)</em> |# Docs|Max RAM|Increase |:-:|:-:|:-:| |100k|6.96 GB| – |250k|8.4 GB| 20% |500k|11.4 GB| 36% |1M|16.3 GB| 43% |2M|24 GB| 47%</p>
-<p>The percent increase amount is slowing down. Let’s say it plateaus at a 50% increase going from 2M to 4M documents (doubling). 2M to 12.6M is ~2.66 doublings (is that a word?). 24 GB x 1.5^2.66 = 70GB. If I was using Colab numbers: 28.6 x 1.5^2.66 = 84 GB. When I tried to index 12.6M documents with an A100 High-RAM (83.5 GB CPU) instance on Google Colab Pro, the runtime crashed as it ran out of System RAM so this checks out.</p>
-<p>Finally, let’s say the time it takes to index documents doubles when the number of documents doubles from 2M onwards. 47 min x 2^2.66 = 300 minutes or 5 hours. At about $1/hr, this would take $5 on an RTX6000Ada.</p>
-<p>I should note that in all my experiments, the GPU vRAM usage didn’t go past 3-4 GB.</p>
-<p>While the peak CPU RAM usage varied, in all instances the plots looked like the following (2M documents on RTX6000Ada):</p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="RTX6000/2M.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="System RAM Usage over Indexing Time"><img src="https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/RTX6000/2M.png" class="img-fluid figure-img"></a></p>
-<p></p><figcaption class="figure-caption">System RAM Usage over Indexing Time</figcaption><p></p>
-</figure>
-</div>
-<p>I couldn’t figure out from my profiler the exact function call during that largest spike. Also note the spike near the end before indexing is finished.</p>
-</section>
-<section id="final-thoughts" class="level2">
-<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
-<p>Time will tell if these calculations are worth anything, but it seems like my best option is to use Jarvis Labs’ RTX6000Ada machine with 128GB CPU RAM. Once I successfully index the 12.6M-document <em>Genomics</em> dataset, I’ll have a better estimate for how much it will cost to index the largest dataset in the DAPR collection: MIRACL (32.9M documents). Stay tuned!</p>
-
-
-</section>
-
- ]]></description>
-  <category>python</category>
-  <category>information retrieval</category>
-  <category>deep learning</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/index.html</guid>
-  <pubDate>Sat, 08 Feb 2025 08:00:00 GMT</pubDate>
-  <media:content url="https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/RTX6000/2M.png" medium="image" type="image/png" height="114" width="144"/>
 </item>
 <item>
   <title>DoRA’s Magnitude Vector</title>
