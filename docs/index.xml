@@ -360,6 +360,123 @@
   <pubDate>Sat, 08 Feb 2025 08:00:00 GMT</pubDate>
 </item>
 <item>
+  <title>Estimating Storage and CPU RAM Requirements for Indexing 12.6M Documents</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>After a few days of flailing about trying to index the 12.6M document <em>Genomics</em> dataset (from <a href="https://huggingface.co/datasets/UKPLab/dapr">UKPLab/DAPR</a>) in Google Colab Pro using RAGatouille, I decided to plan the attempt in a more organized way. In this blog post I’ll share my findings and next actions.</p>
+<p>Here’s an example text from the corpus:</p>
+<pre><code>The 33D1 rat MoAb92  identifies a low-density Ag on mouse (marginal zone) spleen DC. The antibody does not stain DC in cryostat sections and does not react with LC. No biochemical data on the Ag are available. Nonetheless, this antibody has proved extremely useful for C lysis of mouse spleen DC.\r\n</code></pre>
+<p>The average length of text in this corpus is ~540 characters.</p>
+</section>
+<section id="rag.index" class="level2">
+<h2 class="anchored" data-anchor-id="rag.index"><code>RAG.index</code></h2>
+<p>The main function of interest if <code>RAG.index</code> which takes a list of documents and indexes them in preparation for retrieval.</p>
+<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">index_path <span class="op" style="color: #5E5E5E;">=</span> RAG.index(</span>
+<span id="cb2-2">            index_name<span class="op" style="color: #5E5E5E;">=</span><span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_index"</span>,</span>
+<span id="cb2-3">            collection<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"text"</span>],</span>
+<span id="cb2-4">            document_ids<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"_id"</span>]</span>
+<span id="cb2-5">        )</span></code></pre></div>
+<p>I used the following code to log the RAM memory usage, with <code>ndocs</code> being defined globally:</p>
+<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="kw" style="color: #003B4F;">def</span> memory_monitor(stop_event, readings):</span>
+<span id="cb3-2">    <span class="cf" style="color: #003B4F;">while</span> <span class="kw" style="color: #003B4F;">not</span> stop_event.is_set():</span>
+<span id="cb3-3">        mem <span class="op" style="color: #5E5E5E;">=</span> psutil.Process().memory_info().rss <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span></span>
+<span id="cb3-4">        readings.append((datetime.now(), mem))</span>
+<span id="cb3-5">        time.sleep(<span class="dv" style="color: #AD0000;">5</span>)</span>
+<span id="cb3-6"></span>
+<span id="cb3-7"><span class="kw" style="color: #003B4F;">def</span> log_memory_during_index():</span>
+<span id="cb3-8">    stop_event <span class="op" style="color: #5E5E5E;">=</span> threading.Event()</span>
+<span id="cb3-9">    readings <span class="op" style="color: #5E5E5E;">=</span> []</span>
+<span id="cb3-10">    monitor_thread <span class="op" style="color: #5E5E5E;">=</span> threading.Thread(target<span class="op" style="color: #5E5E5E;">=</span>memory_monitor, args<span class="op" style="color: #5E5E5E;">=</span>(stop_event, readings))</span>
+<span id="cb3-11">    monitor_thread.start()</span>
+<span id="cb3-12">    </span>
+<span id="cb3-13">    <span class="cf" style="color: #003B4F;">try</span>:</span>
+<span id="cb3-14">        index_path <span class="op" style="color: #5E5E5E;">=</span> RAG.index(</span>
+<span id="cb3-15">            index_name<span class="op" style="color: #5E5E5E;">=</span><span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_index"</span>,</span>
+<span id="cb3-16">            collection<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"text"</span>],</span>
+<span id="cb3-17">            document_ids<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"_id"</span>]</span>
+<span id="cb3-18">        )</span>
+<span id="cb3-19">    <span class="cf" style="color: #003B4F;">finally</span>:</span>
+<span id="cb3-20">        stop_event.<span class="bu" style="color: null;">set</span>()</span>
+<span id="cb3-21">        monitor_thread.join()</span>
+<span id="cb3-22">    </span>
+<span id="cb3-23">    <span class="cf" style="color: #003B4F;">return</span> index_path, readings</span>
+<span id="cb3-24"></span>
+<span id="cb3-25">index_path, memory_readings <span class="op" style="color: #5E5E5E;">=</span> log_memory_during_index()</span></code></pre></div>
+</section>
+<section id="memory-logging-results" class="level2">
+<h2 class="anchored" data-anchor-id="memory-logging-results">Memory Logging Results</h2>
+<p>I used two machines for these experiments:</p>
+<ul>
+<li>T4 GPU (16 GB vRAM, 51GB RAM) using Google Colab Pro.</li>
+<li>RTX6000Ada (48GB vRAM, 128GB RAM) using Jarvis Labs.</li>
+</ul>
+<p>I chose the following number of documents to index: - 100k - 250k - 500k - 1M - 2M</p>
+<p>Here are the results:</p>
+<p><em>RTX6000Ada (48GB vRAM, 128GB RAM)</em> |# Docs|index_path Size|Max RAM|Time |:-:|:-:|:-:|:-:| |100k|0.41 GB|6.96 GB| 4 min |250k|1.1 GB|8.4 GB| 6.4 min |500k|2.2 GB|11.4 GB| 12 min |1M|4.5 GB|16.3 GB|24 min |2M|9.1 GB|24 GB|47 min</p>
+<p><em>T4 w/High-RAM (16GB vRAM, 51GB RAM)</em> |# Docs|index_path Size|Max RAM|Time |:-:|:-:|:-:|:-:| |100k|0.41 GB|6.5 GB|8 min |250k|1.1 GB|8.8 GB|20 min |500k|2.2 GB|11.8 GB|36 min |1M|4.5 GB|18.8 GB|78 min |2M|9.1 GB|28.6 GB|145 min</p>
+<p>I also used the A100 instance on Google Colab Pro for some initial experiments. It’s interesting to note the difference in speed of encoding 25k passages:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">GPU</th>
+<th style="text-align: center;">seconds/25k</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">RTX6000Ada</td>
+<td style="text-align: center;">12</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">A100</td>
+<td style="text-align: center;">22</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">T4</td>
+<td style="text-align: center;">44</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="extrapolating-to-12.6m-documents" class="level2">
+<h2 class="anchored" data-anchor-id="extrapolating-to-12.6m-documents">Extrapolating to 12.6M Documents</h2>
+<p>I’ll start with the easier one: the size of the directory created by <code>RAG.index</code>. Doubling the number of documents doubles its size (approximately) so if 1M documents takes up 4.5GB of space I expect 12.6M documents to take up ~54GB of space. I’ll set my storage size to 100GB just in case.</p>
+<p>The maximum RAM used (by the CPU, not the GPU vRAM) for 12.6M documents is a bit more involved. I’m planning to use the RTX6000Ada machine so I’ll use its numbers.</p>
+<p><em>RTX6000Ada (48GB vRAM, 128GB RAM)</em> |# Docs|Max RAM|Increase |:-:|:-:|:-:| |100k|6.96 GB| – |250k|8.4 GB| 20% |500k|11.4 GB| 36% |1M|16.3 GB| 43% |2M|24 GB| 47%</p>
+<p>The percent increase amount is slowing down. Let’s say it plateaus at a 50% increase going from 2M to 4M documents (doubling). 2M to 12.6M is ~2.66 doublings (is that a word?). 24 GB x 1.5^2.66 = 70GB. If I was using Colab numbers: 28.6 x 1.5^2.66 = 84 GB. When I tried to index 12.6M documents with an A100 High-RAM (83.5 GB CPU) instance on Google Colab Pro, the runtime crashed as it ran out of System RAM so this checks out.</p>
+<p>Finally, let’s say the time it takes to index documents doubles when the number of documents doubles from 2M onwards. 47 min x 2^2.66 = 300 minutes or 5 hours. At about $1/hr, this would take $5 on an RTX6000Ada.</p>
+<p>I should note that in all my experiments, the GPU vRAM usage didn’t go past 3-4 GB.</p>
+<p>While the peak CPU RAM usage varied, in all instances the plots looked like the following (2M documents on RTX6000Ada):</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="RTX6000/2M.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="System RAM Usage over Indexing Time"><img src="https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/RTX6000/2M.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">System RAM Usage over Indexing Time</figcaption><p></p>
+</figure>
+</div>
+<p>I couldn’t figure out from my profiler the exact function call during that largest spike. Also note the spike near the end before indexing is finished.</p>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>Time will tell if these calculations are worth anything, but it seems like my best option is to use Jarvis Labs’ RTX6000Ada machine with 128GB CPU RAM. Once I successfully index the 12.6M-document <em>Genomics</em> dataset, I’ll have a better estimate for how much it will cost to index the largest dataset in the DAPR collection: MIRACL (32.9M documents). Stay tuned!</p>
+
+
+</section>
+
+ ]]></description>
+  <category>python</category>
+  <category>information retrieval</category>
+  <category>deep learning</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/index.html</guid>
+  <pubDate>Sat, 08 Feb 2025 08:00:00 GMT</pubDate>
+  <media:content url="https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/RTX6000/2M.png" medium="image" type="image/png" height="114" width="144"/>
+</item>
+<item>
   <title>DoRA’s Magnitude Vector</title>
   <dc:creator>Vishal Bakshi</dc:creator>
   <link>https://vishalbakshi.github.io/blog/posts/2025-02-01-DoRA-Magnitude-Vector/index.html</link>
@@ -25380,736 +25497,6 @@ dtype: float64</code></pre>
   <category>TinySentiment</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2024-09-12-tinysentiment-phi-3-sentiment-classification/index.html</guid>
   <pubDate>Thu, 12 Sep 2024 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>Calculating the Ratio of Gradients in an Image</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2024-09-09-typefaceclassifier-gradient-ratio/index.html</link>
-  <description><![CDATA[ 
-
-
-
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<p>In this notebook I’ll walk through an algorithm suggested by Claude to distinguish one typeface (like <code>display</code>) from another (like <code>serif</code>) in which we calculate the magnitude of how much the pixel’s intensity changes in the vertical and horizontal directions of an image, relative to the pixels in the original image. I call this algorithm “gradient ratio.</p>
-<p>This algorithm is part of my exploration of non-ML baselines to classify text images into various typeface categories (e.g., “humanist sans,” “grotesque sans,” “script,” “display,” etc.). Once the non-ML baseline is established, I’ll train a neural network for this task. This is one of many notebooks in my <a href="https://vishalbakshi.github.io/blog/#category=TypefaceClassifier">TypefaceClassifier project series</a>.</p>
-<div class="cell" data-execution_count="48">
-<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im" style="color: #00769E;">import</span> cv2</span>
-<span id="cb1-2"><span class="im" style="color: #00769E;">import</span> numpy <span class="im" style="color: #00769E;">as</span> np</span>
-<span id="cb1-3"><span class="im" style="color: #00769E;">import</span> pandas <span class="im" style="color: #00769E;">as</span> pd</span>
-<span id="cb1-4"><span class="im" style="color: #00769E;">from</span> google.colab.patches <span class="im" style="color: #00769E;">import</span> cv2_imshow</span></code></pre></div>
-</div>
-</section>
-<section id="load-image-and-binarize-it" class="level2">
-<h2 class="anchored" data-anchor-id="load-image-and-binarize-it">Load Image and Binarize It</h2>
-<p>As usual, we load the image and binarize it so it’s easier to distinguish between background (black pixels) and text (white pixels).</p>
-<div class="cell" data-outputid="976e733d-f489-4da0-b140-a8d6d1e827e2" data-execution_count="49">
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">path <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">'serif-76px.png'</span></span>
-<span id="cb2-2">img <span class="op" style="color: #5E5E5E;">=</span> cv2.imread(path, cv2.IMREAD_GRAYSCALE)</span>
-<span id="cb2-3">_, binary <span class="op" style="color: #5E5E5E;">=</span> cv2.threshold(img, <span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">255</span>, cv2.THRESH_BINARY_INV <span class="op" style="color: #5E5E5E;">+</span> cv2.THRESH_OTSU)</span>
-<span id="cb2-4">binary</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="49">
-<style>
-      .ndarray_repr .ndarray_raw_data {
-        display: none;
-      }
-      .ndarray_repr.show_array .ndarray_raw_data {
-        display: block;
-      }
-      .ndarray_repr.show_array .ndarray_image_preview {
-        display: none;
-      }
-      </style>
-      <div id="id-5dbea973-0626-4a89-98ce-c6b0429917b8" class="ndarray_repr"><pre>ndarray (512, 512) <button style="padding: 0 2px;">show data</button></pre><img src="https://vishalbakshi.github.io/blog/posts/2024-09-09-typefaceclassifier-gradient-ratio/data:image/png;base64,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" class="ndarray_image_preview"><pre class="ndarray_raw_data">array([[0, 0, 0, ..., 0, 0, 0],
-       [0, 0, 0, ..., 0, 0, 0],
-       [0, 0, 0, ..., 0, 0, 0],
-       ...,
-       [0, 0, 0, ..., 0, 0, 0],
-       [0, 0, 0, ..., 0, 0, 0],
-       [0, 0, 0, ..., 0, 0, 0]], dtype=uint8)</pre></div><script>
-      (() => {
-      const titles = ['show data', 'hide data'];
-      let index = 0
-      document.querySelector('#id-5dbea973-0626-4a89-98ce-c6b0429917b8 button').onclick = (e) => {
-        document.querySelector('#id-5dbea973-0626-4a89-98ce-c6b0429917b8').classList.toggle('show_array');
-        index = (++index) % 2;
-        document.querySelector('#id-5dbea973-0626-4a89-98ce-c6b0429917b8 button').textContent = titles[index];
-        e.preventDefault();
-        e.stopPropagation();
-      }
-      })();
-    </script>
-</div>
-</div>
-</section>
-<section id="calculate-the-vertical-and-horizontal-gradient-ratios" class="level2">
-<h2 class="anchored" data-anchor-id="calculate-the-vertical-and-horizontal-gradient-ratios">Calculate the Vertical and Horizontal Gradient Ratios</h2>
-<p>I’ll then calculate the horizontal (x) and vertical (y) gradients using <code>cv2.Sobel</code>. From the OpenCV docs:</p>
-<blockquote class="blockquote">
-<p>The Sobel Operator is a discrete differentiation operator. It computes an approximation of the gradient of an image intensity function.</p>
-</blockquote>
-<p>To calculate horizontal gradients, when the kernel size is <code>3</code>, we apply a convolution between the following kernel and the image:</p>
-<img src="https://latex.codecogs.com/png.latex?%5Cbegin%7Bbmatrix%7D%20-1%20&amp;%200%20&amp;%20+1%20%5C%5C%20-2%20&amp;%200%20&amp;%20+2%20%5C%5C%20-1%20&amp;%200%20&amp;%20+1%20%5Cend%7Bbmatrix%7D">
-<p>For vertical gradients, when the kernel size is <code>3</code>, the we apply a convolution between the following kernel and the image:</p>
-<img src="https://latex.codecogs.com/png.latex?%5Cbegin%7Bbmatrix%7D%20-1%20&amp;%20-2%20&amp;%20-1%20%5C%5C%200%20&amp;%200%20&amp;%200%20%5C%5C%20+1%20&amp;%20+2%20&amp;%20+1%20%5Cend%7Bbmatrix%7D">
-<p>I initially tried a kernel size of 3, but it didn’t seem to work well for smaller font sizes so I chose a kernel size of 1. In that case, the kernels are as follows:</p>
-<p>horizontal gradients:</p>
-<img src="https://latex.codecogs.com/png.latex?%5Cbegin%7Bbmatrix%7D%20+1%20,%20-1%20%5Cend%7Bbmatrix%7D">
-<p>vertical gradients:</p>
-<img src="https://latex.codecogs.com/png.latex?%5Cbegin%7Bbmatrix%7D%20+1%20%5C%5C%20-1%20%5Cend%7Bbmatrix%7D">
-<div class="cell" data-execution_count="58">
-<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1">gradient_x <span class="op" style="color: #5E5E5E;">=</span> cv2.Sobel(binary, cv2.CV_64F, <span class="dv" style="color: #AD0000;">1</span>, <span class="dv" style="color: #AD0000;">0</span>, ksize<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>)</span>
-<span id="cb3-2">gradient_y <span class="op" style="color: #5E5E5E;">=</span> cv2.Sobel(binary, cv2.CV_64F, <span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">1</span>, ksize<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>)</span></code></pre></div>
-</div>
-<div class="cell" data-outputid="d512482f-e140-44bd-9821-e171963d506e" data-execution_count="59">
-<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1">cv2_imshow(gradient_x)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-5-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-09-typefaceclassifier-gradient-ratio/index_files/figure-html/cell-5-output-1.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<div class="cell" data-outputid="df447956-cfbf-4488-aba8-d85e55582efe" data-execution_count="60">
-<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1">cv2_imshow(gradient_y)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-6-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-09-typefaceclassifier-gradient-ratio/index_files/figure-html/cell-6-output-1.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<p>Next I take the sum of non-zero pixels in each gradient and divide it by the sum of non-zero pixels in the original image.</p>
-<div class="cell" data-outputid="96a51263-5149-4749-c529-2ff53556b46a" data-execution_count="61">
-<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1">gradient_x <span class="op" style="color: #5E5E5E;">=</span> np.<span class="bu" style="color: null;">sum</span>(gradient_x <span class="op" style="color: #5E5E5E;">&gt;</span> <span class="dv" style="color: #AD0000;">0</span>)</span>
-<span id="cb6-2">gradient_y <span class="op" style="color: #5E5E5E;">=</span> np.<span class="bu" style="color: null;">sum</span>(gradient_y  <span class="op" style="color: #5E5E5E;">&gt;</span> <span class="dv" style="color: #AD0000;">0</span>)</span>
-<span id="cb6-3">total_pixels <span class="op" style="color: #5E5E5E;">=</span> np.<span class="bu" style="color: null;">sum</span>(binary <span class="op" style="color: #5E5E5E;">&gt;</span> <span class="dv" style="color: #AD0000;">0</span>)</span>
-<span id="cb6-4"></span>
-<span id="cb6-5">avg_gradient_x <span class="op" style="color: #5E5E5E;">=</span> gradient_x <span class="op" style="color: #5E5E5E;">/</span> total_pixels</span>
-<span id="cb6-6">avg_gradient_y <span class="op" style="color: #5E5E5E;">=</span> gradient_y <span class="op" style="color: #5E5E5E;">/</span> total_pixels</span>
-<span id="cb6-7"></span>
-<span id="cb6-8">avg_gradient_x, avg_gradient_y</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="61">
-<pre><code>(0.23421579532814238, 0.19083426028921024)</code></pre>
-</div>
-</div>
-<p>The average gradient ratio is the mean value of these two gradients.</p>
-<div class="cell" data-outputid="6f58dfcb-fba7-4cad-8090-6443155b5e42" data-execution_count="62">
-<div class="sourceCode cell-code" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1">np.mean([avg_gradient_x, avg_gradient_y])</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="62">
-<pre><code>0.21252502780867633</code></pre>
-</div>
-</div>
-</section>
-<section id="calculating-the-average-gradient-ratio-for-different-images" class="level2">
-<h2 class="anchored" data-anchor-id="calculating-the-average-gradient-ratio-for-different-images">Calculating the Average Gradient Ratio for Different Images</h2>
-<p>I’ll now wrap the code above into a function and apply it to a wide variety of images (of two typefaces, <code>display</code> and <code>serif</code> and 8 different font sizes).</p>
-<div class="cell" data-execution_count="63">
-<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><span class="kw" style="color: #003B4F;">def</span> gradient_ratio(image_path):</span>
-<span id="cb10-2">    img <span class="op" style="color: #5E5E5E;">=</span> cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)</span>
-<span id="cb10-3">    _, binary <span class="op" style="color: #5E5E5E;">=</span> cv2.threshold(img, <span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">255</span>, cv2.THRESH_BINARY_INV <span class="op" style="color: #5E5E5E;">+</span> cv2.THRESH_OTSU)</span>
-<span id="cb10-4"></span>
-<span id="cb10-5">    gradient_x <span class="op" style="color: #5E5E5E;">=</span> np.<span class="bu" style="color: null;">sum</span>(cv2.Sobel(binary, cv2.CV_64F, <span class="dv" style="color: #AD0000;">1</span>, <span class="dv" style="color: #AD0000;">0</span>, ksize<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>) <span class="op" style="color: #5E5E5E;">&gt;</span> <span class="dv" style="color: #AD0000;">0</span>)</span>
-<span id="cb10-6">    gradient_y <span class="op" style="color: #5E5E5E;">=</span> np.<span class="bu" style="color: null;">sum</span>(cv2.Sobel(binary, cv2.CV_64F, <span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">1</span>, ksize<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>) <span class="op" style="color: #5E5E5E;">&gt;</span> <span class="dv" style="color: #AD0000;">0</span>)</span>
-<span id="cb10-7">    total_pixels <span class="op" style="color: #5E5E5E;">=</span> np.<span class="bu" style="color: null;">sum</span>(binary <span class="op" style="color: #5E5E5E;">&gt;</span> <span class="dv" style="color: #AD0000;">0</span>)</span>
-<span id="cb10-8"></span>
-<span id="cb10-9">    avg_gradient_x <span class="op" style="color: #5E5E5E;">=</span> gradient_x <span class="op" style="color: #5E5E5E;">/</span> total_pixels</span>
-<span id="cb10-10">    avg_gradient_y <span class="op" style="color: #5E5E5E;">=</span> gradient_y <span class="op" style="color: #5E5E5E;">/</span> total_pixels</span>
-<span id="cb10-11"></span>
-<span id="cb10-12">    <span class="cf" style="color: #003B4F;">return</span> np.mean([avg_gradient_x, avg_gradient_y])</span></code></pre></div>
-</div>
-<p>Across 8 font sizes for the two typefaces, the gradient ratio is larger for the <code>serif</code> font. This makes intuitive sense—serif fonts have more changes in pixel intensity (caused by the transition from thicker stroke to thinner serif).</p>
-<div class="cell" data-outputid="10ac99d0-a99e-43de-c2dd-be52a405e46b" data-execution_count="64">
-<div class="sourceCode cell-code" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1">szs <span class="op" style="color: #5E5E5E;">=</span> [<span class="dv" style="color: #AD0000;">8</span>, <span class="dv" style="color: #AD0000;">18</span>, <span class="dv" style="color: #AD0000;">24</span>, <span class="dv" style="color: #AD0000;">36</span>, <span class="dv" style="color: #AD0000;">76</span>, <span class="dv" style="color: #AD0000;">240</span>, <span class="dv" style="color: #AD0000;">330</span>, <span class="dv" style="color: #AD0000;">420</span>]</span>
-<span id="cb11-2">ts <span class="op" style="color: #5E5E5E;">=</span> [<span class="st" style="color: #20794D;">'display'</span>, <span class="st" style="color: #20794D;">'serif'</span>]</span>
-<span id="cb11-3">res <span class="op" style="color: #5E5E5E;">=</span> []</span>
-<span id="cb11-4"></span>
-<span id="cb11-5"><span class="cf" style="color: #003B4F;">for</span> t <span class="kw" style="color: #003B4F;">in</span> ts:</span>
-<span id="cb11-6">    <span class="cf" style="color: #003B4F;">for</span> sz <span class="kw" style="color: #003B4F;">in</span> szs:</span>
-<span id="cb11-7">        image_path <span class="op" style="color: #5E5E5E;">=</span> <span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>t<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">-</span><span class="sc" style="color: #5E5E5E;">{</span>sz<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">px.png"</span></span>
-<span id="cb11-8">        sr <span class="op" style="color: #5E5E5E;">=</span> gradient_ratio(image_path)</span>
-<span id="cb11-9">        res.append([t, sz, sr])</span>
-<span id="cb11-10"></span>
-<span id="cb11-11">res <span class="op" style="color: #5E5E5E;">=</span> pd.DataFrame(res, columns<span class="op" style="color: #5E5E5E;">=</span>[<span class="st" style="color: #20794D;">'typeface'</span>, <span class="st" style="color: #20794D;">'font-size'</span>, <span class="st" style="color: #20794D;">'gradient-ratio'</span>])</span>
-<span id="cb11-12">res.groupby(<span class="st" style="color: #20794D;">'typeface'</span>)[<span class="st" style="color: #20794D;">'gradient-ratio'</span>].agg([<span class="st" style="color: #20794D;">'mean'</span>, <span class="st" style="color: #20794D;">'median'</span>])</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="64">
-
-
-  <div id="df-342633ea-c382-4277-a3b1-c7a7f0391479" class="colab-df-container">
-    <div>
-
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>mean</th>
-      <th>median</th>
-    </tr>
-    <tr>
-      <th>typeface</th>
-      <th></th>
-      <th></th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>display</th>
-      <td>0.226542</td>
-      <td>0.199495</td>
-    </tr>
-    <tr>
-      <th>serif</th>
-      <td>0.292406</td>
-      <td>0.297558</td>
-    </tr>
-  </tbody>
-</table>
-</div>
-    <div class="colab-df-buttons">
-
-  <div class="colab-df-container">
-    <button class="colab-df-convert" onclick="convertToInteractive('df-342633ea-c382-4277-a3b1-c7a7f0391479')" title="Convert this dataframe to an interactive table." style="display:none;">
-
-  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
-    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
-  </svg>
-    </button>
-
-  <style>
-    .colab-df-container {
-      display:flex;
-      gap: 12px;
-    }
-
-    .colab-df-convert {
-      background-color: #E8F0FE;
-      border: none;
-      border-radius: 50%;
-      cursor: pointer;
-      display: none;
-      fill: #1967D2;
-      height: 32px;
-      padding: 0 0 0 0;
-      width: 32px;
-    }
-
-    .colab-df-convert:hover {
-      background-color: #E2EBFA;
-      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
-      fill: #174EA6;
-    }
-
-    .colab-df-buttons div {
-      margin-bottom: 4px;
-    }
-
-    [theme=dark] .colab-df-convert {
-      background-color: #3B4455;
-      fill: #D2E3FC;
-    }
-
-    [theme=dark] .colab-df-convert:hover {
-      background-color: #434B5C;
-      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
-      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
-      fill: #FFFFFF;
-    }
-  </style>
-
-    <script>
-      const buttonEl =
-        document.querySelector('#df-342633ea-c382-4277-a3b1-c7a7f0391479 button.colab-df-convert');
-      buttonEl.style.display =
-        google.colab.kernel.accessAllowed ? 'block' : 'none';
-
-      async function convertToInteractive(key) {
-        const element = document.querySelector('#df-342633ea-c382-4277-a3b1-c7a7f0391479');
-        const dataTable =
-          await google.colab.kernel.invokeFunction('convertToInteractive',
-                                                    [key], {});
-        if (!dataTable) return;
-
-        const docLinkHtml = 'Like what you see? Visit the ' +
-          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
-          + ' to learn more about interactive tables.';
-        element.innerHTML = '';
-        dataTable['output_type'] = 'display_data';
-        await google.colab.output.renderOutput(dataTable, element);
-        const docLink = document.createElement('div');
-        docLink.innerHTML = docLinkHtml;
-        element.appendChild(docLink);
-      }
-    </script>
-  </div>
-
-
-<div id="df-65339f53-4baf-476d-b88f-2295b62e976c">
-  <button class="colab-df-quickchart" onclick="quickchart('df-65339f53-4baf-476d-b88f-2295b62e976c')" title="Suggest charts" style="display:none;">
-
-<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
-    <g>
-        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
-    </g>
-</svg>
-  </button>
-
-<style>
-  .colab-df-quickchart {
-      --bg-color: #E8F0FE;
-      --fill-color: #1967D2;
-      --hover-bg-color: #E2EBFA;
-      --hover-fill-color: #174EA6;
-      --disabled-fill-color: #AAA;
-      --disabled-bg-color: #DDD;
-  }
-
-  [theme=dark] .colab-df-quickchart {
-      --bg-color: #3B4455;
-      --fill-color: #D2E3FC;
-      --hover-bg-color: #434B5C;
-      --hover-fill-color: #FFFFFF;
-      --disabled-bg-color: #3B4455;
-      --disabled-fill-color: #666;
-  }
-
-  .colab-df-quickchart {
-    background-color: var(--bg-color);
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
-    display: none;
-    fill: var(--fill-color);
-    height: 32px;
-    padding: 0;
-    width: 32px;
-  }
-
-  .colab-df-quickchart:hover {
-    background-color: var(--hover-bg-color);
-    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
-    fill: var(--button-hover-fill-color);
-  }
-
-  .colab-df-quickchart-complete:disabled,
-  .colab-df-quickchart-complete:disabled:hover {
-    background-color: var(--disabled-bg-color);
-    fill: var(--disabled-fill-color);
-    box-shadow: none;
-  }
-
-  .colab-df-spinner {
-    border: 2px solid var(--fill-color);
-    border-color: transparent;
-    border-bottom-color: var(--fill-color);
-    animation:
-      spin 1s steps(1) infinite;
-  }
-
-  @keyframes spin {
-    0% {
-      border-color: transparent;
-      border-bottom-color: var(--fill-color);
-      border-left-color: var(--fill-color);
-    }
-    20% {
-      border-color: transparent;
-      border-left-color: var(--fill-color);
-      border-top-color: var(--fill-color);
-    }
-    30% {
-      border-color: transparent;
-      border-left-color: var(--fill-color);
-      border-top-color: var(--fill-color);
-      border-right-color: var(--fill-color);
-    }
-    40% {
-      border-color: transparent;
-      border-right-color: var(--fill-color);
-      border-top-color: var(--fill-color);
-    }
-    60% {
-      border-color: transparent;
-      border-right-color: var(--fill-color);
-    }
-    80% {
-      border-color: transparent;
-      border-right-color: var(--fill-color);
-      border-bottom-color: var(--fill-color);
-    }
-    90% {
-      border-color: transparent;
-      border-bottom-color: var(--fill-color);
-    }
-  }
-</style>
-
-  <script>
-    async function quickchart(key) {
-      const quickchartButtonEl =
-        document.querySelector('#' + key + ' button');
-      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
-      quickchartButtonEl.classList.add('colab-df-spinner');
-      try {
-        const charts = await google.colab.kernel.invokeFunction(
-            'suggestCharts', [key], {});
-      } catch (error) {
-        console.error('Error during call to suggestCharts:', error);
-      }
-      quickchartButtonEl.classList.remove('colab-df-spinner');
-      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
-    }
-    (() => {
-      let quickchartButtonEl =
-        document.querySelector('#df-65339f53-4baf-476d-b88f-2295b62e976c button');
-      quickchartButtonEl.style.display =
-        google.colab.kernel.accessAllowed ? 'block' : 'none';
-    })();
-  </script>
-</div>
-
-    </div>
-  </div>
-</div>
-</div>
-<p>For all font sizes, this trend is consistent: images with the <code>serif</code> font have higher gradient ratios than images with the sans serif <code>display</code> font. Again, this makes sense to me—sans serif fonts have more consistent strokes than serif fonts.</p>
-<div class="cell" data-outputid="7b282042-ad8a-4d64-cace-6485712e693d" data-execution_count="65">
-<div class="sourceCode cell-code" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1">res.sort_values(by<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'font-size'</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="65">
-
-
-  <div id="df-bd74a66b-84a3-4fdb-ba97-8f4ca778bf0f" class="colab-df-container">
-    <div>
-
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>typeface</th>
-      <th>font-size</th>
-      <th>gradient-ratio</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>display</td>
-      <td>8</td>
-      <td>0.476396</td>
-    </tr>
-    <tr>
-      <th>8</th>
-      <td>serif</td>
-      <td>8</td>
-      <td>0.482780</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>display</td>
-      <td>18</td>
-      <td>0.453141</td>
-    </tr>
-    <tr>
-      <th>9</th>
-      <td>serif</td>
-      <td>18</td>
-      <td>0.581517</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>display</td>
-      <td>24</td>
-      <td>0.381917</td>
-    </tr>
-    <tr>
-      <th>10</th>
-      <td>serif</td>
-      <td>24</td>
-      <td>0.500400</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>display</td>
-      <td>36</td>
-      <td>0.264844</td>
-    </tr>
-    <tr>
-      <th>11</th>
-      <td>serif</td>
-      <td>36</td>
-      <td>0.382591</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>display</td>
-      <td>76</td>
-      <td>0.134145</td>
-    </tr>
-    <tr>
-      <th>12</th>
-      <td>serif</td>
-      <td>76</td>
-      <td>0.212525</td>
-    </tr>
-    <tr>
-      <th>5</th>
-      <td>display</td>
-      <td>240</td>
-      <td>0.042527</td>
-    </tr>
-    <tr>
-      <th>13</th>
-      <td>serif</td>
-      <td>240</td>
-      <td>0.077130</td>
-    </tr>
-    <tr>
-      <th>6</th>
-      <td>display</td>
-      <td>330</td>
-      <td>0.033067</td>
-    </tr>
-    <tr>
-      <th>14</th>
-      <td>serif</td>
-      <td>330</td>
-      <td>0.057649</td>
-    </tr>
-    <tr>
-      <th>7</th>
-      <td>display</td>
-      <td>420</td>
-      <td>0.026298</td>
-    </tr>
-    <tr>
-      <th>15</th>
-      <td>serif</td>
-      <td>420</td>
-      <td>0.044654</td>
-    </tr>
-  </tbody>
-</table>
-</div>
-    <div class="colab-df-buttons">
-
-  <div class="colab-df-container">
-    <button class="colab-df-convert" onclick="convertToInteractive('df-bd74a66b-84a3-4fdb-ba97-8f4ca778bf0f')" title="Convert this dataframe to an interactive table." style="display:none;">
-
-  <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 -960 960 960">
-    <path d="M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z"></path>
-  </svg>
-    </button>
-
-  <style>
-    .colab-df-container {
-      display:flex;
-      gap: 12px;
-    }
-
-    .colab-df-convert {
-      background-color: #E8F0FE;
-      border: none;
-      border-radius: 50%;
-      cursor: pointer;
-      display: none;
-      fill: #1967D2;
-      height: 32px;
-      padding: 0 0 0 0;
-      width: 32px;
-    }
-
-    .colab-df-convert:hover {
-      background-color: #E2EBFA;
-      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
-      fill: #174EA6;
-    }
-
-    .colab-df-buttons div {
-      margin-bottom: 4px;
-    }
-
-    [theme=dark] .colab-df-convert {
-      background-color: #3B4455;
-      fill: #D2E3FC;
-    }
-
-    [theme=dark] .colab-df-convert:hover {
-      background-color: #434B5C;
-      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
-      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
-      fill: #FFFFFF;
-    }
-  </style>
-
-    <script>
-      const buttonEl =
-        document.querySelector('#df-bd74a66b-84a3-4fdb-ba97-8f4ca778bf0f button.colab-df-convert');
-      buttonEl.style.display =
-        google.colab.kernel.accessAllowed ? 'block' : 'none';
-
-      async function convertToInteractive(key) {
-        const element = document.querySelector('#df-bd74a66b-84a3-4fdb-ba97-8f4ca778bf0f');
-        const dataTable =
-          await google.colab.kernel.invokeFunction('convertToInteractive',
-                                                    [key], {});
-        if (!dataTable) return;
-
-        const docLinkHtml = 'Like what you see? Visit the ' +
-          '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
-          + ' to learn more about interactive tables.';
-        element.innerHTML = '';
-        dataTable['output_type'] = 'display_data';
-        await google.colab.output.renderOutput(dataTable, element);
-        const docLink = document.createElement('div');
-        docLink.innerHTML = docLinkHtml;
-        element.appendChild(docLink);
-      }
-    </script>
-  </div>
-
-
-<div id="df-fa630c72-a95b-46ef-a9ad-c14822917ff5">
-  <button class="colab-df-quickchart" onclick="quickchart('df-fa630c72-a95b-46ef-a9ad-c14822917ff5')" title="Suggest charts" style="display:none;">
-
-<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewbox="0 0 24 24" width="24px">
-    <g>
-        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
-    </g>
-</svg>
-  </button>
-
-<style>
-  .colab-df-quickchart {
-      --bg-color: #E8F0FE;
-      --fill-color: #1967D2;
-      --hover-bg-color: #E2EBFA;
-      --hover-fill-color: #174EA6;
-      --disabled-fill-color: #AAA;
-      --disabled-bg-color: #DDD;
-  }
-
-  [theme=dark] .colab-df-quickchart {
-      --bg-color: #3B4455;
-      --fill-color: #D2E3FC;
-      --hover-bg-color: #434B5C;
-      --hover-fill-color: #FFFFFF;
-      --disabled-bg-color: #3B4455;
-      --disabled-fill-color: #666;
-  }
-
-  .colab-df-quickchart {
-    background-color: var(--bg-color);
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
-    display: none;
-    fill: var(--fill-color);
-    height: 32px;
-    padding: 0;
-    width: 32px;
-  }
-
-  .colab-df-quickchart:hover {
-    background-color: var(--hover-bg-color);
-    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
-    fill: var(--button-hover-fill-color);
-  }
-
-  .colab-df-quickchart-complete:disabled,
-  .colab-df-quickchart-complete:disabled:hover {
-    background-color: var(--disabled-bg-color);
-    fill: var(--disabled-fill-color);
-    box-shadow: none;
-  }
-
-  .colab-df-spinner {
-    border: 2px solid var(--fill-color);
-    border-color: transparent;
-    border-bottom-color: var(--fill-color);
-    animation:
-      spin 1s steps(1) infinite;
-  }
-
-  @keyframes spin {
-    0% {
-      border-color: transparent;
-      border-bottom-color: var(--fill-color);
-      border-left-color: var(--fill-color);
-    }
-    20% {
-      border-color: transparent;
-      border-left-color: var(--fill-color);
-      border-top-color: var(--fill-color);
-    }
-    30% {
-      border-color: transparent;
-      border-left-color: var(--fill-color);
-      border-top-color: var(--fill-color);
-      border-right-color: var(--fill-color);
-    }
-    40% {
-      border-color: transparent;
-      border-right-color: var(--fill-color);
-      border-top-color: var(--fill-color);
-    }
-    60% {
-      border-color: transparent;
-      border-right-color: var(--fill-color);
-    }
-    80% {
-      border-color: transparent;
-      border-right-color: var(--fill-color);
-      border-bottom-color: var(--fill-color);
-    }
-    90% {
-      border-color: transparent;
-      border-bottom-color: var(--fill-color);
-    }
-  }
-</style>
-
-  <script>
-    async function quickchart(key) {
-      const quickchartButtonEl =
-        document.querySelector('#' + key + ' button');
-      quickchartButtonEl.disabled = true;  // To prevent multiple clicks.
-      quickchartButtonEl.classList.add('colab-df-spinner');
-      try {
-        const charts = await google.colab.kernel.invokeFunction(
-            'suggestCharts', [key], {});
-      } catch (error) {
-        console.error('Error during call to suggestCharts:', error);
-      }
-      quickchartButtonEl.classList.remove('colab-df-spinner');
-      quickchartButtonEl.classList.add('colab-df-quickchart-complete');
-    }
-    (() => {
-      let quickchartButtonEl =
-        document.querySelector('#df-fa630c72-a95b-46ef-a9ad-c14822917ff5 button');
-      quickchartButtonEl.style.display =
-        google.colab.kernel.accessAllowed ? 'block' : 'none';
-    })();
-  </script>
-</div>
-
-    </div>
-  </div>
-</div>
-</div>
-<p>Similar to the <a href="https://vishalbakshi.github.io/blog/posts/2024-09-06-typefaceclassifier-contour-ratio/">contour ratio algorithm</a> there is a clear and consistent difference in value between serif and sans serif fonts for this gradient ratio algorithm, making this a good candidate for distinguishing between typefaces.</p>
-<p>This is also another relatively simple algorithm, and each step can be easily visualized.</p>
-<p>I hope you enjoyed this blog post! Follow me on Twitter <a href="https://twitter.com/vishal_learner"><span class="citation" data-cites="vishal_learner">@vishal_learner</span></a>.</p>
-
-
-</section>
-
- ]]></description>
-  <category>python</category>
-  <category>computer vision</category>
-  <category>TypefaceClassifier</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2024-09-09-typefaceclassifier-gradient-ratio/index.html</guid>
-  <pubDate>Mon, 09 Sep 2024 07:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
