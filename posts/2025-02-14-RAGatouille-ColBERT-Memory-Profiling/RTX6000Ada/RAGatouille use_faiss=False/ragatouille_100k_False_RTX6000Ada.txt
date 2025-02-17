@@ -1,0 +1,492 @@
+100000
+Filename: /home/RAGatouille/ragatouille/RAGPretrainedModel.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   201   1566.4 MiB   1566.4 MiB           1           @profile
+   202                                                 def _process_corpus_profiled(*args, **kwargs):
+   203   1750.9 MiB    184.5 MiB           1               return self._process_corpus(*args, **kwargs)
+
+
+Filename: /home/RAGatouille/ragatouille/models/index.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   131   1750.9 MiB   1750.9 MiB           1       @profile
+   132                                             def __init__(self, config: ColBERTConfig) -> None:
+   133   1750.9 MiB      0.0 MiB           1           super().__init__(config)
+   134   1750.9 MiB      0.0 MiB           1           self.searcher: Optional[Searcher] = None
+
+
+
+
+[Feb 16, 20:35:28] #> Note: Output directory .ragatouille/colbert/indexes/Genomics_index already exists
+
+
+[Feb 16, 20:35:28] #> Will delete 222 files already at .ragatouille/colbert/indexes/Genomics_index in 20 seconds...
+Filename: /home/ragatouille-env/lib/python3.10/site-packages/colbert/indexing/collection_indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   102   1751.0 MiB   1751.0 MiB           1           @profile
+   103                                                 def _sample_pids_profiled():
+   104   1751.0 MiB      0.0 MiB           1               return self._sample_pids()
+
+
+[Feb 16, 20:36:49] [0] 		 #> Encoding 62843 passages..
+Filename: /home/ragatouille-env/lib/python3.10/site-packages/colbert/indexing/collection_indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   146   1751.0 MiB   1751.0 MiB           1           @profile
+   147                                                 def _encode_passages_profiled(*args, **kwargs):
+   148   3436.6 MiB   1685.6 MiB           1               return self.encoder.encode_passages(*args, **kwargs)
+
+
+[Feb 16, 20:42:16] [0] 		 avg_doclen_est = 90.57201385498047 	 len(local_sample) = 62,843
+Filename: /home/ragatouille-env/lib/python3.10/site-packages/colbert/indexing/collection_indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   144   1751.0 MiB   1751.0 MiB           1       @profile
+   145                                             def _sample_embeddings(self, sampled_pids):
+   146   1751.0 MiB      0.0 MiB           2           @profile
+   147   1751.0 MiB      0.0 MiB           1           def _encode_passages_profiled(*args, **kwargs):
+   148   3436.6 MiB   1685.6 MiB           1               return self.encoder.encode_passages(*args, **kwargs)
+   149                                                     
+   150   1751.0 MiB      0.0 MiB           1           local_pids = self.collection.enumerate(rank=self.rank)
+   151   1751.0 MiB      0.0 MiB      128556           local_sample = [passage for pid, passage in local_pids if pid in sampled_pids]
+   152                                         
+   153   3436.6 MiB      0.0 MiB           1           local_sample_embs, doclens = _encode_passages_profiled(local_sample)
+   154                                         
+   155   3436.6 MiB      0.0 MiB           1           if torch.cuda.is_available():
+   156   3436.6 MiB      0.0 MiB           1               if torch.distributed.is_available() and torch.distributed.is_initialized():
+   157                                                         self.num_sample_embs = torch.tensor([local_sample_embs.size(0)]).cuda()
+   158                                                         torch.distributed.all_reduce(self.num_sample_embs)
+   159                                         
+   160                                                         avg_doclen_est = sum(doclens) / len(doclens) if doclens else 0
+   161                                                         avg_doclen_est = torch.tensor([avg_doclen_est]).cuda()
+   162                                                         torch.distributed.all_reduce(avg_doclen_est)
+   163                                         
+   164                                                         nonzero_ranks = torch.tensor([float(len(local_sample) > 0)]).cuda()
+   165                                                         torch.distributed.all_reduce(nonzero_ranks)
+   166                                                     else:
+   167   3436.6 MiB      0.0 MiB           1                   self.num_sample_embs = torch.tensor([local_sample_embs.size(0)]).cuda()
+   168                                         
+   169   3436.6 MiB      0.0 MiB           1                   avg_doclen_est = sum(doclens) / len(doclens) if doclens else 0
+   170   3436.6 MiB      0.0 MiB           1                   avg_doclen_est = torch.tensor([avg_doclen_est]).cuda()
+   171                                         
+   172   3436.6 MiB      0.0 MiB           1                   nonzero_ranks = torch.tensor([float(len(local_sample) > 0)]).cuda()
+   173                                                 else:
+   174                                                     if torch.distributed.is_available() and torch.distributed.is_initialized():
+   175                                                         self.num_sample_embs = torch.tensor([local_sample_embs.size(0)]).cpu()
+   176                                                         torch.distributed.all_reduce(self.num_sample_embs)
+   177                                         
+   178                                                         avg_doclen_est = sum(doclens) / len(doclens) if doclens else 0
+   179                                                         avg_doclen_est = torch.tensor([avg_doclen_est]).cpu()
+   180                                                         torch.distributed.all_reduce(avg_doclen_est)
+   181                                         
+   182                                                         nonzero_ranks = torch.tensor([float(len(local_sample) > 0)]).cpu()
+   183                                                         torch.distributed.all_reduce(nonzero_ranks)
+   184                                                     else:
+   185                                                         self.num_sample_embs = torch.tensor([local_sample_embs.size(0)]).cpu()
+   186                                         
+   187                                                         avg_doclen_est = sum(doclens) / len(doclens) if doclens else 0
+   188                                                         avg_doclen_est = torch.tensor([avg_doclen_est]).cpu()
+   189                                         
+   190                                                         nonzero_ranks = torch.tensor([float(len(local_sample) > 0)]).cpu()
+   191                                         
+   192   3436.6 MiB      0.0 MiB           1           avg_doclen_est = avg_doclen_est.item() / nonzero_ranks.item()
+   193   3436.6 MiB      0.0 MiB           1           self.avg_doclen_est = avg_doclen_est
+   194                                         
+   195   3436.6 MiB      0.0 MiB           1           Run().print(f'avg_doclen_est = {avg_doclen_est} \t len(local_sample) = {len(local_sample):,}')
+   196                                         
+   197   3436.6 MiB      0.0 MiB           1           torch.save(local_sample_embs.half(), os.path.join(self.config.index_path_, f'sample.{self.rank}.pt'))
+   198                                         
+   199   3436.6 MiB      0.0 MiB           1           return avg_doclen_est
+
+
+Filename: /home/ragatouille-env/lib/python3.10/site-packages/colbert/indexing/collection_indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   106   1751.0 MiB   1751.0 MiB           1           @profile
+   107                                                 def _sample_embeddings_profiled(pids):
+   108   3436.6 MiB   1685.6 MiB           1               return self._sample_embeddings(pids)
+
+
+[Feb 16, 20:42:17] [0] 		 Creating 32,768 partitions.
+[Feb 16, 20:42:17] [0] 		 *Estimated* 11,643,304 embeddings.
+[Feb 16, 20:42:17] [0] 		 #> Saving the indexing plan to .ragatouille/colbert/indexes/Genomics_index/plan.json ..
+Clustering 5641817 points in 96D to 32768 clusters, redo 1 times, 4 iterations
+  Preprocessing in 0.22 s
+  Iteration 0 (2.71 s, search 2.51 s): objective=334332 imbalance=2.247 nsplit=166         Iteration 1 (5.30 s, search 5.03 s): objective=217197 imbalance=1.903 nsplit=6         Iteration 2 (7.90 s, search 7.56 s): objective=197220 imbalance=1.835 nsplit=2         Iteration 3 (10.52 s, search 10.11 s): objective=188952 imbalance=1.807 nsplit=0       Filename: /home/ragatouille-env/lib/python3.10/site-packages/colbert/indexing/collection_indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    82   1751.0 MiB   1751.0 MiB           1       @profile
+    83                                             def setup(self):
+    84                                                 '''
+    85                                                 Calculates and saves plan.json for the whole collection.
+    86                                                 
+    87                                                 plan.json { config, num_chunks, num_partitions, num_embeddings_est, avg_doclen_est}
+    88                                                 num_partitions is the number of centroids to be generated.
+    89                                                 '''
+    90   1751.0 MiB      0.0 MiB           1           if self.config.resume:
+    91                                                     if self._try_load_plan():
+    92                                                         if self.verbose > 1:
+    93                                                             Run().print_main(f"#> Loaded plan from {self.plan_path}:")
+    94                                                             Run().print_main(f"#> num_chunks = {self.num_chunks}")
+    95                                                             Run().print_main(f"#> num_partitions = {self.num_chunks}")
+    96                                                             Run().print_main(f"#> num_embeddings_est = {self.num_embeddings_est}")
+    97                                                             Run().print_main(f"#> avg_doclen_est = {self.avg_doclen_est}")
+    98                                                         return
+    99                                         
+   100   1751.0 MiB      0.0 MiB           1           self.num_chunks = int(np.ceil(len(self.collection) / self.collection.get_chunksize()))
+   101                                                 
+   102   1751.0 MiB      0.0 MiB           2           @profile
+   103   1751.0 MiB      0.0 MiB           1           def _sample_pids_profiled():
+   104   1751.0 MiB      0.0 MiB           1               return self._sample_pids()
+   105                                             
+   106   1751.0 MiB      0.0 MiB           2           @profile
+   107   1751.0 MiB      0.0 MiB           1           def _sample_embeddings_profiled(pids):
+   108   3436.6 MiB   1685.6 MiB           1               return self._sample_embeddings(pids)
+   109                                                     
+   110                                                 # Saves sampled passages and embeddings for training k-means centroids later 
+   111   1751.0 MiB      0.0 MiB           1           sampled_pids = _sample_pids_profiled()
+   112   3436.6 MiB      0.0 MiB           1           avg_doclen_est = _sample_embeddings_profiled(sampled_pids)
+   113                                         
+   114                                                 # Select the number of partitions
+   115   3436.6 MiB      0.0 MiB           1           num_passages = len(self.collection)
+   116   3436.6 MiB      0.0 MiB           1           self.num_embeddings_est = num_passages * avg_doclen_est
+   117   3436.6 MiB      0.0 MiB           1           self.num_partitions = int(2 ** np.floor(np.log2(16 * np.sqrt(self.num_embeddings_est))))
+   118                                         
+   119   3436.6 MiB      0.0 MiB           1           if self.verbose > 0:
+   120   3436.6 MiB      0.0 MiB           1               Run().print_main(f'Creating {self.num_partitions:,} partitions.')
+   121   3436.6 MiB      0.0 MiB           1               Run().print_main(f'*Estimated* {int(self.num_embeddings_est):,} embeddings.')
+   122                                         
+   123   3436.6 MiB      0.0 MiB           1           self._save_plan()
+
+
+[Feb 16, 20:42:49] Loading decompress_residuals_cpp extension (set COLBERT_LOAD_TORCH_EXTENSION_VERBOSE=True for more info)...
+[Feb 16, 20:43:35] Loading packbits_cpp extension (set COLBERT_LOAD_TORCH_EXTENSION_VERBOSE=True for more info)...
+[0.014, 0.014, 0.013, 0.014, 0.013, 0.014, 0.014, 0.014, 0.015, 0.013, 0.013, 0.015, 0.016, 0.013, 0.014, 0.016, 0.012, 0.015, 0.013, 0.013, 0.013, 0.014, 0.015, 0.013, 0.013, 0.015, 0.014, 0.014, 0.014, 0.014, 0.014, 0.013, 0.014, 0.014, 0.014, 0.015, 0.013, 0.014, 0.014, 0.014, 0.013, 0.014, 0.014, 0.014, 0.013, 0.015, 0.015, 0.015, 0.013, 0.014, 0.015, 0.014, 0.014, 0.014, 0.013, 0.013, 0.014, 0.014, 0.014, 0.014, 0.014, 0.014, 0.014, 0.013, 0.015, 0.015, 0.016, 0.014, 0.014, 0.014, 0.015, 0.013, 0.013, 0.014, 0.014, 0.014, 0.013, 0.013, 0.014, 0.015, 0.014, 0.014, 0.014, 0.014, 0.014, 0.015, 0.013, 0.014, 0.014, 0.014, 0.014, 0.014, 0.014, 0.015, 0.014, 0.014]
+[Feb 16, 20:44:21] [0] 		 #> Encoding 25000 passages..
+[Feb 16, 20:46:06] [0] 		 #> Encoding 25000 passages..
+[Feb 16, 20:47:52] [0] 		 #> Encoding 25000 passages..
+[Feb 16, 20:49:37] [0] 		 #> Encoding 25000 passages..
+[Feb 16, 20:51:21] [0] 		 #> Encoding 25000 passages..
+[Feb 16, 20:52:57] [0] 		 #> Encoding 3553 passages..
+[Feb 16, 20:53:12] #> Optimizing IVF to store map from centroids to list of pids..
+[Feb 16, 20:53:12] #> Building the emb2pid mapping..
+[Feb 16, 20:53:15] len(emb2pid) = 11651037
+[Feb 16, 20:53:23] #> Saved optimized IVF to .ragatouille/colbert/indexes/Genomics_index/ivf.pid.pt
+Filename: /home/ragatouille-env/lib/python3.10/site-packages/colbert/indexing/collection_indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    62   1751.0 MiB   1751.0 MiB           1       @profile
+    63                                             def run(self, shared_lists):
+    64   2954.8 MiB      0.0 MiB           2           with torch.inference_mode():
+    65   3436.6 MiB   1685.6 MiB           1               self.setup() # Computes and saves plan for whole collection
+    66   3436.6 MiB      0.0 MiB           1               distributed.barrier(self.rank)
+    67   3436.6 MiB      0.0 MiB           1               print_memory_stats(f'RANK:{self.rank}')
+    68                                         
+    69   3436.6 MiB      0.0 MiB           1               if not self.config.resume or not self.saver.try_load_codec():
+    70   3612.6 MiB    175.9 MiB           1                   self.train(shared_lists) # Trains centroids from selected passages
+    71   3612.6 MiB      0.0 MiB           1               distributed.barrier(self.rank)
+    72   3612.6 MiB      0.0 MiB           1               print_memory_stats(f'RANK:{self.rank}')
+    73                                         
+    74   2960.2 MiB   -652.4 MiB           1               self.index() # Encodes and saves all tokens into residuals
+    75   2960.2 MiB      0.0 MiB           1               distributed.barrier(self.rank)
+    76   2960.2 MiB      0.0 MiB           1               print_memory_stats(f'RANK:{self.rank}')
+    77                                         
+    78   2954.8 MiB     -5.3 MiB           1               self.finalize() # Builds metadata and centroid to passage mapping
+    79   2954.8 MiB      0.0 MiB           1               distributed.barrier(self.rank)
+    80   2954.8 MiB      0.0 MiB           1               print_memory_stats(f'RANK:{self.rank}')
+
+
+Filename: /home/ragatouille-env/lib/python3.10/site-packages/colbert/indexing/collection_indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    31   1750.9 MiB   1750.9 MiB           1   @profile
+    32                                         def encode(config, collection, shared_lists, shared_queues, verbose: int = 3):
+    33   1751.0 MiB      0.1 MiB           1       encoder = CollectionIndexer(config=config, collection=collection, verbose=verbose)
+    34   2954.8 MiB   1203.9 MiB           1       encoder.run(shared_lists)
+
+
+Filename: /home/ragatouille-env/lib/python3.10/site-packages/colbert/infra/launcher.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   112   1750.9 MiB   1750.9 MiB           1       @profile
+   113                                             def _callee_profiled(*args, **kwargs):
+   114   2954.8 MiB   1203.9 MiB           1           return callee(*args, **kwargs)
+
+
+Filename: /home/ragatouille-env/lib/python3.10/site-packages/colbert/infra/launcher.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   110   1750.9 MiB   1750.9 MiB           1   @profile
+   111                                         def run_process_without_mp(callee, config, *args):
+   112   1750.9 MiB      0.0 MiB           2       @profile
+   113   1750.9 MiB      0.0 MiB           1       def _callee_profiled(*args, **kwargs):
+   114   2954.8 MiB   1203.9 MiB           1           return callee(*args, **kwargs)
+   115                                         
+   116   1750.9 MiB      0.0 MiB           1       set_seed(12345)
+   117   1750.9 MiB      0.0 MiB           1       os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, config.gpus_[:config.nranks]))
+   118                                         
+   119   2954.8 MiB      0.0 MiB           2       with Run().context(config, inherit_config=False):
+   120   2954.8 MiB      0.0 MiB           1           return_val = _callee_profiled(config, *args)
+   121   2954.8 MiB      0.0 MiB           1           torch.cuda.empty_cache()
+   122   2954.8 MiB      0.0 MiB           1           return return_val
+
+
+Filename: /home/ragatouille-env/lib/python3.10/site-packages/colbert/infra/launcher.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    94   1750.9 MiB   1750.9 MiB           1           @profile
+    95                                                 def _run_process_profiled(*args, **kwargs):
+    96   2954.8 MiB   1203.9 MiB           1               return run_process_without_mp(*args, **kwargs)
+
+
+Filename: /home/ragatouille-env/lib/python3.10/site-packages/colbert/infra/launcher.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    87   1750.9 MiB   1750.9 MiB           1       @profile
+    88                                             def launch_without_fork(self, custom_config, *args):
+    89   1750.9 MiB      0.0 MiB           1           assert isinstance(custom_config, BaseConfig)
+    90   1750.9 MiB      0.0 MiB           1           assert isinstance(custom_config, RunSettings)
+    91   1750.9 MiB      0.0 MiB           1           assert self.nranks == 1
+    92   1750.9 MiB      0.0 MiB           1           assert (custom_config.avoid_fork_if_possible or self.run_config.avoid_fork_if_possible)
+    93                                                 
+    94   1750.9 MiB      0.0 MiB           2           @profile
+    95   1750.9 MiB      0.0 MiB           1           def _run_process_profiled(*args, **kwargs):
+    96   2954.8 MiB   1203.9 MiB           1               return run_process_without_mp(*args, **kwargs)
+    97                                                     
+    98   1750.9 MiB      0.0 MiB           1           new_config = type(custom_config).from_existing(custom_config, self.run_config, RunConfig(rank=0))
+    99   2954.8 MiB      0.0 MiB           1           return_val = _run_process_profiled(self.callee, new_config, *args)
+   100                                         
+   101   2954.8 MiB      0.0 MiB           1           return return_val
+
+
+Filename: /home/ragatouille-env/lib/python3.10/site-packages/colbert/indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    85   1750.9 MiB   1750.9 MiB           1       @profile
+    86                                             def __launch(self, collection):
+    87   1750.9 MiB      0.0 MiB           1           launcher = Launcher(encode)
+    88   1750.9 MiB      0.0 MiB           1           if self.config.nranks == 1 and self.config.avoid_fork_if_possible:
+    89   1750.9 MiB      0.0 MiB           1               shared_queues = []
+    90   1750.9 MiB      0.0 MiB           1               shared_lists = []
+    91   2954.8 MiB   1203.9 MiB           1               launcher.launch_without_fork(self.config, collection, shared_lists, shared_queues, self.verbose)
+    92                                         
+    93   2954.8 MiB      0.0 MiB           1               return
+    94                                         
+    95                                                 manager = mp.Manager()
+    96                                                 shared_lists = [manager.list() for _ in range(self.config.nranks)]
+    97                                                 shared_queues = [manager.Queue(maxsize=1) for _ in range(self.config.nranks)]
+    98                                         
+    99                                                 # Encodes collection into index using the CollectionIndexer class
+   100                                                 launcher.launch(self.config, collection, shared_lists, shared_queues, self.verbose)
+
+
+Filename: /home/ragatouille-env/lib/python3.10/site-packages/colbert/indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    60   1750.9 MiB   1750.9 MiB           1       @profile
+    61                                             def index(self, name, collection, overwrite=False):
+    62   1750.9 MiB      0.0 MiB           1           assert overwrite in [True, False, 'reuse', 'resume', "force_silent_overwrite"]
+    63                                         
+    64   1750.9 MiB      0.0 MiB           1           self.configure(collection=collection, index_name=name, resume=overwrite=='resume')
+    65                                                 # Note: The bsize value set here is ignored internally. Users are encouraged
+    66                                                 # to supply their own batch size for indexing by using the index_bsize parameter in the ColBERTConfig.
+    67   1750.9 MiB      0.0 MiB           1           self.configure(bsize=64, partitions=None)
+    68                                         
+    69   1750.9 MiB      0.0 MiB           1           self.index_path = self.config.index_path_
+    70   1750.9 MiB      0.0 MiB           1           index_does_not_exist = (not os.path.exists(self.config.index_path_))
+    71                                         
+    72   1750.9 MiB      0.0 MiB           1           assert (overwrite in [True, 'reuse', 'resume', "force_silent_overwrite"]) or index_does_not_exist, self.config.index_path_
+    73   1750.9 MiB      0.0 MiB           1           create_directory(self.config.index_path_)
+    74                                         
+    75   1750.9 MiB      0.0 MiB           1           if overwrite == 'force_silent_overwrite':
+    76                                                     self.erase(force_silent=True)
+    77   1750.9 MiB      0.0 MiB           1           elif overwrite is True:
+    78   1750.9 MiB      0.0 MiB           1               self.erase()
+    79                                         
+    80   1750.9 MiB      0.0 MiB           1           if index_does_not_exist or overwrite != 'reuse':
+    81   2954.8 MiB   1203.9 MiB           1               self.__launch(collection)
+    82                                         
+    83   2954.8 MiB      0.0 MiB           1           return self.index_path
+
+
+Filename: /home/RAGatouille/ragatouille/models/index.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   198   1750.9 MiB   1750.9 MiB           1           @profile
+   199                                                 def _index_with_profiling(indexer, name, collection, overwrite):
+   200   2954.8 MiB   1203.9 MiB           1               return indexer.index(name=name, collection=collection, overwrite=overwrite)
+
+
+Filename: /home/RAGatouille/ragatouille/models/index.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   162   1750.9 MiB   1750.9 MiB           1       @profile
+   163                                             def build(
+   164                                                 self,
+   165                                                 checkpoint: Union[str, Path],
+   166                                                 collection: List[str],
+   167                                                 index_name: Optional["str"] = None,
+   168                                                 overwrite: Union[bool, str] = "reuse",
+   169                                                 verbose: bool = True,
+   170                                                 **kwargs,
+   171                                             ) -> "PLAIDModelIndex":
+   172                                                 
+   173   1750.9 MiB      0.0 MiB           1           bsize = kwargs.get("bsize", PLAIDModelIndex._DEFAULT_INDEX_BSIZE)
+   174   1750.9 MiB      0.0 MiB           1           assert isinstance(bsize, int)
+   175                                         
+   176   1750.9 MiB      0.0 MiB           1           nbits = 2
+   177   1750.9 MiB      0.0 MiB           1           if len(collection) < 10000:
+   178                                                     nbits = 4
+   179   1750.9 MiB      0.0 MiB           2           self.config = ColBERTConfig.from_existing(
+   180   1750.9 MiB      0.0 MiB           1               self.config, ColBERTConfig(nbits=nbits, index_bsize=bsize)
+   181                                                 )
+   182                                         
+   183                                                 # Instruct colbert-ai to disable forking if nranks == 1
+   184   1750.9 MiB      0.0 MiB           1           self.config.avoid_fork_if_possible = True
+   185                                         
+   186   1750.9 MiB      0.0 MiB           1           if len(collection) > 100000:
+   187   1750.9 MiB      0.0 MiB           1               self.config.kmeans_niters = 4
+   188                                                 elif len(collection) > 50000:
+   189                                                     self.config.kmeans_niters = 10
+   190                                                 else:
+   191                                                     self.config.kmeans_niters = 20
+   192                                         
+   193                                                 # Monkey-patch colbert-ai to avoid using FAISS
+   194   1750.9 MiB      0.0 MiB           1           monkey_patching = (
+   195   1750.9 MiB      0.0 MiB           1               len(collection) < 75000 and kwargs.get("use_faiss", False) is False
+   196                                                 )
+   197                                         
+   198   1750.9 MiB      0.0 MiB           2           @profile
+   199   1750.9 MiB      0.0 MiB           1           def _index_with_profiling(indexer, name, collection, overwrite):
+   200   2954.8 MiB   1203.9 MiB           1               return indexer.index(name=name, collection=collection, overwrite=overwrite)
+   201                                                     
+   202   1750.9 MiB      0.0 MiB           1           if monkey_patching:
+   203                                                     print(
+   204                                                         "---- WARNING! You are using PLAID with an experimental replacement for FAISS for greater compatibility ----"
+   205                                                     )
+   206                                                     print("This is a behaviour change from RAGatouille 0.8.0 onwards.")
+   207                                                     print(
+   208                                                         "This works fine for most users and smallish datasets, but can be considerably slower than FAISS and could cause worse results in some situations."
+   209                                                     )
+   210                                                     print(
+   211                                                         "If you're confident with FAISS working on your machine, pass use_faiss=True to revert to the FAISS-using behaviour."
+   212                                                     )
+   213                                                     print("--------------------")
+   214                                                     CollectionIndexer._train_kmeans = self.pytorch_kmeans
+   215                                         
+   216                                                     # Try to keep runtime stable -- these are values that empirically didn't degrade performance at all on 3 benchmarks.
+   217                                                     # More tests required before warning can be removed.
+   218                                                     try:
+   219                                                         indexer = Indexer(
+   220                                                             checkpoint=checkpoint,
+   221                                                             config=self.config,
+   222                                                             verbose=verbose,
+   223                                                         )
+   224                                                         indexer.configure(avoid_fork_if_possible=True)
+   225                                                         _index_with_profiling(indexer, index_name, collection, overwrite)
+   226                                                     except Exception as err:
+   227                                                         print(
+   228                                                             f"PyTorch-based indexing did not succeed with error: {err}",
+   229                                                             "! Reverting to using FAISS and attempting again...",
+   230                                                         )
+   231                                                         monkey_patching = False
+   232   1750.9 MiB      0.0 MiB           1           if monkey_patching is False:
+   233   1750.9 MiB      0.0 MiB           1               CollectionIndexer._train_kmeans = self.faiss_kmeans
+   234   1750.9 MiB      0.0 MiB           1               if torch.cuda.is_available():
+   235   1750.9 MiB      0.0 MiB           1                   import faiss
+   236                                         
+   237   1750.9 MiB      0.0 MiB           1                   if not hasattr(faiss, "StandardGpuResources"):
+   238                                                             print(
+   239                                                                 "________________________________________________________________________________\n"
+   240                                                                 "WARNING! You have a GPU available, but only `faiss-cpu` is currently installed.\n",
+   241                                                                 "This means that indexing will be slow. To make use of your GPU.\n"
+   242                                                                 "Please install `faiss-gpu` by running:\n"
+   243                                                                 "pip uninstall --y faiss-cpu & pip install faiss-gpu\n",
+   244                                                                 "________________________________________________________________________________",
+   245                                                             )
+   246                                                             print("Will continue with CPU indexing in 5 seconds...")
+   247                                                             time.sleep(5)
+   248   1750.9 MiB      0.0 MiB           2               indexer = Indexer(
+   249   1750.9 MiB      0.0 MiB           1                   checkpoint=checkpoint,
+   250   1750.9 MiB      0.0 MiB           1                   config=self.config,
+   251   1750.9 MiB      0.0 MiB           1                   verbose=verbose,
+   252                                                     )
+   253   1750.9 MiB      0.0 MiB           1               indexer.configure(avoid_fork_if_possible=True)
+   254   2954.8 MiB      0.0 MiB           1               _index_with_profiling(indexer, index_name, collection, overwrite)
+   255                                         
+   256   2954.8 MiB      0.0 MiB           1           return self
+
+
+Filename: /home/RAGatouille/ragatouille/models/index.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   136   1750.9 MiB   1750.9 MiB           1       @staticmethod
+   137                                             @profile
+   138                                             def construct(
+   139                                                 config: ColBERTConfig,
+   140                                                 checkpoint: Union[str, Path],
+   141                                                 collection: List[str],
+   142                                                 index_name: Optional["str"] = None,
+   143                                                 overwrite: Union[bool, str] = "reuse",
+   144                                                 verbose: bool = True,
+   145                                                 **kwargs,
+   146                                             ) -> "PLAIDModelIndex":
+   147   2954.8 MiB   1203.9 MiB           3           return PLAIDModelIndex(config).build(
+   148   1750.9 MiB      0.0 MiB           2               checkpoint, collection, index_name, overwrite, verbose, **kwargs
+   149                                                 )
+
+
+Filename: /home/RAGatouille/ragatouille/models/colbert.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   342   1750.9 MiB   1750.9 MiB           1           @profile
+   343                                                 def _construct_model_index(*args, **kwargs):
+   344   2954.8 MiB   1203.9 MiB           1               return ModelIndexFactory.construct(*args, **kwargs)
+
+
+Done indexing!
+Filename: /home/RAGatouille/ragatouille/RAGPretrainedModel.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   205   1750.9 MiB   1750.9 MiB           1           @profile
+   206                                                 def _model_index_profiled(*args, **kwargs):
+   207   2954.4 MiB   1203.4 MiB           1               return self.model.index(*args, **kwargs)
+
+
+Filename: ../ragatouille_index_100k_False.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    11   1402.4 MiB   1402.4 MiB           1   @profile
+    12                                         def _index(): 
+    13   2943.5 MiB   1377.1 MiB           2       return RAG.index(
+    14   1402.4 MiB      0.0 MiB           1           index_name=f"{dataset_name}_index", 
+    15   1517.6 MiB    115.2 MiB           1           collection=passages[:ndocs]["text"], 
+    16   1566.4 MiB     48.8 MiB           1           document_ids=passages[:ndocs]["_id"],
+    17   1566.4 MiB      0.0 MiB           1           use_faiss=False
+    18                                             )
+
+
+

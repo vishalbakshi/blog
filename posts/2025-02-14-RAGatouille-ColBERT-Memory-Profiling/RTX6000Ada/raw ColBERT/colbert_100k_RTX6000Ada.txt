@@ -1,0 +1,400 @@
+
+
+[Feb 16, 18:03:51] #> Creating directory /home/ColBERT/experiments/notebook/indexes/Genomics.2bits 
+
+
+#> Starting...
+nranks = 1 	 num_gpus = 1 	 device=0
+{
+    "query_token_id": "[unused0]",
+    "doc_token_id": "[unused1]",
+    "query_token": "[Q]",
+    "doc_token": "[D]",
+    "ncells": null,
+    "centroid_score_threshold": null,
+    "ndocs": null,
+    "load_index_with_mmap": false,
+    "index_path": null,
+    "index_bsize": 64,
+    "nbits": 2,
+    "kmeans_niters": 4,
+    "resume": false,
+    "pool_factor": 1,
+    "clustering_mode": "hierarchical",
+    "protected_tokens": 0,
+    "similarity": "cosine",
+    "bsize": 64,
+    "accumsteps": 1,
+    "lr": 1e-5,
+    "maxsteps": 15626,
+    "save_every": null,
+    "warmup": 781,
+    "warmup_bert": null,
+    "relu": false,
+    "nway": 32,
+    "use_ib_negatives": false,
+    "reranker": false,
+    "distillation_alpha": 1.0,
+    "ignore_scores": false,
+    "model_name": "answerdotai\/AnswerAI-ColBERTv2.5-small",
+    "query_maxlen": 32,
+    "attend_to_mask_tokens": false,
+    "interaction": "colbert",
+    "dim": 96,
+    "doc_maxlen": 256,
+    "mask_punctuation": true,
+    "checkpoint": "answerdotai\/answerai-colbert-small-v1",
+    "triples": "\/home\/bclavie\/colbertv2.5_en\/data\/msmarco\/triplets.jsonl",
+    "collection": [
+        "list with 100000 elements starting with...",
+        [
+            "Deconstructing a Disease: RAR, Its Fusion Partners, and Their\r\nRoles  in the Pathogenesis of Acute Promyelocytic Leukemia\r\n",
+            "By\r\nAri Melnick and\r\nJonathan D. Licht\r\n",
+            "From the Derald H.\u00a0Ruttenberg Cancer Center and Department of\r\nMedicine, Mount Sinai School of Medicine, New York, NY.\r\n"
+        ]
+    ],
+    "queries": "\/home\/bclavie\/colbertv2.5_en\/data\/msmarco\/queries.tsv",
+    "index_name": "Genomics.2bits",
+    "overwrite": false,
+    "root": "\/home\/ColBERT\/experiments",
+    "experiment": "notebook",
+    "index_root": null,
+    "name": "2025-02\/16\/18.00.48",
+    "rank": 0,
+    "nranks": 1,
+    "amp": true,
+    "gpus": 1,
+    "avoid_fork_if_possible": false
+}
+[Feb 16, 18:04:16] [0] 		 # of sampled PIDs = 55426 	 sampled_pids[:3] = [54607, 96034, 1332]
+Filename: /home/ColBERT/colbert/indexing/collection_indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   102    727.9 MiB    727.9 MiB           1           @profile
+   103                                                 def _sample_pids_profiled():
+   104    732.9 MiB      5.0 MiB           1               return self._sample_pids()
+
+
+[Feb 16, 18:04:24] [0] 		 #> Encoding 55426 passages..
+Filename: /home/ColBERT/colbert/indexing/collection_indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   146    732.9 MiB    732.9 MiB           1           @profile
+   147                                                 def _encode_passages_profiled(*args, **kwargs):
+   148   2235.3 MiB   1502.4 MiB           1               return self.encoder.encode_passages(*args, **kwargs)
+
+
+[Feb 16, 18:05:43] [0] 		 avg_doclen_est = 77.36580657958984 	 len(local_sample) = 55,426
+Filename: /home/ColBERT/colbert/indexing/collection_indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   144    732.9 MiB    732.9 MiB           1       @profile
+   145                                             def _sample_embeddings(self, sampled_pids):
+   146    732.9 MiB      0.0 MiB           2           @profile
+   147    732.9 MiB      0.0 MiB           1           def _encode_passages_profiled(*args, **kwargs):
+   148   2235.3 MiB   1502.4 MiB           1               return self.encoder.encode_passages(*args, **kwargs)
+   149                                                     
+   150    732.9 MiB      0.0 MiB           1           local_pids = self.collection.enumerate(rank=self.rank)
+   151    732.9 MiB      0.0 MiB      100003           local_sample = [passage for pid, passage in local_pids if pid in sampled_pids]
+   152                                         
+   153   2235.3 MiB      0.0 MiB           1           local_sample_embs, doclens = _encode_passages_profiled(local_sample)
+   154                                         
+   155   2235.3 MiB      0.0 MiB           1           if torch.cuda.is_available():
+   156   2235.3 MiB      0.0 MiB           1               if torch.distributed.is_available() and torch.distributed.is_initialized():
+   157   2235.3 MiB      0.0 MiB           1                   self.num_sample_embs = torch.tensor([local_sample_embs.size(0)]).cuda()
+   158   2330.7 MiB     95.4 MiB           1                   torch.distributed.all_reduce(self.num_sample_embs)
+   159                                         
+   160   2330.7 MiB      0.0 MiB           1                   avg_doclen_est = sum(doclens) / len(doclens) if doclens else 0
+   161   2330.7 MiB      0.0 MiB           1                   avg_doclen_est = torch.tensor([avg_doclen_est]).cuda()
+   162   2330.7 MiB      0.0 MiB           1                   torch.distributed.all_reduce(avg_doclen_est)
+   163                                         
+   164   2330.7 MiB      0.0 MiB           1                   nonzero_ranks = torch.tensor([float(len(local_sample) > 0)]).cuda()
+   165   2330.7 MiB      0.0 MiB           1                   torch.distributed.all_reduce(nonzero_ranks)
+   166                                                     else:
+   167                                                         self.num_sample_embs = torch.tensor([local_sample_embs.size(0)]).cuda()
+   168                                         
+   169                                                         avg_doclen_est = sum(doclens) / len(doclens) if doclens else 0
+   170                                                         avg_doclen_est = torch.tensor([avg_doclen_est]).cuda()
+   171                                         
+   172                                                         nonzero_ranks = torch.tensor([float(len(local_sample) > 0)]).cuda()
+   173                                                 else:
+   174                                                     if torch.distributed.is_available() and torch.distributed.is_initialized():
+   175                                                         self.num_sample_embs = torch.tensor([local_sample_embs.size(0)]).cpu()
+   176                                                         torch.distributed.all_reduce(self.num_sample_embs)
+   177                                         
+   178                                                         avg_doclen_est = sum(doclens) / len(doclens) if doclens else 0
+   179                                                         avg_doclen_est = torch.tensor([avg_doclen_est]).cpu()
+   180                                                         torch.distributed.all_reduce(avg_doclen_est)
+   181                                         
+   182                                                         nonzero_ranks = torch.tensor([float(len(local_sample) > 0)]).cpu()
+   183                                                         torch.distributed.all_reduce(nonzero_ranks)
+   184                                                     else:
+   185                                                         self.num_sample_embs = torch.tensor([local_sample_embs.size(0)]).cpu()
+   186                                         
+   187                                                         avg_doclen_est = sum(doclens) / len(doclens) if doclens else 0
+   188                                                         avg_doclen_est = torch.tensor([avg_doclen_est]).cpu()
+   189                                         
+   190                                                         nonzero_ranks = torch.tensor([float(len(local_sample) > 0)]).cpu()
+   191                                         
+   192   2330.7 MiB      0.0 MiB           1           avg_doclen_est = avg_doclen_est.item() / nonzero_ranks.item()
+   193   2330.7 MiB      0.0 MiB           1           self.avg_doclen_est = avg_doclen_est
+   194                                         
+   195   2330.7 MiB      0.0 MiB           1           Run().print(f'avg_doclen_est = {avg_doclen_est} \t len(local_sample) = {len(local_sample):,}')
+   196                                         
+   197   2330.7 MiB      0.0 MiB           1           torch.save(local_sample_embs.half(), os.path.join(self.config.index_path_, f'sample.{self.rank}.pt'))
+   198                                         
+   199   2330.7 MiB      0.0 MiB           1           return avg_doclen_est
+
+
+Filename: /home/ColBERT/colbert/indexing/collection_indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   106    732.9 MiB    732.9 MiB           1           @profile
+   107                                                 def _sample_embeddings_profiled(pids):
+   108   1546.7 MiB    813.8 MiB           1               return self._sample_embeddings(pids)
+
+
+[Feb 16, 18:05:44] [0] 		 Creating 32,768 partitions.
+[Feb 16, 18:05:44] [0] 		 *Estimated* 7,736,580 embeddings.
+[Feb 16, 18:05:44] [0] 		 #> Saving the indexing plan to /home/ColBERT/experiments/notebook/indexes/Genomics.2bits/plan.json ..
+Clustering 4238077 points in 96D to 32768 clusters, redo 1 times, 4 iterations
+  Preprocessing in 0.15 s
+  Iteration 0 (2.05 s, search 1.92 s): objective=249157 imbalance=2.862 nsplit=251         Iteration 1 (4.07 s, search 3.89 s): objective=162026 imbalance=2.505 nsplit=13         Iteration 2 (6.10 s, search 5.86 s): objective=147388 imbalance=2.435 nsplit=4         Iteration 3 (8.13 s, search 7.85 s): objective=141162 imbalance=2.408 nsplit=1       Filename: /home/ColBERT/colbert/indexing/collection_indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    82    727.9 MiB    727.9 MiB           1       @profile
+    83                                             def setup(self):
+    84                                                 '''
+    85                                                 Calculates and saves plan.json for the whole collection.
+    86                                                 
+    87                                                 plan.json { config, num_chunks, num_partitions, num_embeddings_est, avg_doclen_est}
+    88                                                 num_partitions is the number of centroids to be generated.
+    89                                                 '''
+    90    727.9 MiB      0.0 MiB           1           if self.config.resume:
+    91                                                     if self._try_load_plan():
+    92                                                         if self.verbose > 1:
+    93                                                             Run().print_main(f"#> Loaded plan from {self.plan_path}:")
+    94                                                             Run().print_main(f"#> num_chunks = {self.num_chunks}")
+    95                                                             Run().print_main(f"#> num_partitions = {self.num_chunks}")
+    96                                                             Run().print_main(f"#> num_embeddings_est = {self.num_embeddings_est}")
+    97                                                             Run().print_main(f"#> avg_doclen_est = {self.avg_doclen_est}")
+    98                                                         return
+    99                                         
+   100    727.9 MiB      0.0 MiB           1           self.num_chunks = int(np.ceil(len(self.collection) / self.collection.get_chunksize()))
+   101                                                 
+   102    727.9 MiB      0.0 MiB           2           @profile
+   103    727.9 MiB      0.0 MiB           1           def _sample_pids_profiled():
+   104    732.9 MiB      5.0 MiB           1               return self._sample_pids()
+   105                                             
+   106    732.9 MiB      0.0 MiB           2           @profile
+   107    727.9 MiB      0.0 MiB           1           def _sample_embeddings_profiled(pids):
+   108   1546.7 MiB    813.8 MiB           1               return self._sample_embeddings(pids)
+   109                                                     
+   110                                                 # Saves sampled passages and embeddings for training k-means centroids later 
+   111    732.9 MiB      0.0 MiB           1           sampled_pids = _sample_pids_profiled()
+   112   1546.7 MiB      0.0 MiB           1           avg_doclen_est = _sample_embeddings_profiled(sampled_pids)
+   113                                         
+   114                                                 # Select the number of partitions
+   115   1546.7 MiB      0.0 MiB           1           num_passages = len(self.collection)
+   116   1546.7 MiB      0.0 MiB           1           self.num_embeddings_est = num_passages * avg_doclen_est
+   117   1546.7 MiB      0.0 MiB           1           self.num_partitions = int(2 ** np.floor(np.log2(16 * np.sqrt(self.num_embeddings_est))))
+   118                                         
+   119   1546.7 MiB      0.0 MiB           1           if self.verbose > 0:
+   120   1546.7 MiB      0.0 MiB           1               Run().print_main(f'Creating {self.num_partitions:,} partitions.')
+   121   1546.7 MiB      0.0 MiB           1               Run().print_main(f'*Estimated* {int(self.num_embeddings_est):,} embeddings.')
+   122                                         
+   123   1546.7 MiB      0.0 MiB           1           self._save_plan()
+
+
+[Feb 16, 18:05:57] Loading decompress_residuals_cpp extension (set COLBERT_LOAD_TORCH_EXTENSION_VERBOSE=True for more info)...
+[Feb 16, 18:06:41] Loading packbits_cpp extension (set COLBERT_LOAD_TORCH_EXTENSION_VERBOSE=True for more info)...
+[0.014, 0.014, 0.013, 0.014, 0.013, 0.014, 0.014, 0.014, 0.015, 0.013, 0.013, 0.015, 0.016, 0.013, 0.014, 0.016, 0.012, 0.015, 0.013, 0.013, 0.013, 0.014, 0.015, 0.013, 0.013, 0.015, 0.014, 0.014, 0.014, 0.014, 0.013, 0.013, 0.014, 0.014, 0.014, 0.015, 0.013, 0.014, 0.014, 0.014, 0.013, 0.014, 0.014, 0.013, 0.013, 0.015, 0.014, 0.015, 0.013, 0.014, 0.015, 0.014, 0.014, 0.014, 0.013, 0.013, 0.014, 0.014, 0.014, 0.014, 0.013, 0.014, 0.014, 0.013, 0.015, 0.015, 0.016, 0.014, 0.014, 0.014, 0.015, 0.013, 0.013, 0.014, 0.014, 0.014, 0.013, 0.013, 0.014, 0.015, 0.014, 0.014, 0.014, 0.014, 0.014, 0.014, 0.013, 0.014, 0.014, 0.014, 0.014, 0.014, 0.014, 0.015, 0.014, 0.014]
+[Feb 16, 18:07:24] #> Got bucket_cutoffs_quantiles = tensor([0.2500, 0.5000, 0.7500], device='cuda:0') and bucket_weights_quantiles = tensor([0.1250, 0.3750, 0.6250, 0.8750], device='cuda:0')
+[Feb 16, 18:07:24] #> Got bucket_cutoffs = tensor([-0.0106,  0.0000,  0.0109], device='cuda:0') and bucket_weights = tensor([-0.0192, -0.0046,  0.0049,  0.0195], device='cuda:0')
+[Feb 16, 18:07:24] avg_residual = 0.013885498046875
+[Feb 16, 18:07:24] [0] 		 #> Encoding 25000 passages..
+[Feb 16, 18:07:45] [0] 		 #> Saving chunk 0: 	 25,000 passages and 1,897,577 embeddings. From #0 onward.
+[Feb 16, 18:07:45] [0] 		 #> Encoding 25000 passages..
+[Feb 16, 18:08:04] [0] 		 #> Saving chunk 1: 	 25,000 passages and 1,877,590 embeddings. From #25,000 onward.
+[Feb 16, 18:08:05] [0] 		 #> Encoding 25000 passages..
+[Feb 16, 18:08:26] [0] 		 #> Saving chunk 2: 	 25,000 passages and 1,953,069 embeddings. From #50,000 onward.
+[Feb 16, 18:08:26] [0] 		 #> Encoding 25000 passages..
+[Feb 16, 18:08:47] [0] 		 #> Saving chunk 3: 	 25,000 passages and 2,028,875 embeddings. From #75,000 onward.
+[Feb 16, 18:08:47] [0] 		 #> Checking all files were saved...
+[Feb 16, 18:08:47] [0] 		 Found all files!
+[Feb 16, 18:08:47] [0] 		 #> Building IVF...
+[Feb 16, 18:08:47] [0] 		 #> Loading codes...
+[Feb 16, 18:08:47] [0] 		 Sorting codes...
+[Feb 16, 18:08:47] [0] 		 Getting unique codes...
+[Feb 16, 18:08:47] #> Optimizing IVF to store map from centroids to list of pids..
+[Feb 16, 18:08:47] #> Building the emb2pid mapping..
+[Feb 16, 18:08:48] len(emb2pid) = 7757111
+[Feb 16, 18:08:50] #> Saved optimized IVF to /home/ColBERT/experiments/notebook/indexes/Genomics.2bits/ivf.pid.pt
+[Feb 16, 18:08:50] [0] 		 #> Saving the indexing metadata to /home/ColBERT/experiments/notebook/indexes/Genomics.2bits/metadata.json ..
+Filename: /home/ColBERT/colbert/indexing/collection_indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    62    727.9 MiB    727.9 MiB           1       @profile
+    63                                             def run(self, shared_lists):
+    64    727.9 MiB      0.0 MiB           1           with torch.inference_mode():
+    65   1545.5 MiB    817.5 MiB           1               self.setup() # Computes and saves plan for whole collection
+    66   1545.5 MiB      0.0 MiB           1               distributed.barrier(self.rank)
+    67   1545.5 MiB      0.0 MiB           1               print_memory_stats(f'RANK:{self.rank}')
+    68                                         
+    69   1545.5 MiB      0.0 MiB           1               if not self.config.resume or not self.saver.try_load_codec():
+    70   1661.3 MiB    115.8 MiB           1                   self.train(shared_lists) # Trains centroids from selected passages
+    71   1661.3 MiB      0.0 MiB           1               distributed.barrier(self.rank)
+    72   1661.3 MiB      0.0 MiB           1               print_memory_stats(f'RANK:{self.rank}')
+    73                                         
+    74   1948.3 MiB    287.0 MiB           1               self.index() # Encodes and saves all tokens into residuals
+    75   1948.3 MiB      0.0 MiB           1               distributed.barrier(self.rank)
+    76   1948.3 MiB      0.0 MiB           1               print_memory_stats(f'RANK:{self.rank}')
+    77                                         
+    78   1983.3 MiB     35.1 MiB           1               self.finalize() # Builds metadata and centroid to passage mapping
+    79   1983.3 MiB      0.0 MiB           1               distributed.barrier(self.rank)
+    80   1983.3 MiB      0.0 MiB           1               print_memory_stats(f'RANK:{self.rank}')
+
+
+Filename: /home/ColBERT/colbert/indexing/collection_indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    31    597.5 MiB    597.5 MiB           1   @profile
+    32                                         def encode(config, collection, shared_lists, shared_queues, verbose: int = 3):
+    33    727.9 MiB    130.4 MiB           1       encoder = CollectionIndexer(config=config, collection=collection, verbose=verbose)
+    34   1983.3 MiB   1255.4 MiB           1       encoder.run(shared_lists)
+
+
+
+#> Joined...
+Filename: /home/ColBERT/colbert/infra/launcher.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    28   1596.9 MiB   1596.9 MiB           1       @profile
+    29                                             def launch(self, custom_config, *args):
+    30   1596.9 MiB      0.0 MiB           1           assert isinstance(custom_config, BaseConfig)
+    31   1596.9 MiB      0.0 MiB           1           assert isinstance(custom_config, RunSettings)
+    32                                                 
+    33   1596.9 MiB      0.0 MiB           1           return_value_queue = mp.Queue()
+    34   1596.9 MiB      0.0 MiB           1           rng = random.Random(time.time())
+    35   1596.9 MiB      0.0 MiB           1           port = str(12355 + rng.randint(0, 1000))  # randomize the port to avoid collision on launching several jobs.
+    36   1596.9 MiB      0.0 MiB           1           all_procs = []
+    37   1596.9 MiB      0.0 MiB           2           for new_rank in range(0, self.nranks):
+    38   1596.9 MiB      0.0 MiB           1               new_config = type(custom_config).from_existing(custom_config, self.run_config, RunConfig(rank=new_rank))
+    39                                         
+    40   1596.9 MiB      0.0 MiB           1               args_ = (self.callee, port, return_value_queue, new_config, *args)
+    41   1596.9 MiB      0.0 MiB           1               all_procs.append(mp.Process(target=setup_new_process, args=args_))
+    42                                         
+    43                                                 # Clear GPU space (e.g., after a `Searcher` on GPU-0 is deleted)
+    44                                                 # TODO: Generalize this from GPU-0 only!
+    45                                                 # TODO: Move this to a function. And call that function from __del__ in a class that's inherited by Searcher, Indexer, etc.
+    46                                         
+    47                                                 # t = torch.cuda.get_device_properties(0).total_memory
+    48                                                 # r = torch.cuda.memory_reserved(0)
+    49                                                 # a = torch.cuda.memory_allocated(0)
+    50                                                 # f = r-a
+    51                                         
+    52                                                 # print_message(f"[Pre-Emptying] GPU memory check: r={r}, a={a}, f={f}")
+    53                                         
+    54   1596.9 MiB      0.0 MiB           1           torch.cuda.empty_cache()
+    55                                         
+    56                                                 # t = torch.cuda.get_device_properties(0).total_memory
+    57                                                 # r = torch.cuda.memory_reserved(0)
+    58                                                 # a = torch.cuda.memory_allocated(0)
+    59                                                 # f = r-a
+    60                                         
+    61                                                 # print_message(f"[Post-Emptying] GPU memory check: r={r}, a={a}, f={f}")
+    62                                         
+    63   1596.9 MiB      0.0 MiB           1           print_memory_stats('MAIN')
+    64                                         
+    65   1633.6 MiB      0.0 MiB           2           for proc in all_procs:
+    66   1596.9 MiB      0.0 MiB           1               print("#> Starting...")
+    67   1633.6 MiB     36.7 MiB           1               proc.start()
+    68                                         
+    69   1633.6 MiB      0.0 MiB           1           print_memory_stats('MAIN')
+    70                                         
+    71                                                 # TODO: If the processes crash upon join, raise an exception and don't block on .get() below!
+    72                                         
+    73   1633.6 MiB      0.0 MiB           4           return_values = sorted([return_value_queue.get() for _ in all_procs])
+    74   1633.6 MiB      0.0 MiB           4           return_values = [val for rank, val in return_values]
+    75                                         
+    76   1633.6 MiB      0.0 MiB           1           if not self.return_all:
+    77   1633.6 MiB      0.0 MiB           1               return_values = return_values[0]
+    78                                                 
+    79   1633.6 MiB      0.0 MiB           2           for proc in all_procs:
+    80   1633.6 MiB      0.0 MiB           1               proc.join()
+    81   1633.6 MiB      0.0 MiB           1               print("#> Joined...")
+    82                                         
+    83   1633.6 MiB      0.0 MiB           1           print_memory_stats('MAIN')
+    84                                                 
+    85   1633.6 MiB      0.0 MiB           1           return return_values
+
+
+Filename: /home/ColBERT/colbert/indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    85   1596.9 MiB   1596.9 MiB           1       @profile
+    86                                             def __launch(self, collection):
+    87   1596.9 MiB      0.0 MiB           1           launcher = Launcher(encode)
+    88   1596.9 MiB      0.0 MiB           1           if self.config.nranks == 1 and self.config.avoid_fork_if_possible:
+    89                                                     shared_queues = []
+    90                                                     shared_lists = []
+    91                                                     launcher.launch_without_fork(self.config, collection, shared_lists, shared_queues, self.verbose)
+    92                                         
+    93                                                     return
+    94                                         
+    95   1596.9 MiB      0.0 MiB           1           manager = mp.Manager()
+    96   1596.9 MiB      0.0 MiB           4           shared_lists = [manager.list() for _ in range(self.config.nranks)]
+    97   1596.9 MiB      0.0 MiB           4           shared_queues = [manager.Queue(maxsize=1) for _ in range(self.config.nranks)]
+    98                                         
+    99                                                 # Encodes collection into index using the CollectionIndexer class
+   100   1633.6 MiB     36.7 MiB           1           launcher.launch(self.config, collection, shared_lists, shared_queues, self.verbose)
+
+
+Filename: /home/ColBERT/colbert/indexer.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    60   1596.9 MiB   1596.9 MiB           1       @profile
+    61                                             def index(self, name, collection, overwrite=False):
+    62   1596.9 MiB      0.0 MiB           1           assert overwrite in [True, False, 'reuse', 'resume', "force_silent_overwrite"]
+    63                                         
+    64   1596.9 MiB      0.0 MiB           1           self.configure(collection=collection, index_name=name, resume=overwrite=='resume')
+    65                                                 # Note: The bsize value set here is ignored internally. Users are encouraged
+    66                                                 # to supply their own batch size for indexing by using the index_bsize parameter in the ColBERTConfig.
+    67   1596.9 MiB      0.0 MiB           1           self.configure(bsize=64, partitions=None)
+    68                                         
+    69   1596.9 MiB      0.0 MiB           1           self.index_path = self.config.index_path_
+    70   1596.9 MiB      0.0 MiB           1           index_does_not_exist = (not os.path.exists(self.config.index_path_))
+    71                                         
+    72   1596.9 MiB      0.0 MiB           1           assert (overwrite in [True, 'reuse', 'resume', "force_silent_overwrite"]) or index_does_not_exist, self.config.index_path_
+    73   1596.9 MiB      0.0 MiB           1           create_directory(self.config.index_path_)
+    74                                         
+    75   1596.9 MiB      0.0 MiB           1           if overwrite == 'force_silent_overwrite':
+    76                                                     self.erase(force_silent=True)
+    77   1596.9 MiB      0.0 MiB           1           elif overwrite is True:
+    78   1596.9 MiB      0.0 MiB           1               self.erase()
+    79                                         
+    80   1596.9 MiB      0.0 MiB           1           if index_does_not_exist or overwrite != 'reuse':
+    81   1633.6 MiB     36.7 MiB           1               self.__launch(collection)
+    82                                         
+    83   1633.6 MiB      0.0 MiB           1           return self.index_path
+
+
+Filename: ../colbert_index_100k.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+     8   1596.9 MiB   1596.9 MiB           1   @profile
+     9                                         def _index(indexer, name, collection):
+    10   1633.6 MiB     36.7 MiB           1       return indexer.index(name=name, collection=collection, overwrite=True)
+
+

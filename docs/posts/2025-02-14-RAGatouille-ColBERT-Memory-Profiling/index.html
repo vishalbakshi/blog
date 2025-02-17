@@ -1,0 +1,1512 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2025-02-17">
+<meta name="description" content="I use the memory-profiler library to log memory using for different indexing functions for raw ColBERT and RAGatouille indexing operations for 100k, 250k, 500k, 1M and 2M collection sizes. In general, RAGatouille uses more memory than raw ColBERT.">
+
+<title>Vishal Bakshi’s Blog - Memory Profiling raw ColBERT and RAGatouille</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Vishal Bakshi’s Blog</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#repo-setup-and-installation" id="toc-repo-setup-and-installation" class="nav-link" data-scroll-target="#repo-setup-and-installation">Repo Setup and Installation</a></li>
+  <li><a href="#functions-selected-for-profiling" id="toc-functions-selected-for-profiling" class="nav-link" data-scroll-target="#functions-selected-for-profiling">Functions Selected for Profiling</a>
+  <ul class="collapse">
+  <li><a href="#colbert" id="toc-colbert" class="nav-link" data-scroll-target="#colbert">ColBERT</a></li>
+  <li><a href="#ragatouille" id="toc-ragatouille" class="nav-link" data-scroll-target="#ragatouille">RAGatouille</a></li>
+  </ul></li>
+  <li><a href="#scripts" id="toc-scripts" class="nav-link" data-scroll-target="#scripts">Scripts</a></li>
+  <li><a href="#profiling-results" id="toc-profiling-results" class="nav-link" data-scroll-target="#profiling-results">Profiling Results</a>
+  <ul class="collapse">
+  <li><a href="#colbertindexer.pyindexer.index" id="toc-colbertindexer.pyindexer.index" class="nav-link" data-scroll-target="#colbertindexer.pyindexer.index">colbert/indexer.py/<code>indexer.index</code></a></li>
+  <li><a href="#colbertindexingcollection_indexer.pyencoder.encode_passages" id="toc-colbertindexingcollection_indexer.pyencoder.encode_passages" class="nav-link" data-scroll-target="#colbertindexingcollection_indexer.pyencoder.encode_passages">colbert/indexing/collection_indexer.py/<code>encoder.encode_passages</code></a></li>
+  <li><a href="#colbertindexingcollection_indexer.py_sample_embeddings" id="toc-colbertindexingcollection_indexer.py_sample_embeddings" class="nav-link" data-scroll-target="#colbertindexingcollection_indexer.py_sample_embeddings">colbert/indexing/collection_indexer.py/<code>_sample_embeddings</code></a></li>
+  <li><a href="#colbertindexingcollection_indexer.pysetup" id="toc-colbertindexingcollection_indexer.pysetup" class="nav-link" data-scroll-target="#colbertindexingcollection_indexer.pysetup">colbert/indexing/collection_indexer.py/<code>setup</code></a></li>
+  <li><a href="#colbertindexingcollection_indexer.pytrain" id="toc-colbertindexingcollection_indexer.pytrain" class="nav-link" data-scroll-target="#colbertindexingcollection_indexer.pytrain">colbert/indexing/collection_indexer.py/<code>train</code></a></li>
+  <li><a href="#colbertindexingcollection_indexer.pyindex" id="toc-colbertindexingcollection_indexer.pyindex" class="nav-link" data-scroll-target="#colbertindexingcollection_indexer.pyindex">colbert/indexing/collection_indexer.py/<code>index</code></a></li>
+  <li><a href="#colbertindexingcollection_indexer.pyfinalize" id="toc-colbertindexingcollection_indexer.pyfinalize" class="nav-link" data-scroll-target="#colbertindexingcollection_indexer.pyfinalize">colbert/indexing/collection_indexer.py/<code>finalize</code></a></li>
+  </ul></li>
+  <li><a href="#indexing-time" id="toc-indexing-time" class="nav-link" data-scroll-target="#indexing-time">Indexing Time</a></li>
+  <li><a href="#indexing-10k-documents-pytorch-vs-faiss-k-means-clustering" id="toc-indexing-10k-documents-pytorch-vs-faiss-k-means-clustering" class="nav-link" data-scroll-target="#indexing-10k-documents-pytorch-vs-faiss-k-means-clustering">Indexing 10k Documents (PyTorch vs FAISS K-means Clustering)</a></li>
+  <li><a href="#final-thoughts" id="toc-final-thoughts" class="nav-link" data-scroll-target="#final-thoughts">Final Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Memory Profiling raw ColBERT and RAGatouille</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">python</div>
+    <div class="quarto-category">information retrieval</div>
+    <div class="quarto-category">deep learning</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    I use the <code>memory-profiler</code> library to log memory using for different indexing functions for raw ColBERT and RAGatouille indexing operations for 100k, 250k, 500k, 1M and 2M collection sizes. In general, RAGatouille uses more memory than raw ColBERT.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">February 17, 2025</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>A disclaimer: this is the first time I’ve done memory profiling, and while I’ve probably spent 8-10 hours <a href="https://vishalbakshi.github.io/blog/posts/2024-12-24-PLAID-ColBERTv2-scoring-pipeline/">poring through the RAGatouille and ColBERT codebases</a> I still consider myself a beginner, and don’t have a solid mental model of how indexing (and search) work.</p>
+<p>With that out of the way, let’s dig in!</p>
+<p><a href="https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/">In a previous blog post</a> I used <code>psutil.Process().memory_info().rss</code> in a separate thread to monitor memory usage while indexing 100k, 250k, 500k, 1M and 2M documents from the Genomics datasets (via UKPLab/DAPR) with RAGatouille. I have also run this for raw ColBERT. Here’s an example comparison (for 250k docs on an RTX6000Ada instance) with RAGatouille on the left and raw ColBERT on the right:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="1.png" class="lightbox" title="CPU memory usage while indexing 250k documents" data-gallery="quarto-lightbox-gallery-1"><img src="1.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">CPU memory usage while indexing 250k documents</figcaption><p></p>
+</figure>
+</div>
+<p>While the peak memory increased with number of documents, they all follow the same trend. ColBERT always has a significantly lower peak memory. The ColBERT runs in total took about an hour and the RAGatouille runs took about 1.5 hours. Comparison of all collection sizes can be seen in <a href="https://github.com/vishalbakshi/RAGatouille/tree/profiling/profiling_results/memory_time_plots">this folder</a>.</p>
+<p>In this blog post I go deeper and use the <code>memory_profiler</code> package to understand how much memory is being consumed by different functions down the chain of calls when you index 100k, 250k, 500k, 1M and 2M documents using raw ColBERT and RAGatouille. For all of these runs I use a RTX6000Ada instance on Jarvis Labs. When using RAGatouille, I execute all runs with <code>use_faiss=False</code> (since that’s the default value in RAGatouille) and runs of 100k, 250k and 500k with <code>use_faiss=True</code>.</p>
+</section>
+<section id="repo-setup-and-installation" class="level2">
+<h2 class="anchored" data-anchor-id="repo-setup-and-installation">Repo Setup and Installation</h2>
+<p>Since I needed to add the <code>@profile</code> decorator above each function I wanted to profile, I created my own forks of the raw ColBERT and RAGatouille repos and created a <code>profiling</code> branch. Since RAGatouille is built on top of ColBERT, I switched the <code>colbert-ai</code> dependency in my RAGatouille fork from <code>"colbert-ai&gt;=0.2.19"</code> to:</p>
+<pre><code>"colbert-ai @ git+https://github.com/vishalbakshi/ColBERT.git@profiling"</code></pre>
+<p>I also added <code>memory-profiler</code> as a dependency for both ColBERT and RAGatouille.</p>
+<p>I used the terminal for all experiments. Here are the commands to install RAGatouille:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> <span class="at">-m</span> venv ragatouille-env</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> ragatouille-env/bin/activate</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone <span class="at">-b</span> profiling https://github.com/vishalbakshi/RAGatouille.git</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> RAGatouille</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> .</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install datasets</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> uninstall <span class="at">--y</span> faiss-cpu</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install faiss-gpu-cu12</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Note that I uninstalled <code>faiss-cpu</code> and installed <code>faiss-gpu-cu12</code>.</p>
+<p>Here are the commands to install ColBERT (which took considerably more effort, and assistance from Claude, to figure out):</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone <span class="at">-b</span> profiling https://github.com/vishalbakshi/ColBERT.git</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> ColBERT</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="ex">conda</span> env create <span class="at">-f</span> conda_env.yml</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="ex">conda</span> init</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> ~/.bashrc</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="ex">conda</span> activate colbert</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> .</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="ex">conda</span> remove <span class="at">-y</span> <span class="at">--force</span> pytorch torchvision torchaudio cudatoolkit</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="ex">pip3</span> install torch torchvision torchaudio <span class="at">--index-url</span> https://download.pytorch.org/whl/cu118</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="ex">apt-get</span> update</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="ex">apt-get</span> install <span class="at">-y</span> gcc-11 g++-11</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">CC</span><span class="op">=</span>gcc-11</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">CXX</span><span class="op">=</span>g++-11</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>I had to uninstall pytorch, torchvision, torchaudio, cudatoolkit and reinstall them to resolve the following error:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">File</span> <span class="st">"/home/ColBERT/colbert/utils/utils.py"</span>, line 3, in <span class="op">&lt;</span>module<span class="op">&gt;</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="ex">import</span> torch</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="ex">File</span> <span class="st">"/root/miniconda3/envs/colbert/lib/python3.8/site-packages/torch/__init__.py"</span>, line 218, in <span class="op">&lt;</span>module<span class="op">&gt;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="ex">from</span> torch._C import <span class="pp">*</span>  <span class="co"># noqa: F403</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="ex">ImportError:</span> /root/miniconda3/envs/colbert/lib/python3.8/site-packages/torch/lib/libtorch_cpu.so: undefined symbol: iJIT_NotifyEvent</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The last four commands I ran:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">apt-get</span> update</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">apt-get</span> install <span class="at">-y</span> gcc-11 g++-11</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">CC</span><span class="op">=</span>gcc-11</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">CXX</span><span class="op">=</span>g++-11</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Resolved <code>fatal error: crypt.h: No such file or directory</code>/<code>ninja: build stopped: subcommand failed</code> as is detailed in ColBERT issue <a href="https://github.com/stanford-futuredata/ColBERT/issues/371">#371</a>.</p>
+</section>
+<section id="functions-selected-for-profiling" class="level2">
+<h2 class="anchored" data-anchor-id="functions-selected-for-profiling">Functions Selected for Profiling</h2>
+<p>I determined which functions to profile by trial and error, adding/removing the <code>@profile</code> decorator to see which function was being called. Again, lots of Claude assistance was needed. Here are the filenames and method names that I chose to profile:</p>
+<section id="colbert" class="level3">
+<h3 class="anchored" data-anchor-id="colbert">ColBERT</h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Filename</th>
+<th style="text-align: center;">Method</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">indexer.py</td>
+<td style="text-align: center;"><code>index</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">indexer.py</td>
+<td style="text-align: center;"><code>__launch</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">indexing/collection_indexer.py</td>
+<td style="text-align: center;"><code>encode</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">indexing/collection_indexer.py</td>
+<td style="text-align: center;"><code>run</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">indexing/collection_indexer.py</td>
+<td style="text-align: center;"><code>setup</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">indexing/collection_indexer.py</td>
+<td style="text-align: center;"><code>__sample_pids</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">indexing/collection_indexer.py</td>
+<td style="text-align: center;"><code>__sample_embeddings</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">indexing/collection_indexer.py</td>
+<td style="text-align: center;"><code>encoder.encode_passages</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">infra/launcher.py</td>
+<td style="text-align: center;"><code>launch</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">infra/launcher.py</td>
+<td style="text-align: center;"><code>launch_without_fork</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">infra/launcher.py</td>
+<td style="text-align: center;"><code>run_process_without_mp</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">infra/launcher.py</td>
+<td style="text-align: center;"><code>callee</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="ragatouille" class="level3">
+<h3 class="anchored" data-anchor-id="ragatouille">RAGatouille</h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Filename</th>
+<th style="text-align: center;">Method</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">RAGPretrainedModel.py</td>
+<td style="text-align: center;"><code>_process_corpus</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGPretrainedModel.py</td>
+<td style="text-align: center;"><code>model.index</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">models/colbert.py</td>
+<td style="text-align: center;"><code>ModelIndexFactory.construct</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">models/index.py</td>
+<td style="text-align: center;"><code>PLAIDModelIndex.__init__</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">models/index.py</td>
+<td style="text-align: center;"><code>PLAIDModelIndex.construct</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">models/index.py</td>
+<td style="text-align: center;"><code>PLAIDModelIndex.build</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">models/index.py</td>
+<td style="text-align: center;"><code>PLAIDModelIndex.indexer.index</code></td>
+</tr>
+</tbody>
+</table>
+<p>Note that in RAGatouille, <code>PLAIDModelIndex.indexer</code> is of class <code>Indexer</code> which is imported from ColBERT, so I understood this to be the “bridge” between the RAGatouille and ColBERT repos during profiling.</p>
+</section>
+</section>
+<section id="scripts" class="level2">
+<h2 class="anchored" data-anchor-id="scripts">Scripts</h2>
+<p>Here’s the script for indexing using ColBERT:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> colbert</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> colbert <span class="im">import</span> Indexer, Searcher</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> colbert.infra <span class="im">import</span> Run, RunConfig, ColBERTConfig</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> colbert.data <span class="im">import</span> Queries, Collection</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> datasets <span class="im">import</span> load_dataset</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> memory_profiler <span class="im">import</span> profile</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="at">@profile</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _index(indexer, name, collection):</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> indexer.index(name<span class="op">=</span>name, collection<span class="op">=</span>collection, overwrite<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> main():</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    nbits <span class="op">=</span> <span class="dv">2</span>  </span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    ndocs <span class="op">=</span> <span class="dv">100_000</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    dataset_name <span class="op">=</span> <span class="st">"Genomics"</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>    index_name <span class="op">=</span> <span class="ss">f'</span><span class="sc">{</span>dataset_name<span class="sc">}</span><span class="ss">.</span><span class="sc">{</span>nbits<span class="sc">}</span><span class="ss">bits'</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>    passages <span class="op">=</span> load_dataset(<span class="st">"UKPLab/dapr"</span>, <span class="ss">f"</span><span class="sc">{</span>dataset_name<span class="sc">}</span><span class="ss">-corpus"</span>, split<span class="op">=</span><span class="st">"test"</span>)</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>    checkpoint <span class="op">=</span> <span class="st">'answerdotai/answerai-colbert-small-v1'</span></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> Run().context(RunConfig(nranks<span class="op">=</span><span class="dv">1</span>, experiment<span class="op">=</span><span class="st">'notebook'</span>)):</span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a>        config <span class="op">=</span> ColBERTConfig(doc_maxlen<span class="op">=</span><span class="dv">256</span>, nbits<span class="op">=</span>nbits, kmeans_niters<span class="op">=</span><span class="dv">4</span>, avoid_fork_if_possible<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>        indexer <span class="op">=</span> Indexer(checkpoint<span class="op">=</span>checkpoint, config<span class="op">=</span>config)</span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>        _index(indexer, index_name, passages[:ndocs][<span class="st">"text"</span>])</span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="va">__name__</span> <span class="op">==</span> <span class="st">'__main__'</span>:</span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a>    main()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>and the script for RAGatouille:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> memory_profiler <span class="im">import</span> profile</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> datasets <span class="im">import</span> load_dataset</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> ragatouille <span class="im">import</span> RAGPretrainedModel</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>dataset_name <span class="op">=</span> <span class="st">"Genomics"</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>passages <span class="op">=</span> load_dataset(<span class="st">"UKPLab/dapr"</span>, <span class="ss">f"</span><span class="sc">{</span>dataset_name<span class="sc">}</span><span class="ss">-corpus"</span>, split<span class="op">=</span><span class="st">"test"</span>)</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>RAG <span class="op">=</span> RAGPretrainedModel.from_pretrained(<span class="st">"answerdotai/answerai-colbert-small-v1"</span>)</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>ndocs<span class="op">=</span><span class="dv">250_000</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="at">@profile</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _index():</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> RAG.index(</span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>        index_name<span class="op">=</span><span class="ss">f"</span><span class="sc">{</span>dataset_name<span class="sc">}</span><span class="ss">_index"</span>,</span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>        collection<span class="op">=</span>passages[:ndocs][<span class="st">"text"</span>],</span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a>        document_ids<span class="op">=</span>passages[:ndocs][<span class="st">"_id"</span>],</span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>        use_faiss<span class="op">=</span><span class="va">True</span> <span class="co"># or False</span></span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>_index()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Finally, here’s the terminal command to run the scripts and profile them:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> <span class="at">-m</span> memory_profiler ../colbert_index_2M.py <span class="op">&gt;</span> ../colbert_2M_RTX6000Ada.txt</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="profiling-results" class="level2">
+<h2 class="anchored" data-anchor-id="profiling-results">Profiling Results</h2>
+<p>The profile logs were 400+ lines each (you can see the full files <a href="https://github.com/vishalbakshi/RAGatouille/tree/profiling/profiling_results">here</a>) so I have only included some of the lines with non-zero memory changes. I have showed the starting memory, memory increment and final memory.</p>
+<p>Here’s how I’m interpreting the profiler logs–given this log:</p>
+<pre><code>Filename: /home/RAGatouille/ragatouille/models/index.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   198   3406.4 MiB   3406.4 MiB           1           @profile
+   199                                                 def _index_with_profiling(indexer, name, collection, overwrite):
+   200   4872.2 MiB   1465.8 MiB           1               return indexer.index(name=name, collection=collection, overwrite=overwrite)</code></pre>
+<p>I would interpret that to mean that before <code>indexer.index</code> was called, 3406.4 MB memory was used, and the <code>indexer.index</code> call increased it by 1465.8 MB to 4872.2 MB.</p>
+<section id="colbertindexer.pyindexer.index" class="level3">
+<h3 class="anchored" data-anchor-id="colbertindexer.pyindexer.index">colbert/indexer.py/<code>indexer.index</code></h3>
+<p>For RAGatouille, this call takes place in <a href="https://github.com/AnswerDotAI/RAGatouille/blob/2bd4d2ed01c847854be78704a012f9ab35d679b2/ragatouille/models/index.py#L243">ragatouille/models/index.py</a>.</p>
+<p>It’s interesting to note that even before <code>indexer.index</code> is called, the starting memory varies between raw ColBERT and RAGatouille. Most notably, for 2M documents, ColBERT starts at ~<mark>4GB</mark> while RAGatouille starts at ~<mark>8 GB</mark>.</p>
+<p>Even more interesting, the memory increments for ColBERT are <mark>2x to 35x</mark> smaller than RAGatouille for each collection size.</p>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Indexing Method</th>
+<th style="text-align: center;">Document Size</th>
+<th style="text-align: center;">Starting Memory</th>
+<th style="text-align: center;">Memory Increment</th>
+<th style="text-align: center;">Final Memory</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">1596.9 MB</td>
+<td style="text-align: center;">36.7 MB</td>
+<td style="text-align: center;">1633.6 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">1754.0 MB</td>
+<td style="text-align: center;">92.8 MB</td>
+<td style="text-align: center;">1846.8 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">2072.1 MB</td>
+<td style="text-align: center;">199.1 MB</td>
+<td style="text-align: center;">2271.2 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">1M</td>
+<td style="text-align: center;">2707.3 MB</td>
+<td style="text-align: center;">421.9 MB</td>
+<td style="text-align: center;">3129.2 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">2M</td>
+<td style="text-align: center;">4000.6 MB</td>
+<td style="text-align: center;">876.4 MB</td>
+<td style="text-align: center;">4877.1 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>use_faiss=True</code>)</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">2114.2 MB</td>
+<td style="text-align: center;">1320.1 MB</td>
+<td style="text-align: center;">3434.3 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>True</code>)</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">2592.5 MB</td>
+<td style="text-align: center;">1175.0 MB</td>
+<td style="text-align: center;">3767.5 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>True</code>)</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">3405.0 MB</td>
+<td style="text-align: center;">1430.0 MB</td>
+<td style="text-align: center;">4835.0 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>use_faiss=False</code>)</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">1750.9 MB</td>
+<td style="text-align: center;">1203.9 MB</td>
+<td style="text-align: center;">2954.8 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">2597.4 MB</td>
+<td style="text-align: center;">1341.4 MB</td>
+<td style="text-align: center;">3938.8 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">3406.4 MB</td>
+<td style="text-align: center;">1465.8 MB</td>
+<td style="text-align: center;">4872.2 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">1M</td>
+<td style="text-align: center;">5040.1 MB</td>
+<td style="text-align: center;">1593.3 MB</td>
+<td style="text-align: center;">6633.3 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">2M</td>
+<td style="text-align: center;">8354.7 MB</td>
+<td style="text-align: center;">1882.0 MB</td>
+<td style="text-align: center;">10236.8 MB</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="colbertindexingcollection_indexer.pyencoder.encode_passages" class="level3">
+<h3 class="anchored" data-anchor-id="colbertindexingcollection_indexer.pyencoder.encode_passages">colbert/indexing/collection_indexer.py/<code>encoder.encode_passages</code></h3>
+<p><code>encoder.encode_passages</code> involves the following code:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> encode_passages(<span class="va">self</span>, passages):</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>        Run().<span class="bu">print</span>(<span class="ss">f"#&gt; Encoding </span><span class="sc">{</span><span class="bu">len</span>(passages)<span class="sc">}</span><span class="ss"> passages.."</span>)</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="bu">len</span>(passages) <span class="op">==</span> <span class="dv">0</span>:</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> <span class="va">None</span>, <span class="va">None</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> torch.inference_mode():</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>            embs, doclens <span class="op">=</span> [], []</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> passages_batch <span class="kw">in</span> batch(passages, <span class="va">self</span>.config.index_bsize <span class="op">*</span> <span class="dv">50</span>):</span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>                embs_, doclens_ <span class="op">=</span> <span class="va">self</span>.checkpoint.docFromText(</span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>                    passages_batch,</span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>                    bsize<span class="op">=</span><span class="va">self</span>.config.index_bsize,</span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a>                    keep_dims<span class="op">=</span><span class="st">"flatten"</span>,</span>
+<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a>                    showprogress<span class="op">=</span>(<span class="kw">not</span> <span class="va">self</span>.use_gpu),</span>
+<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a>                    pool_factor<span class="op">=</span><span class="va">self</span>.config.pool_factor,</span>
+<span id="cb10-18"><a href="#cb10-18" aria-hidden="true" tabindex="-1"></a>                    clustering_mode<span class="op">=</span><span class="va">self</span>.config.clustering_mode,</span>
+<span id="cb10-19"><a href="#cb10-19" aria-hidden="true" tabindex="-1"></a>                    protected_tokens<span class="op">=</span><span class="va">self</span>.config.protected_tokens,</span>
+<span id="cb10-20"><a href="#cb10-20" aria-hidden="true" tabindex="-1"></a>                )</span>
+<span id="cb10-21"><a href="#cb10-21" aria-hidden="true" tabindex="-1"></a>                embs.append(embs_)</span>
+<span id="cb10-22"><a href="#cb10-22" aria-hidden="true" tabindex="-1"></a>                doclens.extend(doclens_)</span>
+<span id="cb10-23"><a href="#cb10-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-24"><a href="#cb10-24" aria-hidden="true" tabindex="-1"></a>            embs <span class="op">=</span> torch.cat(embs)</span>
+<span id="cb10-25"><a href="#cb10-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-26"><a href="#cb10-26" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> embs, doclens</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>IIUC, this is calling <code>docFromText</code> on the ColBERT model (<code>answerai-colbert-small-v1</code> in our case). I would expect raw ColBERT and RAGatouille to experience equal memory change during this method call but RAGatouille uses <mark>10-15%</mark> more memory for each dataset size.</p>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Indexing Method</th>
+<th style="text-align: center;">Document Size</th>
+<th style="text-align: center;">Initial Memory</th>
+<th style="text-align: center;">Memory Change</th>
+<th style="text-align: center;">Final Memory</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">732.9 MB</td>
+<td style="text-align: center;">1502.4 MB</td>
+<td style="text-align: center;">2235.3 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">829.7 MB</td>
+<td style="text-align: center;">1991.1 MB</td>
+<td style="text-align: center;">2820.8 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">1000.2 MB</td>
+<td style="text-align: center;">2549.8 MB</td>
+<td style="text-align: center;">3550.0 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">1M</td>
+<td style="text-align: center;">1351.6 MB</td>
+<td style="text-align: center;">3462.0 MB</td>
+<td style="text-align: center;">4813.6 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">2M</td>
+<td style="text-align: center;">1997.3 MB</td>
+<td style="text-align: center;">4692.3 MB</td>
+<td style="text-align: center;">6689.6 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>use_faiss=True</code>)</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">2115.0 MB</td>
+<td style="text-align: center;">1677.3 MB</td>
+<td style="text-align: center;">3792.3 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>True</code>)</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">2593.5 MB</td>
+<td style="text-align: center;">2279.7 MB</td>
+<td style="text-align: center;">4873.2 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>True</code>)</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">3405.1 MB</td>
+<td style="text-align: center;">3004.6 MB</td>
+<td style="text-align: center;">6409.6 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>use_faiss=False</code>)</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">1751.0 MB</td>
+<td style="text-align: center;">1685.6 MB</td>
+<td style="text-align: center;">3436.6 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">2597.9 MB</td>
+<td style="text-align: center;">2270.4 MB</td>
+<td style="text-align: center;">4868.3 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">3406.4 MB</td>
+<td style="text-align: center;">3003.8 MB</td>
+<td style="text-align: center;">6410.2 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">1M</td>
+<td style="text-align: center;">5040.7 MB</td>
+<td style="text-align: center;">3915.3 MB</td>
+<td style="text-align: center;">8956.0 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">2M</td>
+<td style="text-align: center;">8355.1 MB</td>
+<td style="text-align: center;">5349.5 MB</td>
+<td style="text-align: center;">13704.6 MB</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="colbertindexingcollection_indexer.py_sample_embeddings" class="level3">
+<h3 class="anchored" data-anchor-id="colbertindexingcollection_indexer.py_sample_embeddings">colbert/indexing/collection_indexer.py/<code>_sample_embeddings</code></h3>
+<p><code>encode_passages</code> is called from inside <code>_sample_embeddings</code>. For ColBERT, <code>_sample_embeddings</code> has different starting/final memory values than <code>_encode_passages</code> while for RAGatouille they are the same.</p>
+<p>For example, for 100k documents using raw ColBERT, <code>_sample_embeddings</code> increases memory by 797 MB while for <code>encoder.encode_passages</code> the memory increases by 1488.8MB.</p>
+<p>For 100k using RAGatouille, both memory increases the same (1677.3 MB for <code>use_faiss=True</code> and 1685.6 MB for <code>use_faiss=False</code>). I’m not sure what this means so I asked Claude and got the response:</p>
+<blockquote class="blockquote">
+<p>This discrepancy reveals memory reuse patterns between function calls. In ColBERT, the 1488.8 MB used by <code>encode_passages</code> is partially freed before returning to <code>_sample_embeddings</code>, resulting in a net increase of 797 MB. In RAGatouille, the memory appears to be retained between calls, showing the same 1677.3 MB increase at both levels.</p>
+</blockquote>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Indexing Method</th>
+<th style="text-align: center;">Document Size</th>
+<th style="text-align: center;">Initial Memory</th>
+<th style="text-align: center;">Memory Change</th>
+<th style="text-align: center;">Final Memory</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">732.9 MB</td>
+<td style="text-align: center;">813.8 MB</td>
+<td style="text-align: center;">1546.7 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">829.7 MB</td>
+<td style="text-align: center;">809.0 MB</td>
+<td style="text-align: center;">1638.7 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">1000.2 MB</td>
+<td style="text-align: center;">770.1 MB</td>
+<td style="text-align: center;">1770.3 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">1M</td>
+<td style="text-align: center;">1351.6 MB</td>
+<td style="text-align: center;">813.3 MB</td>
+<td style="text-align: center;">2164.9 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">2M</td>
+<td style="text-align: center;">1997.3 MB</td>
+<td style="text-align: center;">782.4 MB</td>
+<td style="text-align: center;">2779.7 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>use_faiss=True</code>)</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">2115.0 MB</td>
+<td style="text-align: center;">1677.3 MB</td>
+<td style="text-align: center;">3792.3 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>True</code>)</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">2593.5 MB</td>
+<td style="text-align: center;">2279.7 MB</td>
+<td style="text-align: center;">4873.2 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>True</code>)</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">3405.1 MB</td>
+<td style="text-align: center;">3004.6 MB</td>
+<td style="text-align: center;">6409.6 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>use_faiss=False</code>)</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">1751.0 MB</td>
+<td style="text-align: center;">1685.6 MB</td>
+<td style="text-align: center;">3436.6 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">2597.9 MB</td>
+<td style="text-align: center;">2270.4 MB</td>
+<td style="text-align: center;">4868.3 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">3406.4 MB</td>
+<td style="text-align: center;">3003.8 MB</td>
+<td style="text-align: center;">6410.2 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">1M</td>
+<td style="text-align: center;">5040.7 MB</td>
+<td style="text-align: center;">3915.3 MB</td>
+<td style="text-align: center;">8956.0 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">2M</td>
+<td style="text-align: center;">8355.1 MB</td>
+<td style="text-align: center;">5349.5 MB</td>
+<td style="text-align: center;">13704.6 MB</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="colbertindexingcollection_indexer.pysetup" class="level3">
+<h3 class="anchored" data-anchor-id="colbertindexingcollection_indexer.pysetup">colbert/indexing/collection_indexer.py/<code>setup</code></h3>
+<p>A similar pattern for <code>setup</code>, within which <code>_sample_embeddings</code> is called. Raw ColBERT seems more efficient in releasing memory while RAGatouille retains it.</p>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Indexing Method</th>
+<th style="text-align: center;">Document Size</th>
+<th style="text-align: center;">Initial Memory</th>
+<th style="text-align: center;">Memory Change</th>
+<th style="text-align: center;">Final Memory</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">727.9 MB</td>
+<td style="text-align: center;">817.5 MB</td>
+<td style="text-align: center;">1545.5 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">815.7 MB</td>
+<td style="text-align: center;">816.4 MB</td>
+<td style="text-align: center;">1632.1 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">978.2 MB</td>
+<td style="text-align: center;">787.9 MB</td>
+<td style="text-align: center;">1766.1 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">1M</td>
+<td style="text-align: center;">1305.6 MB</td>
+<td style="text-align: center;">840.2 MB</td>
+<td style="text-align: center;">2145.8 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">2M</td>
+<td style="text-align: center;">1966.3 MB</td>
+<td style="text-align: center;">822.2 MB</td>
+<td style="text-align: center;">2788.5 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>use_faiss=True</code>)</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">3434.3 MB</td>
+<td style="text-align: center;">1677.3 MB</td>
+<td style="text-align: center;">3792.3 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>True</code>)</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">3767.5 MB</td>
+<td style="text-align: center;">2279.7 MB</td>
+<td style="text-align: center;">4873.2 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>True</code>)</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">4835.0 MB</td>
+<td style="text-align: center;">3004.6 MB</td>
+<td style="text-align: center;">6409.6 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>use_faiss=False</code>)</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">2954.8 MB</td>
+<td style="text-align: center;">1685.6 MB</td>
+<td style="text-align: center;">3436.6 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">3938.8 MB</td>
+<td style="text-align: center;">2270.4 MB</td>
+<td style="text-align: center;">4868.3 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">4872.2 MB</td>
+<td style="text-align: center;">3003.8 MB</td>
+<td style="text-align: center;">6410.2 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">1M</td>
+<td style="text-align: center;">6633.3 MB</td>
+<td style="text-align: center;">3915.3 MB</td>
+<td style="text-align: center;">8956.0 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">2M</td>
+<td style="text-align: center;">10236.8 MB</td>
+<td style="text-align: center;">5349.5 MB</td>
+<td style="text-align: center;">13704.6 MB</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="colbertindexingcollection_indexer.pytrain" class="level3">
+<h3 class="anchored" data-anchor-id="colbertindexingcollection_indexer.pytrain">colbert/indexing/collection_indexer.py/<code>train</code></h3>
+<p>IIUC, this function call finds centroids based on a sample of document token embeddings. Interesting to note that the memory change for raw ColBERT is smallest for 1M documents (87.2 MB) and for RAGatouille, 2M docs is the smallest (23.4 MB). For most collection sizes, RAGatouille uses <mark>40-50%</mark> more memory for this operation.</p>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Indexing Method</th>
+<th style="text-align: center;">Document Size</th>
+<th style="text-align: center;">Initial Memory</th>
+<th style="text-align: center;">Memory Change</th>
+<th style="text-align: center;">Final Memory</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">1545.5 MB</td>
+<td style="text-align: center;">115.8 MB</td>
+<td style="text-align: center;">1661.3 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">1632.1 MB</td>
+<td style="text-align: center;">128.8 MB</td>
+<td style="text-align: center;">1760.9 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">1766.1 MB</td>
+<td style="text-align: center;">124.3 MB</td>
+<td style="text-align: center;">1890.4 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">1M</td>
+<td style="text-align: center;">2145.8 MB</td>
+<td style="text-align: center;">87.2 MB</td>
+<td style="text-align: center;">2233.0 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">2M</td>
+<td style="text-align: center;">2788.5 MB</td>
+<td style="text-align: center;">133.5 MB</td>
+<td style="text-align: center;">2921.9 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>use_faiss=True</code>)</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">3792.3 MB</td>
+<td style="text-align: center;">179.6 MB</td>
+<td style="text-align: center;">3971.9 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>True</code>)</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">4873.2 MB</td>
+<td style="text-align: center;">182.7 MB</td>
+<td style="text-align: center;">5055.9 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>True</code>)</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">6409.6 MB</td>
+<td style="text-align: center;">174.1 MB</td>
+<td style="text-align: center;">6583.8 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>use_faiss=False</code>)</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">3436.6 MB</td>
+<td style="text-align: center;">175.9 MB</td>
+<td style="text-align: center;">3612.6 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">4868.3 MB</td>
+<td style="text-align: center;">181.5 MB</td>
+<td style="text-align: center;">5049.8 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">6410.2 MB</td>
+<td style="text-align: center;">179.2 MB</td>
+<td style="text-align: center;">6589.4 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">1M</td>
+<td style="text-align: center;">8956.0 MB</td>
+<td style="text-align: center;">191.5 MB</td>
+<td style="text-align: center;">9147.5 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">2M</td>
+<td style="text-align: center;">13704.6 MB</td>
+<td style="text-align: center;">23.4 MB</td>
+<td style="text-align: center;">13728.1 MB</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="colbertindexingcollection_indexer.pyindex" class="level3">
+<h3 class="anchored" data-anchor-id="colbertindexingcollection_indexer.pyindex">colbert/indexing/collection_indexer.py/<code>index</code></h3>
+<p>This is one of the more interesting results—raw ColBERT has a positive memory change during this operation (which IIUC is the indexing of all document token embeddings) while <em>all</em> RAGatouille <code>index()</code> operations actually <em>reduce the memory usage</em>. Not sure what that means. The final memory for raw ColBERT is less than RAGatouille.</p>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Indexing Method</th>
+<th style="text-align: center;">Document Size</th>
+<th style="text-align: center;">Initial Memory</th>
+<th style="text-align: center;">Memory Change</th>
+<th style="text-align: center;">Final Memory</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">1661.3 MB</td>
+<td style="text-align: center;">287.0 MB</td>
+<td style="text-align: center;">1948.3 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">1760.9 MB</td>
+<td style="text-align: center;">263.5 MB</td>
+<td style="text-align: center;">2024.4 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">1890.4 MB</td>
+<td style="text-align: center;">371.9 MB</td>
+<td style="text-align: center;">2262.2 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">1M</td>
+<td style="text-align: center;">2233.0 MB</td>
+<td style="text-align: center;">599.9 MB</td>
+<td style="text-align: center;">2832.9 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">2M</td>
+<td style="text-align: center;">2921.9 MB</td>
+<td style="text-align: center;">958.0 MB</td>
+<td style="text-align: center;">3880.0 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>use_faiss=True</code>)</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">3971.9 MB</td>
+<td style="text-align: center;">-536.3 MB</td>
+<td style="text-align: center;">3435.6 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>True</code>)</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">5055.9 MB</td>
+<td style="text-align: center;">-1375.8 MB</td>
+<td style="text-align: center;">3680.1 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>True</code>)</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">6583.8 MB</td>
+<td style="text-align: center;">-1936.3 MB</td>
+<td style="text-align: center;">4647.5 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>use_faiss=False</code>)</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">3612.6 MB</td>
+<td style="text-align: center;">-652.4 MB</td>
+<td style="text-align: center;">2960.2 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">5049.8 MB</td>
+<td style="text-align: center;">-1112.5 MB</td>
+<td style="text-align: center;">3937.3 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">6589.4 MB</td>
+<td style="text-align: center;">-1906.8 MB</td>
+<td style="text-align: center;">4682.6 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">1M</td>
+<td style="text-align: center;">9147.5 MB</td>
+<td style="text-align: center;">-2917.3 MB</td>
+<td style="text-align: center;">6230.1 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">2M</td>
+<td style="text-align: center;">13728.1 MB</td>
+<td style="text-align: center;">-4910.2 MB</td>
+<td style="text-align: center;">8817.9 MB</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="colbertindexingcollection_indexer.pyfinalize" class="level3">
+<h3 class="anchored" data-anchor-id="colbertindexingcollection_indexer.pyfinalize">colbert/indexing/collection_indexer.py/<code>finalize</code></h3>
+<p>This function maps passage IDs to centroid IDs—one of the efficiencies of the PLAID indexing approach. Within each approach (raw ColBERT and RAGatouille) the memory change varies drastically between less than 0 and up to ~500MB.</p>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Indexing Method</th>
+<th style="text-align: center;">Document Size</th>
+<th style="text-align: center;">Initial Memory</th>
+<th style="text-align: center;">Memory Change</th>
+<th style="text-align: center;">Final Memory</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">1948.3 MB</td>
+<td style="text-align: center;">35.1 MB</td>
+<td style="text-align: center;">1983.3 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">2024.4 MB</td>
+<td style="text-align: center;">-0.4 MB</td>
+<td style="text-align: center;">2024.0 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">2262.2 MB</td>
+<td style="text-align: center;">59.2 MB</td>
+<td style="text-align: center;">2321.5 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">1M</td>
+<td style="text-align: center;">2832.9 MB</td>
+<td style="text-align: center;">201.5 MB</td>
+<td style="text-align: center;">3034.4 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">ColBERT</td>
+<td style="text-align: center;">2M</td>
+<td style="text-align: center;">3880.0 MB</td>
+<td style="text-align: center;">490.2 MB</td>
+<td style="text-align: center;">4370.2 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>use_faiss=True</code>)</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">3435.6 MB</td>
+<td style="text-align: center;">-1.3 MB</td>
+<td style="text-align: center;">3434.3 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>True</code>)</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">3680.1 MB</td>
+<td style="text-align: center;">87.4 MB</td>
+<td style="text-align: center;">3767.5 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>True</code>)</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">4647.5 MB</td>
+<td style="text-align: center;">187.5 MB</td>
+<td style="text-align: center;">4835.0 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>use_faiss=False</code>)</td>
+<td style="text-align: center;">100k</td>
+<td style="text-align: center;">2960.2 MB</td>
+<td style="text-align: center;">-5.3 MB</td>
+<td style="text-align: center;">2954.8 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">250k</td>
+<td style="text-align: center;">3937.3 MB</td>
+<td style="text-align: center;">1.5 MB</td>
+<td style="text-align: center;">3938.8 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">500k</td>
+<td style="text-align: center;">4682.6 MB</td>
+<td style="text-align: center;">189.6 MB</td>
+<td style="text-align: center;">4872.2 MB</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">1M</td>
+<td style="text-align: center;">6230.1 MB</td>
+<td style="text-align: center;">403.2 MB</td>
+<td style="text-align: center;">6633.3 MB</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">RAGatouille (<code>False</code>)</td>
+<td style="text-align: center;">2M</td>
+<td style="text-align: center;">8817.9 MB</td>
+<td style="text-align: center;">1418.9 MB</td>
+<td style="text-align: center;">10236.8 MB</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="indexing-time" class="level2">
+<h2 class="anchored" data-anchor-id="indexing-time">Indexing Time</h2>
+<p>I didn’t measure runtime for each run, but some observations:</p>
+<ul>
+<li>During passage encoding (25k passages per iteration) ColBERT took about <mark>20 seconds/it</mark> and RAGatouille took about <mark>110 seconds/it</mark>. Note that without profiling ColBERT took about 11/seconds/it and RAGatouille 22 seconds/it.</li>
+<li>ColBERT encoding lasted 4, 10, 20, 40 and 80 iterations for 100k, 250k, 500k, 1M and 2M docs. RAGatouille always overshot it (e.g.&nbsp;14 iters for 250k docs or 22 iters for 500k docs).</li>
+<li>Overall ColBERT profiling took ~2 hours while RAGatouille took ~16 hours.</li>
+<li>It took a lot of time before the final encoding takes place, I think that’s because of the initial “planning” step that ColBERT and RAGatouille both do.</li>
+</ul>
+</section>
+<section id="indexing-10k-documents-pytorch-vs-faiss-k-means-clustering" class="level2">
+<h2 class="anchored" data-anchor-id="indexing-10k-documents-pytorch-vs-faiss-k-means-clustering">Indexing 10k Documents (PyTorch vs FAISS K-means Clustering)</h2>
+<p>While I was experimenting indexing scripts with 10k documents I noticed curious behavior. For 10k documents, with <code>use_faiss=False</code>, RAGatouille attempts to use PyTorch for K-means clustering. The memory usage for <code>encoder.encode_passages</code> during this attempt:</p>
+<pre><code>Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   146   1849.2 MiB   1849.2 MiB           1           @profile
+   147                                                 def _encode_passages_profiled(*args, **kwargs):
+   148   2675.7 MiB    826.5 MiB           1               return self.encoder.encode_passages(*args, **kwargs)</code></pre>
+<p>It then runs into an OOM error:</p>
+<pre><code>PyTorch-based indexing did not succeed with error: CUDA out of memory. Tried to allocate 27.55 GiB. GPU 0 has a total capacity of 47.51 GiB of which 4.88 GiB is free.</code></pre>
+<p>And switches to FAISS K-means. The memory usage for <code>encoder.encode_passages</code> changes (note the drop from an increase of 826.5 MB to an increase of 373 MB, but an increase in initial memory usage from 1849.2 MB to 2652.6MB):</p>
+<pre><code>Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   146   2652.6 MiB   2652.6 MiB           1           @profile
+   147                                                 def _encode_passages_profiled(*args, **kwargs):
+   148   3025.6 MiB    373.0 MiB           1               return self.encoder.encode_passages(*args, **kwargs)</code></pre>
+<p>When I run the script with <code>use_faiss=True</code>, the <code>encoder.encode_passages</code> memory usage reflects the PyTorch attempt, whereas I would expect the memory increase to be 373 MB:</p>
+<pre><code>Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+   146   1853.4 MiB   1853.4 MiB           1           @profile
+   147                                                 def _encode_passages_profiled(*args, **kwargs):
+   148   2678.8 MiB    825.4 MiB           1               return self.encoder.encode_passages(*args, **kwargs)</code></pre>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>This exercise has left me with more questions than answers that I need to explore:</p>
+<ul>
+<li>Is this the best way to go about profiling memory?</li>
+<li>Am I interpreting the memory profiling results correctly?</li>
+<li>Why does RAGatouille have a higher initial memory before indexing starts?</li>
+<li>Why does RAGatouille retain more memory after indexing than ColBERT?</li>
+<li>Why does RAGatouille memory usage drastically <em>decrease</em> during <code>index()</code>?</li>
+<li>Why does RAGatouille max out CUDA memory for 10k documents? Related to <a href="https://github.com/AnswerDotAI/RAGatouille/issues/247">Issue #247</a>.</li>
+<li>Why does RAGatouille’s memory usage when <code>use_faiss=True</code> match PyTorch K-means’ memory usage and not the FAISS K-means’ memory usage after PyTorch’s attempt fails with OOM?</li>
+</ul>
+<p>Additionally, and probably relatedly, I still haven’t figured out what is causing the large memory spike in the diagram below:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="1.png" class="lightbox" title="CPU memory usage while indexing 250k documents" data-gallery="quarto-lightbox-gallery-2"><img src="1.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">CPU memory usage while indexing 250k documents</figcaption><p></p>
+</figure>
+</div>
+<p>The largest memory value profiled while indexing 250k docs using RAGatouille was 5049.8 MB but the chart shows a spike up to ~8GB. Where’s the ghost 3GB?</p>
+<p>TBD.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","selector":".lightbox","loop":true,"openEffect":"zoom","descPosition":"bottom"});</script>
+
+
+
+</body></html>
