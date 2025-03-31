@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2025-03-30">
+<meta name="description" content="A walkthrough of my first custom Composer callback where I log weight, activation, gradient and loss data types during the training loop.">
+
+<title>Vishal Bakshi’s Blog - TIL: Creating a Custom Composer Callback</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Vishal Bakshi’s Blog</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#initial-plan" id="toc-initial-plan" class="nav-link" data-scroll-target="#initial-plan">Initial Plan</a></li>
+  <li><a href="#first-callback" id="toc-first-callback" class="nav-link" data-scroll-target="#first-callback">First Callback</a></li>
+  <li><a href="#second-callback" id="toc-second-callback" class="nav-link" data-scroll-target="#second-callback">Second Callback</a></li>
+  <li><a href="#final-thoughts" id="toc-final-thoughts" class="nav-link" data-scroll-target="#final-thoughts">Final Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">TIL: Creating a Custom Composer Callback</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">LLM</div>
+    <div class="quarto-category">deep learning</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    A walkthrough of my first custom Composer callback where I log weight, activation, gradient and loss data types during the training loop.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">March 30, 2025</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>I’m learning to use LLM-Foundry to finetune SLMs. To better understand what’s going on in the training loop when using Flash Attention 2 (for SmolLM2-135M), I decided to ask Claude to write me a custom callback. Here is my <a href="https://claude.ai/share/9bb6c135-2ffb-42be-91bc-b4e4a6356173">full Claude conversation</a>.</p>
+</section>
+<section id="initial-plan" class="level2">
+<h2 class="anchored" data-anchor-id="initial-plan">Initial Plan</h2>
+<p>At first, I was planning to fork Composer (which I did), create a new branch for edits (print statements of datatypes in the <code>Trainer</code> code), and install that repo/branch for training. However, as I was chatting with Claude, it offered an option to write a callback instead. Being that <a href="https://docs.mosaicml.com/projects/composer/en/stable/getting_started/welcome_tour.html#:~:text=This%20is%20based%20on%20the%20two%2Dway%20callback%20system%20from%20(Howard%20et%20al%2C%202020)">this is a core philosophy of how Composer is built</a>, it was a no brainer for me to pursue.</p>
+</section>
+<section id="first-callback" class="level2">
+<h2 class="anchored" data-anchor-id="first-callback">First Callback</h2>
+<p>The first callback Claude wrote (I guided it a little bit by feeding it Composer’s <code>trainer.py</code> and giving it their callback example from the docs) was as follows:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> WeightDtypeMonitor(Callback):</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, backward_log_interval<span class="op">=</span><span class="dv">5</span>):</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.backward_log_interval <span class="op">=</span> backward_log_interval</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> fit_start(<span class="va">self</span>, state: State, logger: Logger) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._log_dtypes(state, logger, <span class="st">"fit_start"</span>)</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> after_backward(<span class="va">self</span>, state: State, logger: Logger) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> state.timestamp.batch.value <span class="op">%</span> <span class="va">self</span>.backward_log_interval <span class="op">==</span> <span class="dv">0</span>:</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>._log_dtypes(state, logger, <span class="ss">f"backward_</span><span class="sc">{</span>state<span class="sc">.</span>timestamp<span class="sc">.</span>batch<span class="sc">.</span>value<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> epoch_end(<span class="va">self</span>, state: State, logger: Logger) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._log_dtypes(state, logger, <span class="ss">f"epoch_</span><span class="sc">{</span>state<span class="sc">.</span>timestamp<span class="sc">.</span>epoch<span class="sc">.</span>value<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> _log_dtypes(<span class="va">self</span>, state: State, logger: Logger, prefix: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>        model <span class="op">=</span> state.model</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>        logger.log_metrics({</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>            <span class="ss">f"dtype/</span><span class="sc">{</span>prefix<span class="sc">}</span><span class="ss">/lm_head"</span>: <span class="bu">str</span>(model.model.base_model.model.lm_head.weight.dtype),</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>            <span class="ss">f"dtype/</span><span class="sc">{</span>prefix<span class="sc">}</span><span class="ss">/q_proj_base"</span>: <span class="bu">str</span>(model.model.base_model.model.model.layers[<span class="dv">0</span>].self_attn.q_proj.base_layer.weight.dtype),</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>            <span class="ss">f"dtype/</span><span class="sc">{</span>prefix<span class="sc">}</span><span class="ss">/q_proj_lora_A"</span>: <span class="bu">str</span>(model.model.base_model.model.model.layers[<span class="dv">0</span>].self_attn.q_proj.lora_A.default.weight.dtype),</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>            <span class="ss">f"dtype/</span><span class="sc">{</span>prefix<span class="sc">}</span><span class="ss">/q_proj_lora_B"</span>: <span class="bu">str</span>(model.model.base_model.model.model.layers[<span class="dv">0</span>].self_attn.q_proj.lora_B.default.weight.dtype)</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>        })</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>For reference, here is the list of events available in Composer during the training loop:</p>
+<pre><code># &lt;INIT&gt;
+# &lt;BEFORE_LOAD&gt;
+# &lt;AFTER_LOAD&gt;
+# &lt;FIT_START&gt;
+for epoch in range(NUM_EPOCHS):
+    # &lt;EPOCH_START&gt;
+    while True:
+        # &lt;BEFORE_DATALOADER&gt;
+        batch = next(dataloader)
+        if batch is None:
+            break
+        inputs, targets = batch
+        # &lt;AFTER_DATALOADER&gt;
+
+        # &lt;BATCH_START&gt;
+
+        # &lt;BEFORE_FORWARD&gt;
+        outputs = model.forward(inputs)
+        # &lt;AFTER_FORWARD&gt;
+
+        # &lt;BEFORE_LOSS&gt;
+        loss = model.loss(outputs, targets)
+        # &lt;AFTER_LOSS&gt;
+
+        # &lt;BEFORE_BACKWARD&gt;
+        loss.backward()
+        # &lt;AFTER_BACKWARD&gt;
+
+        optimizer.step()
+        optimizer.zero_grad()
+
+        # &lt;BATCH_END&gt;
+    # &lt;EPOCH_END&gt;</code></pre>
+<p>For each event I wanted to log data types for, the callback passes <code>state</code> (where the <code>model</code> is stored), <code>logger</code> (to do the logging) and a <code>prefix</code> (to denote what’s being logged). Only every <code>backward_log_interval</code>-th batch’s backward pass is logged, to avoid clutter.</p>
+<p>Here is example output:</p>
+<pre><code># fit_start
+Train dtype/fit_start/lm_head: "torch.float32"
+Train dtype/fit_start/q_proj_base: "torch.float32"
+Train dtype/fit_start/q_proj_lora_A: "torch.float32" 
+Train dtype/fit_start/q_proj_lora_B: "torch.float32"
+
+# after_backward
+Train dtype/backward_0/lm_head: "torch.float32"
+Train dtype/backward_0/q_proj_base: "torch.float32"
+Train dtype/backward_0/q_proj_lora_A: "torch.float32"
+Train dtype/backward_0/q_proj_lora_B: "torch.float32"</code></pre>
+<p>I was surprised to see that everything was in float32, I thought Flash Attention 2 (FA2) used mixed precision? Note that I haven’t read the FA2 paper.</p>
+</section>
+<section id="second-callback" class="level2">
+<h2 class="anchored" data-anchor-id="second-callback">Second Callback</h2>
+<p>Now that I understood a basic logging callback, I asked Claude to generate a callback that would help me see where mixed precision came into play. This one was a bit more involved:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> DtypeMonitor(Callback):</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, log_interval<span class="op">=</span><span class="dv">100</span>):</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.log_interval <span class="op">=</span> log_interval</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.hooks <span class="op">=</span> []</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> fit_start(<span class="va">self</span>, state: State, logger: Logger) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._log_weight_dtypes(state, logger, <span class="st">"fit_start"</span>)</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> before_forward(<span class="va">self</span>, state: State, logger: Logger) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> state.timestamp.batch.value <span class="op">%</span> <span class="va">self</span>.log_interval <span class="op">==</span> <span class="dv">0</span>:</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Log input tensor dtypes</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> <span class="bu">isinstance</span>(state.batch, <span class="bu">dict</span>) <span class="kw">and</span> <span class="st">'input_ids'</span> <span class="kw">in</span> state.batch:</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>                logger.log_metrics({</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"dtype/input/input_ids"</span>: <span class="bu">str</span>(state.batch[<span class="st">'input_ids'</span>].dtype)</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>                })</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>            </span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Register hooks to capture activation dtypes</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>            layer <span class="op">=</span> state.model.model.base_model.model.model.layers[<span class="dv">0</span>].self_attn</span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>            </span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>            <span class="kw">def</span> hook_fn(name):</span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>                <span class="kw">def</span> _hook(module, inputs, outputs):</span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>                    <span class="co"># Log input activation dtype</span></span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">if</span> <span class="bu">isinstance</span>(inputs, <span class="bu">tuple</span>) <span class="kw">and</span> <span class="bu">len</span>(inputs) <span class="op">&gt;</span> <span class="dv">0</span>:</span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>                        logger.log_metrics({<span class="ss">f"dtype/activation/</span><span class="sc">{</span>name<span class="sc">}</span><span class="ss">_input"</span>: <span class="bu">str</span>(inputs[<span class="dv">0</span>].dtype)})</span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>                    </span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a>                    <span class="co"># Log output activation dtype</span></span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">if</span> <span class="bu">isinstance</span>(outputs, torch.Tensor):</span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a>                        logger.log_metrics({<span class="ss">f"dtype/activation/</span><span class="sc">{</span>name<span class="sc">}</span><span class="ss">_output"</span>: <span class="bu">str</span>(outputs.dtype)})</span>
+<span id="cb4-29"><a href="#cb4-29" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">elif</span> <span class="bu">isinstance</span>(outputs, <span class="bu">tuple</span>) <span class="kw">and</span> <span class="bu">len</span>(outputs) <span class="op">&gt;</span> <span class="dv">0</span>:</span>
+<span id="cb4-30"><a href="#cb4-30" aria-hidden="true" tabindex="-1"></a>                        logger.log_metrics({<span class="ss">f"dtype/activation/</span><span class="sc">{</span>name<span class="sc">}</span><span class="ss">_output"</span>: <span class="bu">str</span>(outputs[<span class="dv">0</span>].dtype)})</span>
+<span id="cb4-31"><a href="#cb4-31" aria-hidden="true" tabindex="-1"></a>                <span class="cf">return</span> _hook</span>
+<span id="cb4-32"><a href="#cb4-32" aria-hidden="true" tabindex="-1"></a>            </span>
+<span id="cb4-33"><a href="#cb4-33" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Clear old hooks</span></span>
+<span id="cb4-34"><a href="#cb4-34" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> hook <span class="kw">in</span> <span class="va">self</span>.hooks:</span>
+<span id="cb4-35"><a href="#cb4-35" aria-hidden="true" tabindex="-1"></a>                hook.remove()</span>
+<span id="cb4-36"><a href="#cb4-36" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>.hooks <span class="op">=</span> []</span>
+<span id="cb4-37"><a href="#cb4-37" aria-hidden="true" tabindex="-1"></a>            </span>
+<span id="cb4-38"><a href="#cb4-38" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Register new hooks</span></span>
+<span id="cb4-39"><a href="#cb4-39" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>.hooks.append(layer.q_proj.register_forward_hook(hook_fn(<span class="st">"q_proj"</span>)))</span>
+<span id="cb4-40"><a href="#cb4-40" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>.hooks.append(layer.register_forward_hook(hook_fn(<span class="st">"self_attn"</span>)))</span>
+<span id="cb4-41"><a href="#cb4-41" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb4-42"><a href="#cb4-42" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> after_forward(<span class="va">self</span>, state: State, logger: Logger) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb4-43"><a href="#cb4-43" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> state.timestamp.batch.value <span class="op">%</span> <span class="va">self</span>.log_interval <span class="op">==</span> <span class="dv">0</span>:</span>
+<span id="cb4-44"><a href="#cb4-44" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Log model output dtype</span></span>
+<span id="cb4-45"><a href="#cb4-45" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> <span class="bu">isinstance</span>(state.outputs, torch.Tensor):</span>
+<span id="cb4-46"><a href="#cb4-46" aria-hidden="true" tabindex="-1"></a>                logger.log_metrics({</span>
+<span id="cb4-47"><a href="#cb4-47" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"dtype/computation/output"</span>: <span class="bu">str</span>(state.outputs.dtype)</span>
+<span id="cb4-48"><a href="#cb4-48" aria-hidden="true" tabindex="-1"></a>                })</span>
+<span id="cb4-49"><a href="#cb4-49" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb4-50"><a href="#cb4-50" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> after_loss(<span class="va">self</span>, state: State, logger: Logger) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb4-51"><a href="#cb4-51" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> state.timestamp.batch.value <span class="op">%</span> <span class="va">self</span>.log_interval <span class="op">==</span> <span class="dv">0</span>:</span>
+<span id="cb4-52"><a href="#cb4-52" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Log loss dtype</span></span>
+<span id="cb4-53"><a href="#cb4-53" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> <span class="bu">isinstance</span>(state.loss, torch.Tensor):</span>
+<span id="cb4-54"><a href="#cb4-54" aria-hidden="true" tabindex="-1"></a>                logger.log_metrics({</span>
+<span id="cb4-55"><a href="#cb4-55" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"dtype/computation/loss"</span>: <span class="bu">str</span>(state.loss.dtype)</span>
+<span id="cb4-56"><a href="#cb4-56" aria-hidden="true" tabindex="-1"></a>                })</span>
+<span id="cb4-57"><a href="#cb4-57" aria-hidden="true" tabindex="-1"></a>            <span class="cf">elif</span> <span class="bu">isinstance</span>(state.loss, <span class="bu">dict</span>) <span class="kw">and</span> <span class="st">'total'</span> <span class="kw">in</span> state.loss:</span>
+<span id="cb4-58"><a href="#cb4-58" aria-hidden="true" tabindex="-1"></a>                logger.log_metrics({</span>
+<span id="cb4-59"><a href="#cb4-59" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"dtype/computation/loss"</span>: <span class="bu">str</span>(state.loss[<span class="st">'total'</span>].dtype)</span>
+<span id="cb4-60"><a href="#cb4-60" aria-hidden="true" tabindex="-1"></a>                })</span>
+<span id="cb4-61"><a href="#cb4-61" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb4-62"><a href="#cb4-62" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> after_backward(<span class="va">self</span>, state: State, logger: Logger) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb4-63"><a href="#cb4-63" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> state.timestamp.batch.value <span class="op">%</span> <span class="va">self</span>.log_interval <span class="op">==</span> <span class="dv">0</span>:</span>
+<span id="cb4-64"><a href="#cb4-64" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>._log_weight_dtypes(state, logger, <span class="ss">f"backward_</span><span class="sc">{</span>state<span class="sc">.</span>timestamp<span class="sc">.</span>batch<span class="sc">.</span>value<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb4-65"><a href="#cb4-65" aria-hidden="true" tabindex="-1"></a>            </span>
+<span id="cb4-66"><a href="#cb4-66" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Check gradient dtypes</span></span>
+<span id="cb4-67"><a href="#cb4-67" aria-hidden="true" tabindex="-1"></a>            model <span class="op">=</span> state.model</span>
+<span id="cb4-68"><a href="#cb4-68" aria-hidden="true" tabindex="-1"></a>            lora_A <span class="op">=</span> model.model.base_model.model.model.layers[<span class="dv">0</span>].self_attn.q_proj.lora_A.default</span>
+<span id="cb4-69"><a href="#cb4-69" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> <span class="bu">hasattr</span>(lora_A, <span class="st">'weight'</span>) <span class="kw">and</span> lora_A.weight.grad <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb4-70"><a href="#cb4-70" aria-hidden="true" tabindex="-1"></a>                logger.log_metrics({</span>
+<span id="cb4-71"><a href="#cb4-71" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"dtype/gradient/q_proj_lora_A"</span>: <span class="bu">str</span>(lora_A.weight.grad.dtype)</span>
+<span id="cb4-72"><a href="#cb4-72" aria-hidden="true" tabindex="-1"></a>                })</span>
+<span id="cb4-73"><a href="#cb4-73" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb4-74"><a href="#cb4-74" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> epoch_end(<span class="va">self</span>, state: State, logger: Logger) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb4-75"><a href="#cb4-75" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._log_weight_dtypes(state, logger, <span class="ss">f"epoch_</span><span class="sc">{</span>state<span class="sc">.</span>timestamp<span class="sc">.</span>epoch<span class="sc">.</span>value<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb4-76"><a href="#cb4-76" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Remove any remaining hooks</span></span>
+<span id="cb4-77"><a href="#cb4-77" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> hook <span class="kw">in</span> <span class="va">self</span>.hooks:</span>
+<span id="cb4-78"><a href="#cb4-78" aria-hidden="true" tabindex="-1"></a>            hook.remove()</span>
+<span id="cb4-79"><a href="#cb4-79" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.hooks <span class="op">=</span> []</span>
+<span id="cb4-80"><a href="#cb4-80" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb4-81"><a href="#cb4-81" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> _log_weight_dtypes(<span class="va">self</span>, state: State, logger: Logger, prefix: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb4-82"><a href="#cb4-82" aria-hidden="true" tabindex="-1"></a>        model <span class="op">=</span> state.model</span>
+<span id="cb4-83"><a href="#cb4-83" aria-hidden="true" tabindex="-1"></a>        logger.log_metrics({</span>
+<span id="cb4-84"><a href="#cb4-84" aria-hidden="true" tabindex="-1"></a>            <span class="ss">f"dtype/</span><span class="sc">{</span>prefix<span class="sc">}</span><span class="ss">/lm_head"</span>: <span class="bu">str</span>(model.model.base_model.model.lm_head.weight.dtype),</span>
+<span id="cb4-85"><a href="#cb4-85" aria-hidden="true" tabindex="-1"></a>            <span class="ss">f"dtype/</span><span class="sc">{</span>prefix<span class="sc">}</span><span class="ss">/q_proj_base"</span>: <span class="bu">str</span>(model.model.base_model.model.model.layers[<span class="dv">0</span>].self_attn.q_proj.base_layer.weight.dtype),</span>
+<span id="cb4-86"><a href="#cb4-86" aria-hidden="true" tabindex="-1"></a>            <span class="ss">f"dtype/</span><span class="sc">{</span>prefix<span class="sc">}</span><span class="ss">/q_proj_lora_A"</span>: <span class="bu">str</span>(model.model.base_model.model.model.layers[<span class="dv">0</span>].self_attn.q_proj.lora_A.default.weight.dtype),</span>
+<span id="cb4-87"><a href="#cb4-87" aria-hidden="true" tabindex="-1"></a>            <span class="ss">f"dtype/</span><span class="sc">{</span>prefix<span class="sc">}</span><span class="ss">/q_proj_lora_B"</span>: <span class="bu">str</span>(model.model.base_model.model.model.layers[<span class="dv">0</span>].self_attn.q_proj.lora_B.default.weight.dtype)</span>
+<span id="cb4-88"><a href="#cb4-88" aria-hidden="true" tabindex="-1"></a>        })</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Fortunately, I had just recently learned about <code>register_forward_hook</code> and created a short TIL video about it:</p>
+<div class="quarto-video ratio ratio-16x9"><iframe src="https://www.youtube.com/embed/Y6qgWxU3oO4" title="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe></div>
+<p>In short, <code>register_forward_hook</code> exposes the forward pass inputs and outputs. You can manipulate both but you have access to inputs/outputs <em>after</em> the forward pass so you can’t change the inputs before they go into the forward pass. Thankfully that restriction doesn’t matter in my case, as I only want to log data types.</p>
+<p>Running the training loop with this callback generated the following logs:</p>
+<pre><code> Train dtype/input/input_ids: "torch.int64"
+ Train dtype/activation/q_proj_input: "torch.float32"
+ Train dtype/activation/q_proj_output: "torch.bfloat16"
+ Train dtype/activation/self_attn_output: "torch.bfloat16"
+ Train dtype/computation/loss: "torch.float32"
+ Train dtype/backward_0/lm_head: "torch.float32"
+ Train dtype/backward_0/q_proj_base: "torch.float32"
+ Train dtype/backward_0/q_proj_lora_A: "torch.float32"
+ Train dtype/backward_0/q_proj_lora_B: "torch.float32"
+ Train dtype/gradient/q_proj_lora_A: "torch.float32"</code></pre>
+<p>This shed some more light into what’s going on! The inputs to <code>q_proj</code> is float32 but the outputs are bfloat16. The loss and gradients are both in float32.</p>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>This exercise has blown up the possibilities available to me for better understanding what goes on during training! I have only gotten a cursory glimpse at the internal mechanism of mixed precision training, but it’s relatively simple for me take this a step further by analyzing more data types during all training events for all model components. That’ll be a future blog post or video this week.</p>
+<p>Thanks for reading! Lots more content on my <a href="https://www.youtube.com/@vishal_learner">YouTube channel</a> that I’m working on growing this year so please subscribe to stay in the loop.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>

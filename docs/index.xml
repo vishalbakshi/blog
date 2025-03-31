@@ -10,7 +10,218 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.2.335</generator>
-<lastBuildDate>Wed, 12 Mar 2025 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Sun, 30 Mar 2025 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>TIL: Creating a Custom Composer Callback</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-03-30-Composer-Callback/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>I’m learning to use LLM-Foundry to finetune SLMs. To better understand what’s going on in the training loop when using Flash Attention 2 (for SmolLM2-135M), I decided to ask Claude to write me a custom callback. Here is my <a href="https://claude.ai/share/9bb6c135-2ffb-42be-91bc-b4e4a6356173">full Claude conversation</a>.</p>
+</section>
+<section id="initial-plan" class="level2">
+<h2 class="anchored" data-anchor-id="initial-plan">Initial Plan</h2>
+<p>At first, I was planning to fork Composer (which I did), create a new branch for edits (print statements of datatypes in the <code>Trainer</code> code), and install that repo/branch for training. However, as I was chatting with Claude, it offered an option to write a callback instead. Being that <a href="https://docs.mosaicml.com/projects/composer/en/stable/getting_started/welcome_tour.html#:~:text=This%20is%20based%20on%20the%20two%2Dway%20callback%20system%20from%20(Howard%20et%20al%2C%202020)">this is a core philosophy of how Composer is built</a>, it was a no brainer for me to pursue.</p>
+</section>
+<section id="first-callback" class="level2">
+<h2 class="anchored" data-anchor-id="first-callback">First Callback</h2>
+<p>The first callback Claude wrote (I guided it a little bit by feeding it Composer’s <code>trainer.py</code> and giving it their callback example from the docs) was as follows:</p>
+<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="kw" style="color: #003B4F;">class</span> WeightDtypeMonitor(Callback):</span>
+<span id="cb1-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, backward_log_interval<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">5</span>):</span>
+<span id="cb1-3">        <span class="va" style="color: #111111;">self</span>.backward_log_interval <span class="op" style="color: #5E5E5E;">=</span> backward_log_interval</span>
+<span id="cb1-4">    </span>
+<span id="cb1-5">    <span class="kw" style="color: #003B4F;">def</span> fit_start(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb1-6">        <span class="va" style="color: #111111;">self</span>._log_dtypes(state, logger, <span class="st" style="color: #20794D;">"fit_start"</span>)</span>
+<span id="cb1-7">    </span>
+<span id="cb1-8">    <span class="kw" style="color: #003B4F;">def</span> after_backward(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb1-9">        <span class="cf" style="color: #003B4F;">if</span> state.timestamp.batch.value <span class="op" style="color: #5E5E5E;">%</span> <span class="va" style="color: #111111;">self</span>.backward_log_interval <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">0</span>:</span>
+<span id="cb1-10">            <span class="va" style="color: #111111;">self</span>._log_dtypes(state, logger, <span class="ss" style="color: #20794D;">f"backward_</span><span class="sc" style="color: #5E5E5E;">{</span>state<span class="sc" style="color: #5E5E5E;">.</span>timestamp<span class="sc" style="color: #5E5E5E;">.</span>batch<span class="sc" style="color: #5E5E5E;">.</span>value<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
+<span id="cb1-11">    </span>
+<span id="cb1-12">    <span class="kw" style="color: #003B4F;">def</span> epoch_end(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb1-13">        <span class="va" style="color: #111111;">self</span>._log_dtypes(state, logger, <span class="ss" style="color: #20794D;">f"epoch_</span><span class="sc" style="color: #5E5E5E;">{</span>state<span class="sc" style="color: #5E5E5E;">.</span>timestamp<span class="sc" style="color: #5E5E5E;">.</span>epoch<span class="sc" style="color: #5E5E5E;">.</span>value<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
+<span id="cb1-14">    </span>
+<span id="cb1-15">    <span class="kw" style="color: #003B4F;">def</span> _log_dtypes(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger, prefix: <span class="bu" style="color: null;">str</span>) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb1-16">        model <span class="op" style="color: #5E5E5E;">=</span> state.model</span>
+<span id="cb1-17">        logger.log_metrics({</span>
+<span id="cb1-18">            <span class="ss" style="color: #20794D;">f"dtype/</span><span class="sc" style="color: #5E5E5E;">{</span>prefix<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">/lm_head"</span>: <span class="bu" style="color: null;">str</span>(model.model.base_model.model.lm_head.weight.dtype),</span>
+<span id="cb1-19">            <span class="ss" style="color: #20794D;">f"dtype/</span><span class="sc" style="color: #5E5E5E;">{</span>prefix<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">/q_proj_base"</span>: <span class="bu" style="color: null;">str</span>(model.model.base_model.model.model.layers[<span class="dv" style="color: #AD0000;">0</span>].self_attn.q_proj.base_layer.weight.dtype),</span>
+<span id="cb1-20">            <span class="ss" style="color: #20794D;">f"dtype/</span><span class="sc" style="color: #5E5E5E;">{</span>prefix<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">/q_proj_lora_A"</span>: <span class="bu" style="color: null;">str</span>(model.model.base_model.model.model.layers[<span class="dv" style="color: #AD0000;">0</span>].self_attn.q_proj.lora_A.default.weight.dtype),</span>
+<span id="cb1-21">            <span class="ss" style="color: #20794D;">f"dtype/</span><span class="sc" style="color: #5E5E5E;">{</span>prefix<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">/q_proj_lora_B"</span>: <span class="bu" style="color: null;">str</span>(model.model.base_model.model.model.layers[<span class="dv" style="color: #AD0000;">0</span>].self_attn.q_proj.lora_B.default.weight.dtype)</span>
+<span id="cb1-22">        })</span></code></pre></div>
+<p>For reference, here is the list of events available in Composer during the training loop:</p>
+<pre><code># &lt;INIT&gt;
+# &lt;BEFORE_LOAD&gt;
+# &lt;AFTER_LOAD&gt;
+# &lt;FIT_START&gt;
+for epoch in range(NUM_EPOCHS):
+    # &lt;EPOCH_START&gt;
+    while True:
+        # &lt;BEFORE_DATALOADER&gt;
+        batch = next(dataloader)
+        if batch is None:
+            break
+        inputs, targets = batch
+        # &lt;AFTER_DATALOADER&gt;
+
+        # &lt;BATCH_START&gt;
+
+        # &lt;BEFORE_FORWARD&gt;
+        outputs = model.forward(inputs)
+        # &lt;AFTER_FORWARD&gt;
+
+        # &lt;BEFORE_LOSS&gt;
+        loss = model.loss(outputs, targets)
+        # &lt;AFTER_LOSS&gt;
+
+        # &lt;BEFORE_BACKWARD&gt;
+        loss.backward()
+        # &lt;AFTER_BACKWARD&gt;
+
+        optimizer.step()
+        optimizer.zero_grad()
+
+        # &lt;BATCH_END&gt;
+    # &lt;EPOCH_END&gt;</code></pre>
+<p>For each event I wanted to log data types for, the callback passes <code>state</code> (where the <code>model</code> is stored), <code>logger</code> (to do the logging) and a <code>prefix</code> (to denote what’s being logged). Only every <code>backward_log_interval</code>-th batch’s backward pass is logged, to avoid clutter.</p>
+<p>Here is example output:</p>
+<pre><code># fit_start
+Train dtype/fit_start/lm_head: "torch.float32"
+Train dtype/fit_start/q_proj_base: "torch.float32"
+Train dtype/fit_start/q_proj_lora_A: "torch.float32" 
+Train dtype/fit_start/q_proj_lora_B: "torch.float32"
+
+# after_backward
+Train dtype/backward_0/lm_head: "torch.float32"
+Train dtype/backward_0/q_proj_base: "torch.float32"
+Train dtype/backward_0/q_proj_lora_A: "torch.float32"
+Train dtype/backward_0/q_proj_lora_B: "torch.float32"</code></pre>
+<p>I was surprised to see that everything was in float32, I thought Flash Attention 2 (FA2) used mixed precision? Note that I haven’t read the FA2 paper.</p>
+</section>
+<section id="second-callback" class="level2">
+<h2 class="anchored" data-anchor-id="second-callback">Second Callback</h2>
+<p>Now that I understood a basic logging callback, I asked Claude to generate a callback that would help me see where mixed precision came into play. This one was a bit more involved:</p>
+<div class="sourceCode" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><span class="kw" style="color: #003B4F;">class</span> DtypeMonitor(Callback):</span>
+<span id="cb4-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, log_interval<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">100</span>):</span>
+<span id="cb4-3">        <span class="va" style="color: #111111;">self</span>.log_interval <span class="op" style="color: #5E5E5E;">=</span> log_interval</span>
+<span id="cb4-4">        <span class="va" style="color: #111111;">self</span>.hooks <span class="op" style="color: #5E5E5E;">=</span> []</span>
+<span id="cb4-5">    </span>
+<span id="cb4-6">    <span class="kw" style="color: #003B4F;">def</span> fit_start(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb4-7">        <span class="va" style="color: #111111;">self</span>._log_weight_dtypes(state, logger, <span class="st" style="color: #20794D;">"fit_start"</span>)</span>
+<span id="cb4-8">    </span>
+<span id="cb4-9">    <span class="kw" style="color: #003B4F;">def</span> before_forward(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb4-10">        <span class="cf" style="color: #003B4F;">if</span> state.timestamp.batch.value <span class="op" style="color: #5E5E5E;">%</span> <span class="va" style="color: #111111;">self</span>.log_interval <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">0</span>:</span>
+<span id="cb4-11">            <span class="co" style="color: #5E5E5E;"># Log input tensor dtypes</span></span>
+<span id="cb4-12">            <span class="cf" style="color: #003B4F;">if</span> <span class="bu" style="color: null;">isinstance</span>(state.batch, <span class="bu" style="color: null;">dict</span>) <span class="kw" style="color: #003B4F;">and</span> <span class="st" style="color: #20794D;">'input_ids'</span> <span class="kw" style="color: #003B4F;">in</span> state.batch:</span>
+<span id="cb4-13">                logger.log_metrics({</span>
+<span id="cb4-14">                    <span class="st" style="color: #20794D;">"dtype/input/input_ids"</span>: <span class="bu" style="color: null;">str</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>].dtype)</span>
+<span id="cb4-15">                })</span>
+<span id="cb4-16">            </span>
+<span id="cb4-17">            <span class="co" style="color: #5E5E5E;"># Register hooks to capture activation dtypes</span></span>
+<span id="cb4-18">            layer <span class="op" style="color: #5E5E5E;">=</span> state.model.model.base_model.model.model.layers[<span class="dv" style="color: #AD0000;">0</span>].self_attn</span>
+<span id="cb4-19">            </span>
+<span id="cb4-20">            <span class="kw" style="color: #003B4F;">def</span> hook_fn(name):</span>
+<span id="cb4-21">                <span class="kw" style="color: #003B4F;">def</span> _hook(module, inputs, outputs):</span>
+<span id="cb4-22">                    <span class="co" style="color: #5E5E5E;"># Log input activation dtype</span></span>
+<span id="cb4-23">                    <span class="cf" style="color: #003B4F;">if</span> <span class="bu" style="color: null;">isinstance</span>(inputs, <span class="bu" style="color: null;">tuple</span>) <span class="kw" style="color: #003B4F;">and</span> <span class="bu" style="color: null;">len</span>(inputs) <span class="op" style="color: #5E5E5E;">&gt;</span> <span class="dv" style="color: #AD0000;">0</span>:</span>
+<span id="cb4-24">                        logger.log_metrics({<span class="ss" style="color: #20794D;">f"dtype/activation/</span><span class="sc" style="color: #5E5E5E;">{</span>name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_input"</span>: <span class="bu" style="color: null;">str</span>(inputs[<span class="dv" style="color: #AD0000;">0</span>].dtype)})</span>
+<span id="cb4-25">                    </span>
+<span id="cb4-26">                    <span class="co" style="color: #5E5E5E;"># Log output activation dtype</span></span>
+<span id="cb4-27">                    <span class="cf" style="color: #003B4F;">if</span> <span class="bu" style="color: null;">isinstance</span>(outputs, torch.Tensor):</span>
+<span id="cb4-28">                        logger.log_metrics({<span class="ss" style="color: #20794D;">f"dtype/activation/</span><span class="sc" style="color: #5E5E5E;">{</span>name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_output"</span>: <span class="bu" style="color: null;">str</span>(outputs.dtype)})</span>
+<span id="cb4-29">                    <span class="cf" style="color: #003B4F;">elif</span> <span class="bu" style="color: null;">isinstance</span>(outputs, <span class="bu" style="color: null;">tuple</span>) <span class="kw" style="color: #003B4F;">and</span> <span class="bu" style="color: null;">len</span>(outputs) <span class="op" style="color: #5E5E5E;">&gt;</span> <span class="dv" style="color: #AD0000;">0</span>:</span>
+<span id="cb4-30">                        logger.log_metrics({<span class="ss" style="color: #20794D;">f"dtype/activation/</span><span class="sc" style="color: #5E5E5E;">{</span>name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_output"</span>: <span class="bu" style="color: null;">str</span>(outputs[<span class="dv" style="color: #AD0000;">0</span>].dtype)})</span>
+<span id="cb4-31">                <span class="cf" style="color: #003B4F;">return</span> _hook</span>
+<span id="cb4-32">            </span>
+<span id="cb4-33">            <span class="co" style="color: #5E5E5E;"># Clear old hooks</span></span>
+<span id="cb4-34">            <span class="cf" style="color: #003B4F;">for</span> hook <span class="kw" style="color: #003B4F;">in</span> <span class="va" style="color: #111111;">self</span>.hooks:</span>
+<span id="cb4-35">                hook.remove()</span>
+<span id="cb4-36">            <span class="va" style="color: #111111;">self</span>.hooks <span class="op" style="color: #5E5E5E;">=</span> []</span>
+<span id="cb4-37">            </span>
+<span id="cb4-38">            <span class="co" style="color: #5E5E5E;"># Register new hooks</span></span>
+<span id="cb4-39">            <span class="va" style="color: #111111;">self</span>.hooks.append(layer.q_proj.register_forward_hook(hook_fn(<span class="st" style="color: #20794D;">"q_proj"</span>)))</span>
+<span id="cb4-40">            <span class="va" style="color: #111111;">self</span>.hooks.append(layer.register_forward_hook(hook_fn(<span class="st" style="color: #20794D;">"self_attn"</span>)))</span>
+<span id="cb4-41">    </span>
+<span id="cb4-42">    <span class="kw" style="color: #003B4F;">def</span> after_forward(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb4-43">        <span class="cf" style="color: #003B4F;">if</span> state.timestamp.batch.value <span class="op" style="color: #5E5E5E;">%</span> <span class="va" style="color: #111111;">self</span>.log_interval <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">0</span>:</span>
+<span id="cb4-44">            <span class="co" style="color: #5E5E5E;"># Log model output dtype</span></span>
+<span id="cb4-45">            <span class="cf" style="color: #003B4F;">if</span> <span class="bu" style="color: null;">isinstance</span>(state.outputs, torch.Tensor):</span>
+<span id="cb4-46">                logger.log_metrics({</span>
+<span id="cb4-47">                    <span class="st" style="color: #20794D;">"dtype/computation/output"</span>: <span class="bu" style="color: null;">str</span>(state.outputs.dtype)</span>
+<span id="cb4-48">                })</span>
+<span id="cb4-49">    </span>
+<span id="cb4-50">    <span class="kw" style="color: #003B4F;">def</span> after_loss(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb4-51">        <span class="cf" style="color: #003B4F;">if</span> state.timestamp.batch.value <span class="op" style="color: #5E5E5E;">%</span> <span class="va" style="color: #111111;">self</span>.log_interval <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">0</span>:</span>
+<span id="cb4-52">            <span class="co" style="color: #5E5E5E;"># Log loss dtype</span></span>
+<span id="cb4-53">            <span class="cf" style="color: #003B4F;">if</span> <span class="bu" style="color: null;">isinstance</span>(state.loss, torch.Tensor):</span>
+<span id="cb4-54">                logger.log_metrics({</span>
+<span id="cb4-55">                    <span class="st" style="color: #20794D;">"dtype/computation/loss"</span>: <span class="bu" style="color: null;">str</span>(state.loss.dtype)</span>
+<span id="cb4-56">                })</span>
+<span id="cb4-57">            <span class="cf" style="color: #003B4F;">elif</span> <span class="bu" style="color: null;">isinstance</span>(state.loss, <span class="bu" style="color: null;">dict</span>) <span class="kw" style="color: #003B4F;">and</span> <span class="st" style="color: #20794D;">'total'</span> <span class="kw" style="color: #003B4F;">in</span> state.loss:</span>
+<span id="cb4-58">                logger.log_metrics({</span>
+<span id="cb4-59">                    <span class="st" style="color: #20794D;">"dtype/computation/loss"</span>: <span class="bu" style="color: null;">str</span>(state.loss[<span class="st" style="color: #20794D;">'total'</span>].dtype)</span>
+<span id="cb4-60">                })</span>
+<span id="cb4-61">    </span>
+<span id="cb4-62">    <span class="kw" style="color: #003B4F;">def</span> after_backward(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb4-63">        <span class="cf" style="color: #003B4F;">if</span> state.timestamp.batch.value <span class="op" style="color: #5E5E5E;">%</span> <span class="va" style="color: #111111;">self</span>.log_interval <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">0</span>:</span>
+<span id="cb4-64">            <span class="va" style="color: #111111;">self</span>._log_weight_dtypes(state, logger, <span class="ss" style="color: #20794D;">f"backward_</span><span class="sc" style="color: #5E5E5E;">{</span>state<span class="sc" style="color: #5E5E5E;">.</span>timestamp<span class="sc" style="color: #5E5E5E;">.</span>batch<span class="sc" style="color: #5E5E5E;">.</span>value<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
+<span id="cb4-65">            </span>
+<span id="cb4-66">            <span class="co" style="color: #5E5E5E;"># Check gradient dtypes</span></span>
+<span id="cb4-67">            model <span class="op" style="color: #5E5E5E;">=</span> state.model</span>
+<span id="cb4-68">            lora_A <span class="op" style="color: #5E5E5E;">=</span> model.model.base_model.model.model.layers[<span class="dv" style="color: #AD0000;">0</span>].self_attn.q_proj.lora_A.default</span>
+<span id="cb4-69">            <span class="cf" style="color: #003B4F;">if</span> <span class="bu" style="color: null;">hasattr</span>(lora_A, <span class="st" style="color: #20794D;">'weight'</span>) <span class="kw" style="color: #003B4F;">and</span> lora_A.weight.grad <span class="kw" style="color: #003B4F;">is</span> <span class="kw" style="color: #003B4F;">not</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb4-70">                logger.log_metrics({</span>
+<span id="cb4-71">                    <span class="st" style="color: #20794D;">"dtype/gradient/q_proj_lora_A"</span>: <span class="bu" style="color: null;">str</span>(lora_A.weight.grad.dtype)</span>
+<span id="cb4-72">                })</span>
+<span id="cb4-73">    </span>
+<span id="cb4-74">    <span class="kw" style="color: #003B4F;">def</span> epoch_end(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb4-75">        <span class="va" style="color: #111111;">self</span>._log_weight_dtypes(state, logger, <span class="ss" style="color: #20794D;">f"epoch_</span><span class="sc" style="color: #5E5E5E;">{</span>state<span class="sc" style="color: #5E5E5E;">.</span>timestamp<span class="sc" style="color: #5E5E5E;">.</span>epoch<span class="sc" style="color: #5E5E5E;">.</span>value<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
+<span id="cb4-76">        <span class="co" style="color: #5E5E5E;"># Remove any remaining hooks</span></span>
+<span id="cb4-77">        <span class="cf" style="color: #003B4F;">for</span> hook <span class="kw" style="color: #003B4F;">in</span> <span class="va" style="color: #111111;">self</span>.hooks:</span>
+<span id="cb4-78">            hook.remove()</span>
+<span id="cb4-79">        <span class="va" style="color: #111111;">self</span>.hooks <span class="op" style="color: #5E5E5E;">=</span> []</span>
+<span id="cb4-80">    </span>
+<span id="cb4-81">    <span class="kw" style="color: #003B4F;">def</span> _log_weight_dtypes(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger, prefix: <span class="bu" style="color: null;">str</span>) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb4-82">        model <span class="op" style="color: #5E5E5E;">=</span> state.model</span>
+<span id="cb4-83">        logger.log_metrics({</span>
+<span id="cb4-84">            <span class="ss" style="color: #20794D;">f"dtype/</span><span class="sc" style="color: #5E5E5E;">{</span>prefix<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">/lm_head"</span>: <span class="bu" style="color: null;">str</span>(model.model.base_model.model.lm_head.weight.dtype),</span>
+<span id="cb4-85">            <span class="ss" style="color: #20794D;">f"dtype/</span><span class="sc" style="color: #5E5E5E;">{</span>prefix<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">/q_proj_base"</span>: <span class="bu" style="color: null;">str</span>(model.model.base_model.model.model.layers[<span class="dv" style="color: #AD0000;">0</span>].self_attn.q_proj.base_layer.weight.dtype),</span>
+<span id="cb4-86">            <span class="ss" style="color: #20794D;">f"dtype/</span><span class="sc" style="color: #5E5E5E;">{</span>prefix<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">/q_proj_lora_A"</span>: <span class="bu" style="color: null;">str</span>(model.model.base_model.model.model.layers[<span class="dv" style="color: #AD0000;">0</span>].self_attn.q_proj.lora_A.default.weight.dtype),</span>
+<span id="cb4-87">            <span class="ss" style="color: #20794D;">f"dtype/</span><span class="sc" style="color: #5E5E5E;">{</span>prefix<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">/q_proj_lora_B"</span>: <span class="bu" style="color: null;">str</span>(model.model.base_model.model.model.layers[<span class="dv" style="color: #AD0000;">0</span>].self_attn.q_proj.lora_B.default.weight.dtype)</span>
+<span id="cb4-88">        })</span></code></pre></div>
+<p>Fortunately, I had just recently learned about <code>register_forward_hook</code> and created a short TIL video about it:</p>
+<div class="quarto-video ratio ratio-16x9"><iframe src="https://www.youtube.com/embed/Y6qgWxU3oO4" title="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe></div>
+<p>In short, <code>register_forward_hook</code> exposes the forward pass inputs and outputs. You can manipulate both but you have access to inputs/outputs <em>after</em> the forward pass so you can’t change the inputs before they go into the forward pass. Thankfully that restriction doesn’t matter in my case, as I only want to log data types.</p>
+<p>Running the training loop with this callback generated the following logs:</p>
+<pre><code> Train dtype/input/input_ids: "torch.int64"
+ Train dtype/activation/q_proj_input: "torch.float32"
+ Train dtype/activation/q_proj_output: "torch.bfloat16"
+ Train dtype/activation/self_attn_output: "torch.bfloat16"
+ Train dtype/computation/loss: "torch.float32"
+ Train dtype/backward_0/lm_head: "torch.float32"
+ Train dtype/backward_0/q_proj_base: "torch.float32"
+ Train dtype/backward_0/q_proj_lora_A: "torch.float32"
+ Train dtype/backward_0/q_proj_lora_B: "torch.float32"
+ Train dtype/gradient/q_proj_lora_A: "torch.float32"</code></pre>
+<p>This shed some more light into what’s going on! The inputs to <code>q_proj</code> is float32 but the outputs are bfloat16. The loss and gradients are both in float32.</p>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>This exercise has blown up the possibilities available to me for better understanding what goes on during training! I have only gotten a cursory glimpse at the internal mechanism of mixed precision training, but it’s relatively simple for me take this a step further by analyzing more data types during all training events for all model components. That’ll be a future blog post or video this week.</p>
+<p>Thanks for reading! Lots more content on my <a href="https://www.youtube.com/@vishal_learner">YouTube channel</a> that I’m working on growing this year so please subscribe to stay in the loop.</p>
+
+
+</section>
+
+ ]]></description>
+  <category>LLM</category>
+  <category>deep learning</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-03-30-Composer-Callback/index.html</guid>
+  <pubDate>Sun, 30 Mar 2025 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>RAGatouille/ColBERT Indexing Deep Dive</title>
   <dc:creator>Vishal Bakshi</dc:creator>
@@ -21131,665 +21342,6 @@ This will be printed only by the parent process. PID: 5216</code></pre>
   <category>fastai</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2024-09-30-os-fork/index.html</guid>
   <pubDate>Mon, 30 Sep 2024 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>Generating a GIF Animation Using Stable Diffusion</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/index.html</link>
-  <description><![CDATA[ 
-
-
-
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:02:13.269161Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:02:13.268855Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:02:17.120110Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:02:17.119524Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:02:13.269104Z&quot;}" data-execution_count="1">
-<details>
-<summary>Show pip installs and imports</summary>
-<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="op" style="color: #5E5E5E;">!</span>pip install <span class="op" style="color: #5E5E5E;">-</span>q <span class="op" style="color: #5E5E5E;">--</span>upgrade transformers<span class="op" style="color: #5E5E5E;">==</span><span class="fl" style="color: #AD0000;">4.25.1</span> diffusers ftfy accelerate</span>
-<span id="cb1-2"><span class="im" style="color: #00769E;">from</span> base64 <span class="im" style="color: #00769E;">import</span> b64encode</span>
-<span id="cb1-3"></span>
-<span id="cb1-4"><span class="im" style="color: #00769E;">import</span> numpy</span>
-<span id="cb1-5"><span class="im" style="color: #00769E;">import</span> torch</span>
-<span id="cb1-6"><span class="im" style="color: #00769E;">from</span> diffusers <span class="im" style="color: #00769E;">import</span> AutoencoderKL, LMSDiscreteScheduler, UNet2DConditionModel</span>
-<span id="cb1-7"><span class="im" style="color: #00769E;">from</span> huggingface_hub <span class="im" style="color: #00769E;">import</span> notebook_login</span>
-<span id="cb1-8"></span>
-<span id="cb1-9"><span class="co" style="color: #5E5E5E;"># For video display:</span></span>
-<span id="cb1-10"><span class="im" style="color: #00769E;">from</span> IPython.display <span class="im" style="color: #00769E;">import</span> HTML</span>
-<span id="cb1-11"><span class="im" style="color: #00769E;">from</span> matplotlib <span class="im" style="color: #00769E;">import</span> pyplot <span class="im" style="color: #00769E;">as</span> plt</span>
-<span id="cb1-12"><span class="im" style="color: #00769E;">from</span> pathlib <span class="im" style="color: #00769E;">import</span> Path</span>
-<span id="cb1-13"><span class="im" style="color: #00769E;">from</span> PIL <span class="im" style="color: #00769E;">import</span> Image</span>
-<span id="cb1-14"><span class="im" style="color: #00769E;">from</span> torch <span class="im" style="color: #00769E;">import</span> autocast</span>
-<span id="cb1-15"><span class="im" style="color: #00769E;">from</span> torchvision <span class="im" style="color: #00769E;">import</span> transforms <span class="im" style="color: #00769E;">as</span> tfms</span>
-<span id="cb1-16"><span class="im" style="color: #00769E;">from</span> tqdm.auto <span class="im" style="color: #00769E;">import</span> tqdm</span>
-<span id="cb1-17"><span class="im" style="color: #00769E;">from</span> transformers <span class="im" style="color: #00769E;">import</span> CLIPTextModel, CLIPTokenizer, logging</span>
-<span id="cb1-18"><span class="im" style="color: #00769E;">import</span> os</span>
-<span id="cb1-19"></span>
-<span id="cb1-20">torch.manual_seed(<span class="dv" style="color: #AD0000;">1</span>)</span>
-<span id="cb1-21"></span>
-<span id="cb1-22"><span class="co" style="color: #5E5E5E;"># Supress some unnecessary warnings when loading the CLIPTextModel</span></span>
-<span id="cb1-23">logging.set_verbosity_error()</span>
-<span id="cb1-24"></span>
-<span id="cb1-25"><span class="co" style="color: #5E5E5E;"># Set device</span></span>
-<span id="cb1-26">torch_device <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">"cuda"</span> <span class="cf" style="color: #003B4F;">if</span> torch.cuda.is_available() <span class="cf" style="color: #003B4F;">else</span> <span class="st" style="color: #20794D;">"cpu"</span></span></code></pre></div>
-</details>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:02:17.121529Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:02:17.121148Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:02:20.984343Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:02:20.983806Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:02:17.121506Z&quot;}">
-<details>
-<summary>Show code to load models</summary>
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="co" style="color: #5E5E5E;"># Load the autoencoder model which will be used to decode the latents into image space.</span></span>
-<span id="cb2-2">vae <span class="op" style="color: #5E5E5E;">=</span> AutoencoderKL.from_pretrained(<span class="st" style="color: #20794D;">"CompVis/stable-diffusion-v1-4"</span>, subfolder<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"vae"</span>)</span>
-<span id="cb2-3"></span>
-<span id="cb2-4"><span class="co" style="color: #5E5E5E;"># Load the tokenizer and text encoder to tokenize and encode the text.</span></span>
-<span id="cb2-5">tokenizer <span class="op" style="color: #5E5E5E;">=</span> CLIPTokenizer.from_pretrained(<span class="st" style="color: #20794D;">"openai/clip-vit-large-patch14"</span>)</span>
-<span id="cb2-6">text_encoder <span class="op" style="color: #5E5E5E;">=</span> CLIPTextModel.from_pretrained(<span class="st" style="color: #20794D;">"openai/clip-vit-large-patch14"</span>)</span>
-<span id="cb2-7"></span>
-<span id="cb2-8"><span class="co" style="color: #5E5E5E;"># The UNet model for generating the latents.</span></span>
-<span id="cb2-9">unet <span class="op" style="color: #5E5E5E;">=</span> UNet2DConditionModel.from_pretrained(<span class="st" style="color: #20794D;">"CompVis/stable-diffusion-v1-4"</span>, subfolder<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"unet"</span>)</span>
-<span id="cb2-10"></span>
-<span id="cb2-11"><span class="co" style="color: #5E5E5E;"># The noise scheduler</span></span>
-<span id="cb2-12">scheduler <span class="op" style="color: #5E5E5E;">=</span> LMSDiscreteScheduler(beta_start<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">0.00085</span>, beta_end<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">0.012</span>, beta_schedule<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"scaled_linear"</span>, num_train_timesteps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1000</span>)</span>
-<span id="cb2-13"></span>
-<span id="cb2-14"><span class="co" style="color: #5E5E5E;"># To the GPU we go!</span></span>
-<span id="cb2-15">vae <span class="op" style="color: #5E5E5E;">=</span> vae.to(torch_device)</span>
-<span id="cb2-16">text_encoder <span class="op" style="color: #5E5E5E;">=</span> text_encoder.to(torch_device)</span>
-<span id="cb2-17">unet <span class="op" style="color: #5E5E5E;">=</span> unet.to(torch_device)<span class="op" style="color: #5E5E5E;">;</span></span></code></pre></div>
-</details>
-</div>
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<p>In this notebook, I rearrange the code provided in the fastai course Part 2 notebook <a href="https://github.com/fastai/diffusion-nbs/blob/master/Stable%20Diffusion%20Deep%20Dive.ipynb">Stable Diffusion Deep Dive</a> to create a GIF transitioning from a picture of a skunk to a picture of a puppy in a relatively visually smooth and stable manner.</p>
-<p>I combine two concepts introduced in that notebook:</p>
-<ul>
-<li>The diffusion loop starting from a noised version of input (aka image2image)</li>
-<li>Replacing/mixing token embeddings to alter the generated image (for example a mixed skunk/puppy embeddings/image)</li>
-</ul>
-<p>I’ll reuse the helper functions provided in that notebook:</p>
-<ul>
-<li><code>set_timesteps</code>: uses the scheduler algorithm to generate the timesteps and noise for a given number of inference steps.</li>
-<li><code>pil_to_latent</code>: uses the VAE to encode a 512x512 pixel image into a 1x4x64x64 latent.</li>
-<li><code>latents_to_pil</code>: uses the VAE to decode a 1x4x64x64 latent into a 512x512 PIL Image.</li>
-<li><code>get_output_embeds</code>: uses (most of the) code from the <code>forward</code> pass of the <code>text_encoder.text_model</code> to encode token + position embeddings.</li>
-</ul>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:34.198480Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:34.197611Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:34.201831Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:34.201068Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:34.198453Z&quot;}" data-execution_count="3">
-<details>
-<summary>Show <code>set_timesteps</code></summary>
-<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="co" style="color: #5E5E5E;"># Prep Scheduler</span></span>
-<span id="cb3-2"><span class="kw" style="color: #003B4F;">def</span> set_timesteps(scheduler, num_inference_steps):</span>
-<span id="cb3-3">    scheduler.set_timesteps(num_inference_steps)</span>
-<span id="cb3-4">    scheduler.timesteps <span class="op" style="color: #5E5E5E;">=</span> scheduler.timesteps.to(torch.float32) <span class="co" style="color: #5E5E5E;"># minor fix to ensure MPS compatibility, fixed in diffusers PR 3925</span></span></code></pre></div>
-</details>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:35.456554Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:35.455760Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:35.461903Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:35.461154Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:35.456536Z&quot;}" data-execution_count="4">
-<details>
-<summary>Show <code>pil_to_latent</code> and <code>latents_to_pil</code></summary>
-<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><span class="kw" style="color: #003B4F;">def</span> pil_to_latent(input_im):</span>
-<span id="cb4-2">    <span class="co" style="color: #5E5E5E;"># Single image -&gt; single latent in a batch (so size 1, 4, 64, 64)</span></span>
-<span id="cb4-3">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad():</span>
-<span id="cb4-4">        latent <span class="op" style="color: #5E5E5E;">=</span> vae.encode(tfms.ToTensor()(input_im).unsqueeze(<span class="dv" style="color: #AD0000;">0</span>).to(torch_device)<span class="op" style="color: #5E5E5E;">*</span><span class="dv" style="color: #AD0000;">2</span><span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>) <span class="co" style="color: #5E5E5E;"># Note scaling</span></span>
-<span id="cb4-5">    <span class="cf" style="color: #003B4F;">return</span> <span class="fl" style="color: #AD0000;">0.18215</span> <span class="op" style="color: #5E5E5E;">*</span> latent.latent_dist.sample()</span>
-<span id="cb4-6"></span>
-<span id="cb4-7"><span class="kw" style="color: #003B4F;">def</span> latents_to_pil(latents):</span>
-<span id="cb4-8">    <span class="co" style="color: #5E5E5E;"># bath of latents -&gt; list of images</span></span>
-<span id="cb4-9">    latents <span class="op" style="color: #5E5E5E;">=</span> (<span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="fl" style="color: #AD0000;">0.18215</span>) <span class="op" style="color: #5E5E5E;">*</span> latents</span>
-<span id="cb4-10">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad():</span>
-<span id="cb4-11">        image <span class="op" style="color: #5E5E5E;">=</span> vae.decode(latents).sample</span>
-<span id="cb4-12">    image <span class="op" style="color: #5E5E5E;">=</span> (image <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">2</span> <span class="op" style="color: #5E5E5E;">+</span> <span class="fl" style="color: #AD0000;">0.5</span>).clamp(<span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">1</span>)</span>
-<span id="cb4-13">    image <span class="op" style="color: #5E5E5E;">=</span> image.detach().cpu().permute(<span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">2</span>, <span class="dv" style="color: #AD0000;">3</span>, <span class="dv" style="color: #AD0000;">1</span>).numpy()</span>
-<span id="cb4-14">    images <span class="op" style="color: #5E5E5E;">=</span> (image <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">255</span>).<span class="bu" style="color: null;">round</span>().astype(<span class="st" style="color: #20794D;">"uint8"</span>)</span>
-<span id="cb4-15">    pil_images <span class="op" style="color: #5E5E5E;">=</span> [Image.fromarray(image) <span class="cf" style="color: #003B4F;">for</span> image <span class="kw" style="color: #003B4F;">in</span> images]</span>
-<span id="cb4-16">    <span class="cf" style="color: #003B4F;">return</span> pil_images</span></code></pre></div>
-</details>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:36.699652Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:36.698871Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:36.704410Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:36.703564Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:36.699630Z&quot;}" data-execution_count="5">
-<details>
-<summary>Show <code>get_output_embeds</code></summary>
-<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><span class="kw" style="color: #003B4F;">def</span> get_output_embeds(input_embeddings):</span>
-<span id="cb5-2">    <span class="co" style="color: #5E5E5E;"># CLIP's text model uses causal mask, so we prepare it here:</span></span>
-<span id="cb5-3">    bsz, seq_len <span class="op" style="color: #5E5E5E;">=</span> input_embeddings.shape[:<span class="dv" style="color: #AD0000;">2</span>]</span>
-<span id="cb5-4">    causal_attention_mask <span class="op" style="color: #5E5E5E;">=</span> text_encoder.text_model._build_causal_attention_mask(bsz, seq_len, dtype<span class="op" style="color: #5E5E5E;">=</span>input_embeddings.dtype)</span>
-<span id="cb5-5"></span>
-<span id="cb5-6">    <span class="co" style="color: #5E5E5E;"># Getting the output embeddings involves calling the model with passing output_hidden_states=True</span></span>
-<span id="cb5-7">    <span class="co" style="color: #5E5E5E;"># so that it doesn't just return the pooled final predictions:</span></span>
-<span id="cb5-8">    encoder_outputs <span class="op" style="color: #5E5E5E;">=</span> text_encoder.text_model.encoder(</span>
-<span id="cb5-9">        inputs_embeds<span class="op" style="color: #5E5E5E;">=</span>input_embeddings,</span>
-<span id="cb5-10">        attention_mask<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>, <span class="co" style="color: #5E5E5E;"># We aren't using an attention mask so that can be None</span></span>
-<span id="cb5-11">        causal_attention_mask<span class="op" style="color: #5E5E5E;">=</span>causal_attention_mask.to(torch_device),</span>
-<span id="cb5-12">        output_attentions<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>,</span>
-<span id="cb5-13">        output_hidden_states<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>, <span class="co" style="color: #5E5E5E;"># We want the output embs not the final output</span></span>
-<span id="cb5-14">        return_dict<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>,</span>
-<span id="cb5-15">    )</span>
-<span id="cb5-16"></span>
-<span id="cb5-17">    <span class="co" style="color: #5E5E5E;"># We're interested in the output hidden state only</span></span>
-<span id="cb5-18">    output <span class="op" style="color: #5E5E5E;">=</span> encoder_outputs[<span class="dv" style="color: #AD0000;">0</span>]</span>
-<span id="cb5-19"></span>
-<span id="cb5-20">    <span class="co" style="color: #5E5E5E;"># There is a final layer norm we need to pass these through</span></span>
-<span id="cb5-21">    output <span class="op" style="color: #5E5E5E;">=</span> text_encoder.text_model.final_layer_norm(output)</span>
-<span id="cb5-22"></span>
-<span id="cb5-23">    <span class="co" style="color: #5E5E5E;"># And now they're ready!</span></span>
-<span id="cb5-24">    <span class="cf" style="color: #003B4F;">return</span> output</span></code></pre></div>
-</details>
-</div>
-<p>I also prepare the <code>token_embedding</code> layer and <code>position_embedding</code> layer as done in the notebook:</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:38.499855Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:38.498918Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:38.503542Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:38.502702Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:38.499820Z&quot;}" data-execution_count="6">
-<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><span class="co" style="color: #5E5E5E;"># Access the embedding layer</span></span>
-<span id="cb6-2">token_emb_layer <span class="op" style="color: #5E5E5E;">=</span> text_encoder.text_model.embeddings.token_embedding</span>
-<span id="cb6-3">pos_emb_layer <span class="op" style="color: #5E5E5E;">=</span> text_encoder.text_model.embeddings.position_embedding</span></code></pre></div>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:39.799868Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:39.799240Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:39.815454Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:39.814794Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:39.799838Z&quot;}" data-execution_count="7">
-<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1">position_ids <span class="op" style="color: #5E5E5E;">=</span> text_encoder.text_model.embeddings.position_ids[:, :<span class="dv" style="color: #AD0000;">77</span>]</span>
-<span id="cb7-2">position_embeddings <span class="op" style="color: #5E5E5E;">=</span> pos_emb_layer(position_ids)</span>
-<span id="cb7-3"><span class="bu" style="color: null;">print</span>(position_embeddings.shape)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>torch.Size([1, 77, 768])</code></pre>
-</div>
-</div>
-</section>
-<section id="mixing-and-replacing-text-embeddings" class="level2">
-<h2 class="anchored" data-anchor-id="mixing-and-replacing-text-embeddings">Mixing and Replacing Text Embeddings</h2>
-<p>I start by taking a prompt, <code>A picture of a puppy</code>, tokenizing it, and creating its embeddings:</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:42.060530Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:42.060269Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:42.064930Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:42.064416Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:42.060511Z&quot;}" data-execution_count="8">
-<div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1">prompt <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">'A picture of a puppy'</span></span>
-<span id="cb9-2"></span>
-<span id="cb9-3"><span class="co" style="color: #5E5E5E;"># Tokenize</span></span>
-<span id="cb9-4">text_input <span class="op" style="color: #5E5E5E;">=</span> tokenizer(prompt, padding<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"max_length"</span>, max_length<span class="op" style="color: #5E5E5E;">=</span>tokenizer.model_max_length, truncation<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>, return_tensors<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"pt"</span>)</span>
-<span id="cb9-5">input_ids <span class="op" style="color: #5E5E5E;">=</span> text_input.input_ids.to(torch_device)</span>
-<span id="cb9-6"></span>
-<span id="cb9-7"><span class="co" style="color: #5E5E5E;"># Get token embeddings</span></span>
-<span id="cb9-8">token_embeddings <span class="op" style="color: #5E5E5E;">=</span> token_emb_layer(input_ids)</span></code></pre></div>
-</div>
-<p>Next, I want to replace the token embeddings for <code>puppy</code> with an averaged embedding of <code>skunk</code> and <code>puppy</code>. I start (as the course notebook does) by first generating embeddings for the <code>puppy</code> (<code>6829</code>) and <code>skunk</code> (<code>42194</code>) tokens:</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:43.516260Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:43.515730Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:43.520038Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:43.519330Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:43.516242Z&quot;}" data-execution_count="9">
-<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><span class="co" style="color: #5E5E5E;"># The new embedding. Which is now a mixture of the token embeddings for 'puppy' and 'skunk'</span></span>
-<span id="cb10-2">puppy_token_embedding <span class="op" style="color: #5E5E5E;">=</span> token_emb_layer(torch.tensor(<span class="dv" style="color: #AD0000;">6829</span>, device<span class="op" style="color: #5E5E5E;">=</span>torch_device))</span>
-<span id="cb10-3">skunk_token_embedding <span class="op" style="color: #5E5E5E;">=</span> token_emb_layer(torch.tensor(<span class="dv" style="color: #AD0000;">42194</span>, device<span class="op" style="color: #5E5E5E;">=</span>torch_device))</span></code></pre></div>
-</div>
-<p>I then choose a weighting factor (I’ll start with 50% <code>puppy</code> and 50% <code>skunk</code>) to mix the two token embeddings:</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:44.976783Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:44.976076Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:44.981094Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:44.980121Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:44.976754Z&quot;}" data-execution_count="10">
-<div class="sourceCode cell-code" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1">puppy_factor <span class="op" style="color: #5E5E5E;">=</span> <span class="fl" style="color: #AD0000;">0.5</span></span>
-<span id="cb11-2">replacement_token_embedding <span class="op" style="color: #5E5E5E;">=</span> puppy_factor<span class="op" style="color: #5E5E5E;">*</span>puppy_token_embedding <span class="op" style="color: #5E5E5E;">+</span> (<span class="dv" style="color: #AD0000;">1</span><span class="op" style="color: #5E5E5E;">-</span>puppy_factor)<span class="op" style="color: #5E5E5E;">*</span>skunk_token_embedding</span></code></pre></div>
-</div>
-<p>Now for the replacement operation: using <code>where</code>, we swap out the 100% <code>puppy</code> token embeddings with the mixed <code>puppy/skunk</code> embeddings:</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:46.940027Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:46.939750Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:46.944191Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:46.943615Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:46.940009Z&quot;}" data-execution_count="11">
-<div class="sourceCode cell-code" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1">token_embeddings[<span class="dv" style="color: #AD0000;">0</span>, torch.where(input_ids[<span class="dv" style="color: #AD0000;">0</span>]<span class="op" style="color: #5E5E5E;">==</span><span class="dv" style="color: #AD0000;">6829</span>)] <span class="op" style="color: #5E5E5E;">=</span> replacement_token_embedding.to(torch_device)</span></code></pre></div>
-</div>
-<p>We then combine the full set of token embeddings with position embeddings and pass it through the <code>forward</code> pass of the text encoder:</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:47.703355Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:47.702854Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:48.482255Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:48.481456Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:47.703332Z&quot;}" data-execution_count="12">
-<div class="sourceCode cell-code" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><span class="co" style="color: #5E5E5E;"># Combine with pos embs</span></span>
-<span id="cb13-2">input_embeddings <span class="op" style="color: #5E5E5E;">=</span> token_embeddings <span class="op" style="color: #5E5E5E;">+</span> position_embeddings</span>
-<span id="cb13-3"></span>
-<span id="cb13-4"><span class="co" style="color: #5E5E5E;">#  Feed through to get final output embs</span></span>
-<span id="cb13-5">modified_output_embeddings <span class="op" style="color: #5E5E5E;">=</span> get_output_embeds(input_embeddings)</span></code></pre></div>
-</div>
-</section>
-<section id="generating-a-mixed-puppyskunk-image" class="level2">
-<h2 class="anchored" data-anchor-id="generating-a-mixed-puppyskunk-image">Generating a Mixed Puppy/Skunk Image</h2>
-<p>With the text embeddings in hand, we can now generate a puppy/skunk hybrid image using the U-Net: first we set some constants (I’ll use the same ones as the course notebook):</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:50.640075Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:50.639452Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:50.643526Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:50.642979Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:50.640053Z&quot;}" data-execution_count="13">
-<div class="sourceCode cell-code" id="cb14" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1">height <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">512</span>                        <span class="co" style="color: #5E5E5E;"># default height of Stable Diffusion</span></span>
-<span id="cb14-2">width <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">512</span>                         <span class="co" style="color: #5E5E5E;"># default width of Stable Diffusion</span></span>
-<span id="cb14-3">num_inference_steps <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">30</span>            <span class="co" style="color: #5E5E5E;"># Number of denoising steps</span></span>
-<span id="cb14-4">guidance_scale <span class="op" style="color: #5E5E5E;">=</span> <span class="fl" style="color: #AD0000;">7.5</span>                <span class="co" style="color: #5E5E5E;"># Scale for classifier-free guidance</span></span>
-<span id="cb14-5">generator <span class="op" style="color: #5E5E5E;">=</span> torch.manual_seed(<span class="dv" style="color: #AD0000;">32</span>)   <span class="co" style="color: #5E5E5E;"># Seed generator to create the inital latent noise</span></span>
-<span id="cb14-6">batch_size <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">1</span></span></code></pre></div>
-</div>
-<p>Next we create embeddings for an empty prompt (aka the <em>unconditioned</em> input) and concatenate it to the puppy/skunk hybrid token embeddings:</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:52.375421Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:52.374875Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:52.387227Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:52.386554Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:52.375402Z&quot;}" data-execution_count="14">
-<div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1">max_length <span class="op" style="color: #5E5E5E;">=</span> modified_output_embeddings.shape[<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">2</span>]</span>
-<span id="cb15-2"></span>
-<span id="cb15-3">uncond_input <span class="op" style="color: #5E5E5E;">=</span> tokenizer(</span>
-<span id="cb15-4">  [<span class="st" style="color: #20794D;">""</span>] <span class="op" style="color: #5E5E5E;">*</span> batch_size, padding<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"max_length"</span>, max_length<span class="op" style="color: #5E5E5E;">=</span>max_length, return_tensors<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"pt"</span></span>
-<span id="cb15-5">)</span>
-<span id="cb15-6"></span>
-<span id="cb15-7"><span class="cf" style="color: #003B4F;">with</span> torch.no_grad():</span>
-<span id="cb15-8">    uncond_embeddings <span class="op" style="color: #5E5E5E;">=</span> text_encoder(uncond_input.input_ids.to(torch_device))[<span class="dv" style="color: #AD0000;">0</span>]</span>
-<span id="cb15-9">    </span>
-<span id="cb15-10">text_embeddings <span class="op" style="color: #5E5E5E;">=</span> torch.cat([uncond_embeddings, modified_output_embeddings])</span></code></pre></div>
-</div>
-<p>We initialize the <code>scheduler</code> with the given number of inference steps:</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:52.996593Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:52.995763Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:53.000465Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:52.999579Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:52.996564Z&quot;}" data-execution_count="15">
-<div class="sourceCode cell-code" id="cb16" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><span class="co" style="color: #5E5E5E;"># Prep Scheduler</span></span>
-<span id="cb16-2">set_timesteps(scheduler, num_inference_steps)</span></code></pre></div>
-</div>
-<p>And initialize a random set of latents as the starting point for the image generation. Note that this one of the main things I’ll change later on when I want to create a smooth GIF transition from 100% skunk to 100% puppy (where I’ll start with a noisy image’s latents instead of fully random noisy latents):</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:54.605886Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:54.605314Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:04:54.610206Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:04:54.609554Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:54.605865Z&quot;}" data-execution_count="16">
-<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><span class="co" style="color: #5E5E5E;"># Prep latents</span></span>
-<span id="cb17-2">latents <span class="op" style="color: #5E5E5E;">=</span> torch.randn(</span>
-<span id="cb17-3">(batch_size, unet.in_channels, height <span class="op" style="color: #5E5E5E;">//</span> <span class="dv" style="color: #AD0000;">8</span>, width <span class="op" style="color: #5E5E5E;">//</span> <span class="dv" style="color: #AD0000;">8</span>),</span>
-<span id="cb17-4">generator<span class="op" style="color: #5E5E5E;">=</span>generator,</span>
-<span id="cb17-5">)</span>
-<span id="cb17-6"></span>
-<span id="cb17-7">latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(torch_device)</span>
-<span id="cb17-8">latents <span class="op" style="color: #5E5E5E;">=</span> latents <span class="op" style="color: #5E5E5E;">*</span> scheduler.init_noise_sigma</span></code></pre></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>/tmp/ipykernel_2631/4273587132.py:3: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
-  (batch_size, unet.in_channels, height // 8, width // 8),</code></pre>
-</div>
-</div>
-<p>Finally, we can run the diffusion loop, where we generate U-Net predictions for both conditioned and unconditioned (empty) text embeddings, using the <code>guidance_scale</code> to guide the diffusion process towards the conditioned text embeddings.</p>
-<p>The result is a creature that looks like both a skunk and a puppy—a skunk/puppy hybrid!</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:04:57.281473Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:04:57.280537Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:05:05.605928Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:05:05.605206Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:04:57.281430Z&quot;}" data-execution_count="17">
-<details>
-<summary>Show diffusion loop</summary>
-<div class="sourceCode cell-code" id="cb19" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><span class="cf" style="color: #003B4F;">for</span> i, t <span class="kw" style="color: #003B4F;">in</span> tqdm(<span class="bu" style="color: null;">enumerate</span>(scheduler.timesteps), total<span class="op" style="color: #5E5E5E;">=</span><span class="bu" style="color: null;">len</span>(scheduler.timesteps)):</span>
-<span id="cb19-2">    <span class="co" style="color: #5E5E5E;"># expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.</span></span>
-<span id="cb19-3">    latent_model_input <span class="op" style="color: #5E5E5E;">=</span> torch.cat([latents] <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">2</span>)</span>
-<span id="cb19-4">    sigma <span class="op" style="color: #5E5E5E;">=</span> scheduler.sigmas[i]</span>
-<span id="cb19-5">    latent_model_input <span class="op" style="color: #5E5E5E;">=</span> scheduler.scale_model_input(latent_model_input, t)</span>
-<span id="cb19-6"></span>
-<span id="cb19-7">    <span class="co" style="color: #5E5E5E;"># predict the noise residual</span></span>
-<span id="cb19-8">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad():</span>
-<span id="cb19-9">        noise_pred <span class="op" style="color: #5E5E5E;">=</span> unet(latent_model_input, t, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>text_embeddings)[<span class="st" style="color: #20794D;">"sample"</span>]</span>
-<span id="cb19-10"></span>
-<span id="cb19-11">    <span class="co" style="color: #5E5E5E;"># perform guidance</span></span>
-<span id="cb19-12">    noise_pred_uncond, noise_pred_text <span class="op" style="color: #5E5E5E;">=</span> noise_pred.chunk(<span class="dv" style="color: #AD0000;">2</span>)</span>
-<span id="cb19-13">    noise_pred <span class="op" style="color: #5E5E5E;">=</span> noise_pred_uncond <span class="op" style="color: #5E5E5E;">+</span> guidance_scale <span class="op" style="color: #5E5E5E;">*</span> (noise_pred_text <span class="op" style="color: #5E5E5E;">-</span> noise_pred_uncond)</span>
-<span id="cb19-14"></span>
-<span id="cb19-15">    <span class="co" style="color: #5E5E5E;"># compute the previous noisy sample x_t -&gt; x_t-1</span></span>
-<span id="cb19-16">    latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.step(noise_pred, t, latents).prev_sample</span>
-<span id="cb19-17"></span>
-<span id="cb19-18">latents_to_pil(latents)[<span class="dv" style="color: #AD0000;">0</span>]</span></code></pre></div>
-</details>
-<div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"e3c20840257e4eaa8484cdfc58299860","version_major":2,"version_minor":0}
-</script>
-</div>
-<div class="cell-output cell-output-display" data-execution_count="17">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-18-output-2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/index_files/figure-html/cell-18-output-2.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-</section>
-<section id="transitioning-from-100-skunk-to-100-puppy" class="level2">
-<h2 class="anchored" data-anchor-id="transitioning-from-100-skunk-to-100-puppy">Transitioning from 100% Skunk to 100% Puppy</h2>
-<p>I’ll now modify the above process so that I can use the previous image as a starting point for the next image’s generation. Why would I want to do that? Well, to illustrate why, I’ll generate 11 images that each start out with random noisy latents. The first image will be generated with 100% <code>skunk</code> and 0% <code>puppy</code> token embeddings, incrementing by 10% until the last image is 0% <code>skunk</code> and 100% <code>puppy</code> token embeddings. I’ll then combine the images into a GIF and show how it has a choppy transition between frame since each image starts at a random spot in the latent space.</p>
-<p>I’ll use the <code>generate_with_embs</code> function from the course notebook which takes the code above and wraps it into a function:</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:05:11.316644Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:05:11.316392Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:05:11.322739Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:05:11.322092Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:05:11.316625Z&quot;}" data-execution_count="18">
-<details>
-<summary>Show <code>generate_with_embs</code></summary>
-<div class="sourceCode cell-code" id="cb20" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><span class="kw" style="color: #003B4F;">def</span> generate_with_embs(text_embeddings, seed):</span>
-<span id="cb20-2">    height <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">512</span>                        <span class="co" style="color: #5E5E5E;"># default height of Stable Diffusion</span></span>
-<span id="cb20-3">    width <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">512</span>                         <span class="co" style="color: #5E5E5E;"># default width of Stable Diffusion</span></span>
-<span id="cb20-4">    num_inference_steps <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">30</span>            <span class="co" style="color: #5E5E5E;"># Number of denoising steps</span></span>
-<span id="cb20-5">    guidance_scale <span class="op" style="color: #5E5E5E;">=</span> <span class="fl" style="color: #AD0000;">7.5</span>                <span class="co" style="color: #5E5E5E;"># Scale for classifier-free guidance</span></span>
-<span id="cb20-6">    generator <span class="op" style="color: #5E5E5E;">=</span> torch.manual_seed(seed)   <span class="co" style="color: #5E5E5E;"># Seed generator to create the inital latent noise</span></span>
-<span id="cb20-7">    batch_size <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">1</span></span>
-<span id="cb20-8"></span>
-<span id="cb20-9">    max_length <span class="op" style="color: #5E5E5E;">=</span> text_input.input_ids.shape[<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>]</span>
-<span id="cb20-10">    uncond_input <span class="op" style="color: #5E5E5E;">=</span> tokenizer(</span>
-<span id="cb20-11">      [<span class="st" style="color: #20794D;">""</span>] <span class="op" style="color: #5E5E5E;">*</span> batch_size, padding<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"max_length"</span>, max_length<span class="op" style="color: #5E5E5E;">=</span>max_length, return_tensors<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"pt"</span></span>
-<span id="cb20-12">    )</span>
-<span id="cb20-13">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad():</span>
-<span id="cb20-14">        uncond_embeddings <span class="op" style="color: #5E5E5E;">=</span> text_encoder(uncond_input.input_ids.to(torch_device))[<span class="dv" style="color: #AD0000;">0</span>]</span>
-<span id="cb20-15">    text_embeddings <span class="op" style="color: #5E5E5E;">=</span> torch.cat([uncond_embeddings, text_embeddings])</span>
-<span id="cb20-16"></span>
-<span id="cb20-17">    <span class="co" style="color: #5E5E5E;"># Prep Scheduler</span></span>
-<span id="cb20-18">    set_timesteps(scheduler, num_inference_steps)</span>
-<span id="cb20-19"></span>
-<span id="cb20-20">    <span class="co" style="color: #5E5E5E;"># Prep latents</span></span>
-<span id="cb20-21">    latents <span class="op" style="color: #5E5E5E;">=</span> torch.randn(</span>
-<span id="cb20-22">    (batch_size, unet.in_channels, height <span class="op" style="color: #5E5E5E;">//</span> <span class="dv" style="color: #AD0000;">8</span>, width <span class="op" style="color: #5E5E5E;">//</span> <span class="dv" style="color: #AD0000;">8</span>),</span>
-<span id="cb20-23">    generator<span class="op" style="color: #5E5E5E;">=</span>generator,</span>
-<span id="cb20-24">    )</span>
-<span id="cb20-25">    latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(torch_device)</span>
-<span id="cb20-26">    latents <span class="op" style="color: #5E5E5E;">=</span> latents <span class="op" style="color: #5E5E5E;">*</span> scheduler.init_noise_sigma</span>
-<span id="cb20-27"></span>
-<span id="cb20-28">    <span class="co" style="color: #5E5E5E;"># Loop</span></span>
-<span id="cb20-29">    <span class="cf" style="color: #003B4F;">for</span> i, t <span class="kw" style="color: #003B4F;">in</span> tqdm(<span class="bu" style="color: null;">enumerate</span>(scheduler.timesteps), total<span class="op" style="color: #5E5E5E;">=</span><span class="bu" style="color: null;">len</span>(scheduler.timesteps)):</span>
-<span id="cb20-30">        <span class="co" style="color: #5E5E5E;"># expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.</span></span>
-<span id="cb20-31">        latent_model_input <span class="op" style="color: #5E5E5E;">=</span> torch.cat([latents] <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">2</span>)</span>
-<span id="cb20-32">        sigma <span class="op" style="color: #5E5E5E;">=</span> scheduler.sigmas[i]</span>
-<span id="cb20-33">        latent_model_input <span class="op" style="color: #5E5E5E;">=</span> scheduler.scale_model_input(latent_model_input, t)</span>
-<span id="cb20-34"></span>
-<span id="cb20-35">        <span class="co" style="color: #5E5E5E;"># predict the noise residual</span></span>
-<span id="cb20-36">        <span class="cf" style="color: #003B4F;">with</span> torch.no_grad():</span>
-<span id="cb20-37">            noise_pred <span class="op" style="color: #5E5E5E;">=</span> unet(latent_model_input, t, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>text_embeddings)[<span class="st" style="color: #20794D;">"sample"</span>]</span>
-<span id="cb20-38"></span>
-<span id="cb20-39">        <span class="co" style="color: #5E5E5E;"># perform guidance</span></span>
-<span id="cb20-40">        noise_pred_uncond, noise_pred_text <span class="op" style="color: #5E5E5E;">=</span> noise_pred.chunk(<span class="dv" style="color: #AD0000;">2</span>)</span>
-<span id="cb20-41">        noise_pred <span class="op" style="color: #5E5E5E;">=</span> noise_pred_uncond <span class="op" style="color: #5E5E5E;">+</span> guidance_scale <span class="op" style="color: #5E5E5E;">*</span> (noise_pred_text <span class="op" style="color: #5E5E5E;">-</span> noise_pred_uncond)</span>
-<span id="cb20-42"></span>
-<span id="cb20-43">        <span class="co" style="color: #5E5E5E;"># compute the previous noisy sample x_t -&gt; x_t-1</span></span>
-<span id="cb20-44">        latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.step(noise_pred, t, latents).prev_sample</span>
-<span id="cb20-45"></span>
-<span id="cb20-46">    <span class="cf" style="color: #003B4F;">return</span> latents_to_pil(latents)[<span class="dv" style="color: #AD0000;">0</span>]</span></code></pre></div>
-</details>
-</div>
-<p>I’ll iterate between a <code>puppy_factor</code> of <code>0</code> to <code>1.0</code>, generating new mixed token embeddings at each step and corresponding image.</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:05:13.414065Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:05:13.413774Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:06:30.165078Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:06:30.164329Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:05:13.414045Z&quot;}">
-<details>
-<summary>Show <code>puppy_factor</code> loop</summary>
-<div class="sourceCode cell-code" id="cb21" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1">imgs <span class="op" style="color: #5E5E5E;">=</span> []</span>
-<span id="cb21-2">seed <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">4</span></span>
-<span id="cb21-3">n <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">10</span></span>
-<span id="cb21-4"><span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(n <span class="op" style="color: #5E5E5E;">+</span> <span class="dv" style="color: #AD0000;">1</span>):</span>
-<span id="cb21-5">  puppy_factor <span class="op" style="color: #5E5E5E;">=</span> i <span class="op" style="color: #5E5E5E;">*</span> <span class="fl" style="color: #AD0000;">1.</span> <span class="op" style="color: #5E5E5E;">/</span> n </span>
-<span id="cb21-6"></span>
-<span id="cb21-7">  <span class="co" style="color: #5E5E5E;"># replace puppy embeddings with weighted average of puppy and skunk embeddings</span></span>
-<span id="cb21-8">  replacement_token_embedding <span class="op" style="color: #5E5E5E;">=</span> puppy_factor<span class="op" style="color: #5E5E5E;">*</span>puppy_token_embedding <span class="op" style="color: #5E5E5E;">+</span> (<span class="dv" style="color: #AD0000;">1</span><span class="op" style="color: #5E5E5E;">-</span>puppy_factor)<span class="op" style="color: #5E5E5E;">*</span>skunk_token_embedding</span>
-<span id="cb21-9"></span>
-<span id="cb21-10">  <span class="co" style="color: #5E5E5E;"># Insert this into the token embeddings (</span></span>
-<span id="cb21-11">  token_embeddings[<span class="dv" style="color: #AD0000;">0</span>, torch.where(input_ids[<span class="dv" style="color: #AD0000;">0</span>]<span class="op" style="color: #5E5E5E;">==</span><span class="dv" style="color: #AD0000;">6829</span>)] <span class="op" style="color: #5E5E5E;">=</span> replacement_token_embedding.to(torch_device)</span>
-<span id="cb21-12"></span>
-<span id="cb21-13">  <span class="co" style="color: #5E5E5E;"># Combine with pos embs</span></span>
-<span id="cb21-14">  input_embeddings <span class="op" style="color: #5E5E5E;">=</span> token_embeddings <span class="op" style="color: #5E5E5E;">+</span> position_embeddings</span>
-<span id="cb21-15"></span>
-<span id="cb21-16">  <span class="co" style="color: #5E5E5E;">#  Feed through to get final output embs</span></span>
-<span id="cb21-17">  modified_output_embeddings <span class="op" style="color: #5E5E5E;">=</span> get_output_embeds(input_embeddings)</span>
-<span id="cb21-18"></span>
-<span id="cb21-19">  <span class="co" style="color: #5E5E5E;"># Generate an image with these</span></span>
-<span id="cb21-20">  img <span class="op" style="color: #5E5E5E;">=</span> generate_with_embs(modified_output_embeddings, seed<span class="op" style="color: #5E5E5E;">=</span>seed)</span>
-<span id="cb21-21"></span>
-<span id="cb21-22">  imgs.append(img)</span></code></pre></div>
-</details>
-</div>
-<p>I’ll use this nifty one-liner provided by Claude to generate a GIF:</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:06:38.871813Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:06:38.871553Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:06:40.277054Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:06:40.276515Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:06:38.871794Z&quot;}" data-execution_count="20">
-<div class="sourceCode cell-code" id="cb22" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1">imgs[<span class="dv" style="color: #AD0000;">0</span>].save(<span class="ss" style="color: #20794D;">f'/notebooks/skunk-to-puppy_random_</span><span class="sc" style="color: #5E5E5E;">{</span>seed<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">.gif'</span>, save_all<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>, append_images<span class="op" style="color: #5E5E5E;">=</span>imgs[<span class="dv" style="color: #AD0000;">1</span>:], duration<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">200</span>, loop<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>)</span></code></pre></div>
-</div>
-<p>As you can see in the GIF below, the transition from image to the next, especially once it goes from mostly-skunk to mostly-puppy, is choppy. Notice especially how the pose of the creature, as well as the background, significantly change from the start to finish of the animation.</p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="skunk-to-puppy_random_4.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-2" title="Skunk to Puppy animation where each subsequent image starts from a random noisy latent"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/skunk-to-puppy_random_4.gif" class="img-fluid figure-img"></a></p>
-<p></p><figcaption class="figure-caption">Skunk to Puppy animation where each subsequent image starts from a random noisy latent</figcaption><p></p>
-</figure>
-</div>
-</section>
-<section id="making-the-skunk-to-puppy-transition-smoother" class="level2">
-<h2 class="anchored" data-anchor-id="making-the-skunk-to-puppy-transition-smoother">Making the Skunk-to-Puppy Transition Smoother</h2>
-<p>I’ll now modify the generation loop by doing the following:</p>
-<ul>
-<li>On the first step of the <code>puppy_factor</code> loop, start with a random noisy latent.</li>
-<li>On all subsequent steps, start with a latent of the previous step’s image with some “delayed” timestep noise added to it.</li>
-</ul>
-<p>To accomplish this (and reuse as much course notebook code as possible), I’ll modify <code>generate_with_embs</code>. First off, I’ll walk through the updated parameters to this function:</p>
-<ul>
-<li><code>text_embeddings</code>: same as before, these are the mixed text embeddings (with some ratio of skunk-to-puppy)</li>
-<li><code>encoded</code>: this is the latent of the previous step’s image, created using <code>pil_to_latent</code> as we’ll see later on.</li>
-<li><code>start_step=10</code>: this is the “delayed” timestep that we want to start with. The default is <code>10</code>, which means that it will add noise using the scheduler starting at step <code>10</code>.</li>
-<li><code>num_inference_steps=30</code>: the total number of inference steps. I found that 30 works pretty well (as is used in the course notebook).</li>
-<li><code>height=512</code>: the height of the image in pixels.</li>
-<li><code>width=512</code>: the width of the image in pixels.</li>
-<li><code>batch_size=1</code>: the batch size.</li>
-<li><code>guidance_scale</code>: the guidance scale to use when guiding the image away from unconditioned to conditioned generation.</li>
-<li><code>generator</code>: maintaining the random state between images.</li>
-</ul>
-<p>In addition to the function signature, the following two sections of <code>generate_with_embs</code> deviate from the course notebook to achieve a “smoother” transition between <code>skunk</code> and <code>puppy</code>.</p>
-<p>In the code below, if the <code>start_step</code> is greater than 0 (meaning anything other than the very first image), the <code>latents</code> are generated by adding <code>noise</code> to the <code>encoded</code> image from the previous step using <code>scheduler.noise</code> and the given <code>start_step</code>.</p>
-<p>If <code>start_step==0</code> then we’re at the very first image and we just use the random noise <code>latents</code> (passed through as the <code>encoded</code> parameter).</p>
-<div class="sourceCode" id="cb23" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><span class="co" style="color: #5E5E5E;"># Prep latents</span></span>
-<span id="cb23-2">    <span class="cf" style="color: #003B4F;">if</span> start_step <span class="op" style="color: #5E5E5E;">&gt;</span> <span class="dv" style="color: #AD0000;">0</span> :</span>
-<span id="cb23-3">      noise <span class="op" style="color: #5E5E5E;">=</span> torch.randn_like(encoded)</span>
-<span id="cb23-4">      latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.add_noise(encoded, noise, timesteps<span class="op" style="color: #5E5E5E;">=</span>torch.tensor([scheduler.timesteps[start_step]]))</span>
-<span id="cb23-5">      latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(torch_device).<span class="bu" style="color: null;">float</span>()</span>
-<span id="cb23-6">    <span class="cf" style="color: #003B4F;">else</span>:</span>
-<span id="cb23-7">      latents <span class="op" style="color: #5E5E5E;">=</span> encoded</span></code></pre></div>
-<p>The following condition is added to the diffusion loop, so that the U-Net inference starts at the given <code>start_step</code>:</p>
-<div class="sourceCode" id="cb24" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><span class="cf" style="color: #003B4F;">if</span> i <span class="op" style="color: #5E5E5E;">&gt;=</span> start_step: </span></code></pre></div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:06:53.566813Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:06:53.566470Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:06:53.576976Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:06:53.576021Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:06:53.566788Z&quot;}" data-execution_count="21">
-<details>
-<summary>Show modified <code>generate_with_embs</code></summary>
-<div class="sourceCode cell-code" id="cb25" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><span class="kw" style="color: #003B4F;">def</span> generate_with_embs(</span>
-<span id="cb25-2">    text_embeddings, </span>
-<span id="cb25-3">    encoded, </span>
-<span id="cb25-4">    start_step<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">10</span>, </span>
-<span id="cb25-5">    num_inference_steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">30</span>, </span>
-<span id="cb25-6">    height<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">512</span>, </span>
-<span id="cb25-7">    width<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">512</span>, </span>
-<span id="cb25-8">    batch_size<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>,</span>
-<span id="cb25-9">    guidance_scale<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">5</span>, </span>
-<span id="cb25-10">    generator<span class="op" style="color: #5E5E5E;">=</span>torch.manual_seed(<span class="dv" style="color: #AD0000;">32</span>)):</span>
-<span id="cb25-11"></span>
-<span id="cb25-12">    max_length <span class="op" style="color: #5E5E5E;">=</span> text_embeddings.shape[<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">2</span>]</span>
-<span id="cb25-13">    <span class="cf" style="color: #003B4F;">assert</span> max_length <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">77</span></span>
-<span id="cb25-14"></span>
-<span id="cb25-15">    uncond_input <span class="op" style="color: #5E5E5E;">=</span> tokenizer(</span>
-<span id="cb25-16">      [<span class="st" style="color: #20794D;">""</span>] <span class="op" style="color: #5E5E5E;">*</span> batch_size, padding<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"max_length"</span>, max_length<span class="op" style="color: #5E5E5E;">=</span>max_length, return_tensors<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"pt"</span></span>
-<span id="cb25-17">    )</span>
-<span id="cb25-18">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad():</span>
-<span id="cb25-19">        uncond_embeddings <span class="op" style="color: #5E5E5E;">=</span> text_encoder(uncond_input.input_ids.to(torch_device))[<span class="dv" style="color: #AD0000;">0</span>]</span>
-<span id="cb25-20"></span>
-<span id="cb25-21">    text_embeddings <span class="op" style="color: #5E5E5E;">=</span> torch.cat([uncond_embeddings, text_embeddings])</span>
-<span id="cb25-22"></span>
-<span id="cb25-23">    <span class="co" style="color: #5E5E5E;"># Prep Scheduler</span></span>
-<span id="cb25-24">    set_timesteps(scheduler, num_inference_steps)</span>
-<span id="cb25-25"></span>
-<span id="cb25-26">    <span class="co" style="color: #5E5E5E;"># Prep latents</span></span>
-<span id="cb25-27">    <span class="cf" style="color: #003B4F;">if</span> start_step <span class="op" style="color: #5E5E5E;">&gt;</span> <span class="dv" style="color: #AD0000;">0</span> :</span>
-<span id="cb25-28">      noise <span class="op" style="color: #5E5E5E;">=</span> torch.randn_like(encoded)</span>
-<span id="cb25-29">      latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.add_noise(encoded, noise, timesteps<span class="op" style="color: #5E5E5E;">=</span>torch.tensor([scheduler.timesteps[start_step]]))</span>
-<span id="cb25-30">      latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(torch_device).<span class="bu" style="color: null;">float</span>()</span>
-<span id="cb25-31">    <span class="cf" style="color: #003B4F;">else</span>:</span>
-<span id="cb25-32">      latents <span class="op" style="color: #5E5E5E;">=</span> encoded</span>
-<span id="cb25-33"></span>
-<span id="cb25-34">    <span class="co" style="color: #5E5E5E;"># Loop</span></span>
-<span id="cb25-35">    <span class="cf" style="color: #003B4F;">for</span> i, t <span class="kw" style="color: #003B4F;">in</span> tqdm(<span class="bu" style="color: null;">enumerate</span>(scheduler.timesteps), total<span class="op" style="color: #5E5E5E;">=</span><span class="bu" style="color: null;">len</span>(scheduler.timesteps)):</span>
-<span id="cb25-36">      <span class="cf" style="color: #003B4F;">if</span> i <span class="op" style="color: #5E5E5E;">&gt;=</span> start_step: </span>
-<span id="cb25-37">        <span class="co" style="color: #5E5E5E;"># expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.</span></span>
-<span id="cb25-38">        latent_model_input <span class="op" style="color: #5E5E5E;">=</span> torch.cat([latents] <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">2</span>)</span>
-<span id="cb25-39">        sigma <span class="op" style="color: #5E5E5E;">=</span> scheduler.sigmas[i]</span>
-<span id="cb25-40">        latent_model_input <span class="op" style="color: #5E5E5E;">=</span> scheduler.scale_model_input(latent_model_input, t)</span>
-<span id="cb25-41"></span>
-<span id="cb25-42">        <span class="co" style="color: #5E5E5E;"># predict the noise residual</span></span>
-<span id="cb25-43">        <span class="cf" style="color: #003B4F;">with</span> torch.no_grad():</span>
-<span id="cb25-44">            noise_pred <span class="op" style="color: #5E5E5E;">=</span> unet(latent_model_input, t, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>text_embeddings)[<span class="st" style="color: #20794D;">"sample"</span>]</span>
-<span id="cb25-45"></span>
-<span id="cb25-46">        <span class="co" style="color: #5E5E5E;"># perform guidance</span></span>
-<span id="cb25-47">        noise_pred_uncond, noise_pred_text <span class="op" style="color: #5E5E5E;">=</span> noise_pred.chunk(<span class="dv" style="color: #AD0000;">2</span>)</span>
-<span id="cb25-48">        noise_pred <span class="op" style="color: #5E5E5E;">=</span> noise_pred_uncond <span class="op" style="color: #5E5E5E;">+</span> guidance_scale <span class="op" style="color: #5E5E5E;">*</span> (noise_pred_text <span class="op" style="color: #5E5E5E;">-</span> noise_pred_uncond)</span>
-<span id="cb25-49"></span>
-<span id="cb25-50">        <span class="co" style="color: #5E5E5E;"># compute the previous noisy sample x_t -&gt; x_t-1</span></span>
-<span id="cb25-51">        latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.step(noise_pred, t, latents).prev_sample</span>
-<span id="cb25-52"></span>
-<span id="cb25-53">    <span class="cf" style="color: #003B4F;">return</span> latents_to_pil(latents)[<span class="dv" style="color: #AD0000;">0</span>]</span></code></pre></div>
-</details>
-</div>
-<p>The next change necessary to adapt to this new <code>generate_with_embs</code> function is in the <code>puppy_factor</code>-incrementing <code>for-loop</code>.</p>
-<p>First, let’s get the unchanged constants out of the way:</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:06:55.979680Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:06:55.979397Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:06:55.983307Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:06:55.982506Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:06:55.979661Z&quot;}" data-execution_count="22">
-<div class="sourceCode cell-code" id="cb26" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1">height <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">512</span></span>
-<span id="cb26-2">width <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">512</span></span>
-<span id="cb26-3">num_inference_steps <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">30</span>          </span>
-<span id="cb26-4">guidance_scale <span class="op" style="color: #5E5E5E;">=</span> <span class="fl" style="color: #AD0000;">7.5</span>                  </span>
-<span id="cb26-5">batch_size <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">1</span></span></code></pre></div>
-</div>
-<p>Now, in the for-loop below, when <code>i==0</code> (i.e we’re generating the first image), <code>encoded</code> is just random noise and <code>start_step</code> is <code>0</code>.</p>
-<div class="sourceCode" id="cb27" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><span class="cf" style="color: #003B4F;">if</span> i <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">0</span>: </span>
-<span id="cb27-2">    encoded <span class="op" style="color: #5E5E5E;">=</span> torch.randn(</span>
-<span id="cb27-3">        (batch_size, unet.in_channels, height <span class="op" style="color: #5E5E5E;">//</span> <span class="dv" style="color: #AD0000;">8</span>, width <span class="op" style="color: #5E5E5E;">//</span> <span class="dv" style="color: #AD0000;">8</span>),</span>
-<span id="cb27-4">        generator<span class="op" style="color: #5E5E5E;">=</span>generator,</span>
-<span id="cb27-5">        )</span>
-<span id="cb27-6">    encoded <span class="op" style="color: #5E5E5E;">=</span> encoded.to(torch_device)</span>
-<span id="cb27-7">    encoded <span class="op" style="color: #5E5E5E;">=</span> encoded <span class="op" style="color: #5E5E5E;">*</span> scheduler.init_noise_sigma</span>
-<span id="cb27-8">    start_step<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span></span></code></pre></div>
-<p>For all other <code>i</code>’s (i.e.&nbsp;subsequent images after the first one), <code>encoded</code> is created by converting the previous step’s <code>img</code> to latents using <code>pil_to_latents</code>, and <code>start_step</code> is set to <code>10</code>:</p>
-<div class="sourceCode" id="cb28" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1">encoded <span class="op" style="color: #5E5E5E;">=</span> pil_to_latent(img)</span>
-<span id="cb28-2">start_step<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">10</span></span></code></pre></div>
-<p>After that, we pass the necessary arguments to <code>generate_with_embs</code> and it generates the 512x512 image that we tack onto the <code>imgs</code> list:</p>
-<div class="sourceCode" id="cb29" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1">img <span class="op" style="color: #5E5E5E;">=</span> generate_with_embs(</span>
-<span id="cb29-2">      text_embeddings<span class="op" style="color: #5E5E5E;">=</span>modified_output_embeddings, </span>
-<span id="cb29-3">      encoded<span class="op" style="color: #5E5E5E;">=</span>encoded, </span>
-<span id="cb29-4">      start_step<span class="op" style="color: #5E5E5E;">=</span>start_step, </span>
-<span id="cb29-5">      num_inference_steps<span class="op" style="color: #5E5E5E;">=</span>num_inference_steps, </span>
-<span id="cb29-6">      height<span class="op" style="color: #5E5E5E;">=</span>height, </span>
-<span id="cb29-7">      width<span class="op" style="color: #5E5E5E;">=</span>width, </span>
-<span id="cb29-8">      batch_size<span class="op" style="color: #5E5E5E;">=</span>batch_size,</span>
-<span id="cb29-9">      guidance_scale<span class="op" style="color: #5E5E5E;">=</span>guidance_scale, </span>
-<span id="cb29-10">      generator<span class="op" style="color: #5E5E5E;">=</span>generator)</span>
-<span id="cb29-11"></span>
-<span id="cb29-12">  imgs.append(img)</span></code></pre></div>
-<p>I’ll now generate 20 images using this new approach, going from 100% <code>skunk</code> to 100% <code>puppy</code>.</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:06:59.580265Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:06:59.579999Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:06:59.586045Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:06:59.585377Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:06:59.580247Z&quot;}" data-execution_count="23">
-<details>
-<summary>Show <code>mk_imgs</code></summary>
-<div class="sourceCode cell-code" id="cb30" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><span class="kw" style="color: #003B4F;">def</span> mk_imgs(seed, n):</span>
-<span id="cb30-2">    generator <span class="op" style="color: #5E5E5E;">=</span> torch.manual_seed(seed)</span>
-<span id="cb30-3">    imgs <span class="op" style="color: #5E5E5E;">=</span> []</span>
-<span id="cb30-4">    <span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(n <span class="op" style="color: #5E5E5E;">+</span> <span class="dv" style="color: #AD0000;">1</span>):</span>
-<span id="cb30-5">        puppy_factor <span class="op" style="color: #5E5E5E;">=</span> i <span class="op" style="color: #5E5E5E;">*</span> <span class="fl" style="color: #AD0000;">1.</span> <span class="op" style="color: #5E5E5E;">/</span> n</span>
-<span id="cb30-6">        </span>
-<span id="cb30-7">        <span class="co" style="color: #5E5E5E;"># replace puppy embeddings with weighted average of puppy and skunk embeddings</span></span>
-<span id="cb30-8">        replacement_token_embedding <span class="op" style="color: #5E5E5E;">=</span> puppy_factor<span class="op" style="color: #5E5E5E;">*</span>puppy_token_embedding <span class="op" style="color: #5E5E5E;">+</span> (<span class="dv" style="color: #AD0000;">1</span><span class="op" style="color: #5E5E5E;">-</span>puppy_factor)<span class="op" style="color: #5E5E5E;">*</span>skunk_token_embedding</span>
-<span id="cb30-9">        </span>
-<span id="cb30-10">        <span class="co" style="color: #5E5E5E;"># Insert this into the token embeddings</span></span>
-<span id="cb30-11">        token_embeddings[<span class="dv" style="color: #AD0000;">0</span>, torch.where(input_ids[<span class="dv" style="color: #AD0000;">0</span>]<span class="op" style="color: #5E5E5E;">==</span><span class="dv" style="color: #AD0000;">6829</span>)] <span class="op" style="color: #5E5E5E;">=</span> replacement_token_embedding.to(torch_device)</span>
-<span id="cb30-12">        </span>
-<span id="cb30-13">        <span class="co" style="color: #5E5E5E;"># Combine with pos embs</span></span>
-<span id="cb30-14">        input_embeddings <span class="op" style="color: #5E5E5E;">=</span> token_embeddings <span class="op" style="color: #5E5E5E;">+</span> position_embeddings</span>
-<span id="cb30-15">        </span>
-<span id="cb30-16">        <span class="co" style="color: #5E5E5E;">#  Feed through to get final output embs</span></span>
-<span id="cb30-17">        modified_output_embeddings <span class="op" style="color: #5E5E5E;">=</span> get_output_embeds(input_embeddings)</span>
-<span id="cb30-18">        </span>
-<span id="cb30-19">        <span class="co" style="color: #5E5E5E;"># Generate an image with these</span></span>
-<span id="cb30-20">        <span class="cf" style="color: #003B4F;">if</span> i <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">0</span>: </span>
-<span id="cb30-21">            encoded <span class="op" style="color: #5E5E5E;">=</span> torch.randn(</span>
-<span id="cb30-22">                (batch_size, unet.in_channels, height <span class="op" style="color: #5E5E5E;">//</span> <span class="dv" style="color: #AD0000;">8</span>, width <span class="op" style="color: #5E5E5E;">//</span> <span class="dv" style="color: #AD0000;">8</span>),</span>
-<span id="cb30-23">                generator<span class="op" style="color: #5E5E5E;">=</span>generator,</span>
-<span id="cb30-24">            )</span>
-<span id="cb30-25">            encoded <span class="op" style="color: #5E5E5E;">=</span> encoded.to(torch_device)</span>
-<span id="cb30-26">            encoded <span class="op" style="color: #5E5E5E;">=</span> encoded <span class="op" style="color: #5E5E5E;">*</span> scheduler.init_noise_sigma</span>
-<span id="cb30-27">            start_step<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span></span>
-<span id="cb30-28">        <span class="cf" style="color: #003B4F;">else</span>: </span>
-<span id="cb30-29">            encoded <span class="op" style="color: #5E5E5E;">=</span> pil_to_latent(img)</span>
-<span id="cb30-30">            start_step<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">10</span></span>
-<span id="cb30-31">            </span>
-<span id="cb30-32">        img <span class="op" style="color: #5E5E5E;">=</span> generate_with_embs(</span>
-<span id="cb30-33">                text_embeddings<span class="op" style="color: #5E5E5E;">=</span>modified_output_embeddings, </span>
-<span id="cb30-34">                encoded<span class="op" style="color: #5E5E5E;">=</span>encoded, </span>
-<span id="cb30-35">                start_step<span class="op" style="color: #5E5E5E;">=</span>start_step, </span>
-<span id="cb30-36">                num_inference_steps<span class="op" style="color: #5E5E5E;">=</span>num_inference_steps, </span>
-<span id="cb30-37">                height<span class="op" style="color: #5E5E5E;">=</span>height, </span>
-<span id="cb30-38">                width<span class="op" style="color: #5E5E5E;">=</span>width, </span>
-<span id="cb30-39">                batch_size<span class="op" style="color: #5E5E5E;">=</span>batch_size,</span>
-<span id="cb30-40">                guidance_scale<span class="op" style="color: #5E5E5E;">=</span>guidance_scale, </span>
-<span id="cb30-41">                generator<span class="op" style="color: #5E5E5E;">=</span>generator)</span>
-<span id="cb30-42">        </span>
-<span id="cb30-43">        imgs.append(img)</span>
-<span id="cb30-44">        </span>
-<span id="cb30-45">    imgs[<span class="dv" style="color: #AD0000;">0</span>].save(<span class="ss" style="color: #20794D;">f'/notebooks/skunk-to-puppy_smoother_</span><span class="sc" style="color: #5E5E5E;">{</span>seed<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">.gif'</span>, save_all<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>, append_images<span class="op" style="color: #5E5E5E;">=</span>imgs[<span class="dv" style="color: #AD0000;">1</span>:], duration<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">200</span>, loop<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>)</span></code></pre></div>
-</details>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-09-27T00:07:02.348681Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-09-27T00:07:02.348396Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-09-27T00:08:49.660813Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-09-27T00:08:49.660177Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-09-27T00:07:02.348663Z&quot;}">
-<div class="sourceCode cell-code" id="cb31" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1">mk_imgs(seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">4</span>, n<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">20</span>)</span></code></pre></div>
-</div>
-<p>I find the resulting GIF to be smoother: notice how the skunk and the puppy have the same pose/perspective and the background stays more constant throughout the animation.</p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="skunk-to-puppy_smoother_4.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-3" title="Skunk to Puppy animation where each subsequent image starts from a noisy latent of the previous step"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/skunk-to-puppy_smoother_4.gif" class="img-fluid figure-img"></a></p>
-<p></p><figcaption class="figure-caption">Skunk to Puppy animation where each subsequent image starts from a noisy latent of the previous step</figcaption><p></p>
-</figure>
-</div>
-</section>
-<section id="final-thoughts" class="level2">
-<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
-<ul>
-<li><strong>Repurposing existing code is a great way to learn!</strong> I learned more about each line of code from the original course notebook because I was trying to do something different with it. This process really solidified my understanding of the course notebook.</li>
-<li><strong>Generating images is finnicky.</strong> It took me 100 different seeds to find a handful of animations that I was satisfied with. Some of this variability might be because my prompt is simple and I didn’t iterate on it. For example, I could have added language about the pose and background of the skunk/puppy to yield more stable results. I also experimented a bit with the number of total inference steps and the starting step for each image and found that 30 and 10 (respectively) yielded decent results.</li>
-<li><strong>I feel like I have only scratched the surface.</strong> There’s of course much more experimentation, including with different models, that I didn’t do. I’m still building my intuition around image generation, so I’m trying to take my experience with this small project with a large grain of salt.</li>
-</ul>
-<p>I hope you enjoyed this blog post! Follow me on Twitter <a href="https://twitter.com/vishal_learner"><span class="citation" data-cites="vishal_learner">@vishal_learner</span></a>.</p>
-</section>
-<section id="bonus-additional-gifs" class="level2">
-<h2 class="anchored" data-anchor-id="bonus-additional-gifs">Bonus: Additional GIFs</h2>
-<p>I tried 101 different random seeds to capture the best possible examples to use in this notebook. I’ll drop some of the GIFs I created here (and their random seeds) since they look cute/pretty, and in case you want to try to recreate them.</p>
-<p><code>seed=10</code></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="skunk-to-puppy_smoother_10.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-4"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/skunk-to-puppy_smoother_10.gif" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-<hr>
-<p><code>seed=19</code></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="skunk-to-puppy_smoother_19.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-5"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/skunk-to-puppy_smoother_19.gif" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-<hr>
-<p><code>seed=42</code></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="skunk-to-puppy_smoother_42.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-6"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/skunk-to-puppy_smoother_42.gif" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-<hr>
-<p><code>seed=50</code></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="skunk-to-puppy_smoother_50.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-7"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/skunk-to-puppy_smoother_50.gif" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-<hr>
-<p><code>seed=59</code></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="skunk-to-puppy_smoother_59.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-8"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/skunk-to-puppy_smoother_59.gif" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-<hr>
-<p><code>seed=65</code></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="skunk-to-puppy_smoother_65.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-9"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/skunk-to-puppy_smoother_65.gif" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-<hr>
-<p><code>seed=73</code></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="skunk-to-puppy_smoother_73.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-10"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/skunk-to-puppy_smoother_73.gif" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-<hr>
-<p><code>seed=77</code></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="skunk-to-puppy_smoother_77.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-11"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/skunk-to-puppy_smoother_77.gif" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-<hr>
-<p><code>seed=79</code></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="skunk-to-puppy_smoother_79.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-12"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/skunk-to-puppy_smoother_79.gif" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-<hr>
-<p><code>seed=88</code></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="skunk-to-puppy_smoother_88.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-13"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/skunk-to-puppy_smoother_88.gif" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-<hr>
-<p><code>seed=98</code></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="skunk-to-puppy_smoother_98.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-14"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/skunk-to-puppy_smoother_98.gif" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-<hr>
-<p><code>seed=99</code></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="skunk-to-puppy_smoother_99.gif" class="lightbox" data-gallery="quarto-lightbox-gallery-15"><img src="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/skunk-to-puppy_smoother_99.gif" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-
-
-</section>
-
- ]]></description>
-  <category>python</category>
-  <category>stable diffusion</category>
-  <category>fastai</category>
-  <category>deep learning</category>
-  <category>machine learning</category>
-  <category>generative AI</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/index.html</guid>
-  <pubDate>Thu, 26 Sep 2024 07:00:00 GMT</pubDate>
-  <media:content url="https://vishalbakshi.github.io/blog/posts/2024-09-26-diffusion-gif/skunk-to-puppy_random_4.gif" medium="image" type="image/gif"/>
 </item>
 </channel>
 </rss>
