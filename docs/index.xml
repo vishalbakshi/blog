@@ -10,7 +10,1143 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.2.335</generator>
-<lastBuildDate>Sun, 30 Mar 2025 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Tue, 01 Apr 2025 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>Understanding Python Descriptors</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-04-01-Python-Descriptor/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>When monkey-patching the Llama self-attention forward pass (to log its inputs’ data type) I was vibe coding with Claude and it generated the following line to pass the necessary arguments to the original forward pass of the module:</p>
+<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1">orig_forward.<span class="fu" style="color: #4758AB;">__get__</span>(self_attn, <span class="bu" style="color: null;">type</span>(self_attn))(<span class="op" style="color: #5E5E5E;">**</span>kwargs)</span></code></pre></div>
+<p>In a prior iteration, I was using the following line suggested by Claude, with the intention of passing <code>self_attn</code> as <code>self</code>:</p>
+<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">orig_forward(self_attn, <span class="op" style="color: #5E5E5E;">*</span>args, <span class="op" style="color: #5E5E5E;">**</span>kwargs)</span></code></pre></div>
+<p>This was essentially doing the following:</p>
+<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1">orig_forward(self_attn, hidden_states<span class="op" style="color: #5E5E5E;">=</span>hidden_states, attention_mask<span class="op" style="color: #5E5E5E;">=</span>attention_mask, ...)</span></code></pre></div>
+<p>Which caused the following error:</p>
+<pre><code>TypeError: LlamaFlashAttention2.forward() got multiple values for argument 'hidden_states'</code></pre>
+<p><code>self_attn</code> was being passed as the argument to the <code>hidden_states</code> parameter, and then <code>hidden_states=hidden_states</code> was again assigning an argument to the <code>hidden_states</code> parameter. So how do we pass <code>self_attn</code> as <code>self</code>? This is where the <code>__get__</code> method comes in which is part of the Python <a href="https://docs.python.org/3/glossary.html#term-descriptor">Descriptor</a>. Descriptors are:</p>
+<blockquote class="blockquote">
+<p>Any object which defines the methods <code>__get__()</code>, <code>__set__()</code>, or <code>__delete__()</code>. When a class attribute is a descriptor, its special binding behavior is triggered upon attribute lookup. Normally, using <em>a.b</em> to get, set or delete an attribute looks up the object named <em>b</em> in the class dictionary for <em>a</em>, but if <em>b</em> is a descriptor, the respective descriptor method gets called. Understanding descriptors is a key to a deep understanding of Python because they are the basis for many features including functions, methods, properties, class methods, static methods, and reference to super classes.</p>
+</blockquote>
+<p>After reading that a few times I still didn’t understand it! Though I think the key is:</p>
+<blockquote class="blockquote">
+<p>When a class attribute is a descriptor, its special binding behavior is triggered upon attribute lookup.</p>
+</blockquote>
+<p>Claude explained it this way:</p>
+<blockquote class="blockquote">
+<p><code>__get__</code> is a special method that converts a function into a bound method. It’s like saying “make this function a method of this object.”</p>
+</blockquote>
+<p>Translating that to my use case: <code>__get__</code> makes <code>orig_forward</code> a method of <code>self_attn</code>, no longer requiring us to pass <code>self_attn</code> as it now is <code>self</code>.</p>
+<p>That certainly makes sense (i.e.&nbsp;I understand those words) but I don’t really understand why or how. That led me to the Python documentation’s <a href="https://docs.python.org/3/howto/descriptor.html#id1">Descriptor Guide</a> which I’ll walk through here.</p>
+<p>(There was also this interesting <a href="https://discuss.python.org/t/changing-the-name-of-get-to-bind/14243">discussion</a> about changing the name to <code>__bind__</code> when calling it on a function as it binds the function as a method of the given object, which we’ll see later on).</p>
+</section>
+<section id="primer" class="level2">
+<h2 class="anchored" data-anchor-id="primer">Primer</h2>
+<section id="simple-example-a-descriptor-that-returns-a-constant" class="level3">
+<h3 class="anchored" data-anchor-id="simple-example-a-descriptor-that-returns-a-constant">Simple example: A descriptor that returns a constant</h3>
+<div class="cell" data-execution_count="17">
+<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><span class="kw" style="color: #003B4F;">class</span> Ten:</span>
+<span id="cb5-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__get__</span>(<span class="va" style="color: #111111;">self</span>, obj, objtype<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb5-3">        <span class="cf" style="color: #003B4F;">return</span> <span class="dv" style="color: #AD0000;">10</span></span></code></pre></div>
+</div>
+<div class="cell" data-outputid="eeac4968-a49d-4411-c5f6-3231b2ff396c" data-execution_count="18">
+<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1">t <span class="op" style="color: #5E5E5E;">=</span> Ten()</span>
+<span id="cb6-2">t</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="18">
+<pre><code>&lt;__main__.Ten at 0x78b2fd072c50&gt;</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="3c8c18b5-e974-4c71-90cd-bed54365c3f9" data-execution_count="19">
+<div class="sourceCode cell-code" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><span class="bu" style="color: null;">type</span>(t)</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="19">
+<pre><code>__main__.Ten</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="6af99ff9-5bb6-4561-b5df-af18e218253f" data-execution_count="20">
+<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1">t.<span class="fu" style="color: #4758AB;">__get__</span>(<span class="dv" style="color: #AD0000;">4</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="20">
+<pre><code>10</code></pre>
+</div>
+</div>
+<p>I think the only reason <code>Ten</code> is a descriptor is because it “defines the methods <code>__get__()</code>, <code>__set__()</code>, or <code>__delete__()</code>”.</p>
+<blockquote class="blockquote">
+<p>To use the descriptor, it must be stored as a class variable in another class:</p>
+</blockquote>
+<div class="cell" data-execution_count="21">
+<div class="sourceCode cell-code" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><span class="kw" style="color: #003B4F;">class</span> A:</span>
+<span id="cb12-2">    x <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">5</span>                       <span class="co" style="color: #5E5E5E;"># Regular class attribute</span></span>
+<span id="cb12-3">    y <span class="op" style="color: #5E5E5E;">=</span> Ten()                   <span class="co" style="color: #5E5E5E;"># Descriptor instance</span></span></code></pre></div>
+</div>
+<div class="cell" data-outputid="fe3fcdb4-845c-4e7e-d4aa-83f23603d858" data-execution_count="22">
+<div class="sourceCode cell-code" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1">a <span class="op" style="color: #5E5E5E;">=</span> A()                     <span class="co" style="color: #5E5E5E;"># Make an instance of class A</span></span>
+<span id="cb13-2">a</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="22">
+<pre><code>&lt;__main__.A at 0x78b2fd0707d0&gt;</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="93f0602a-05b0-4a09-b674-aa00ee892704" data-execution_count="23">
+<div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1">a.x                         <span class="co" style="color: #5E5E5E;"># Normal attribute lookup</span></span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="23">
+<pre><code>5</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="52372c3e-1077-4f9a-b2f8-71b3394c8b1b" data-execution_count="24">
+<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1">a.y                         <span class="co" style="color: #5E5E5E;"># Descriptor lookup</span></span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="24">
+<pre><code>10</code></pre>
+</div>
+</div>
+<blockquote class="blockquote">
+<p>Note that the value 10 is not stored in either the class dictionary or the instance dictionary. Instead, the value 10 is computed on demand.</p>
+</blockquote>
+<div class="cell" data-outputid="afb4e225-ef85-4202-eb56-db22b5269554" data-execution_count="25">
+<div class="sourceCode cell-code" id="cb19" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1">A.__dict__</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="25">
+<pre><code>mappingproxy({'__module__': '__main__',
+              'x': 5,
+              'y': &lt;__main__.Ten at 0x78b2fd0722d0&gt;,
+              '__dict__': &lt;attribute '__dict__' of 'A' objects&gt;,
+              '__weakref__': &lt;attribute '__weakref__' of 'A' objects&gt;,
+              '__doc__': None})</code></pre>
+</div>
+</div>
+<p>Modifying <code>Ten</code> a bit to visualize this:</p>
+<div class="cell" data-execution_count="26">
+<div class="sourceCode cell-code" id="cb21" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><span class="kw" style="color: #003B4F;">class</span> Ten2:</span>
+<span id="cb21-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__get__</span>(<span class="va" style="color: #111111;">self</span>, obj, objtype<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb21-3">        <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"__get__ called with obj=</span><span class="sc" style="color: #5E5E5E;">{</span>obj<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">, objtype=</span><span class="sc" style="color: #5E5E5E;">{</span>objtype<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
+<span id="cb21-4">        <span class="cf" style="color: #003B4F;">return</span> <span class="dv" style="color: #AD0000;">10</span></span>
+<span id="cb21-5"></span>
+<span id="cb21-6"><span class="kw" style="color: #003B4F;">class</span> A2:</span>
+<span id="cb21-7">    x <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">5</span></span>
+<span id="cb21-8">    y <span class="op" style="color: #5E5E5E;">=</span> Ten2()  <span class="co" style="color: #5E5E5E;"># Descriptor instance</span></span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="27">
+<div class="sourceCode cell-code" id="cb22" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1">a2 <span class="op" style="color: #5E5E5E;">=</span> A2()</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="e528db12-faa4-463b-b3ba-71897fc0b887" data-execution_count="28">
+<div class="sourceCode cell-code" id="cb23" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1">a2.y</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__get__ called with obj=&lt;__main__.A2 object at 0x78b2fd089710&gt;, objtype=&lt;class '__main__.A2'&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="28">
+<pre><code>10</code></pre>
+</div>
+</div>
+<p>Cool!</p>
+</section>
+<section id="dynamic-lookups" class="level3">
+<h3 class="anchored" data-anchor-id="dynamic-lookups">Dynamic Lookups</h3>
+<div class="cell" data-execution_count="45">
+<div class="sourceCode cell-code" id="cb26" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><span class="im" style="color: #00769E;">import</span> os</span>
+<span id="cb26-2"></span>
+<span id="cb26-3"><span class="kw" style="color: #003B4F;">class</span> DirectorySize:</span>
+<span id="cb26-4"></span>
+<span id="cb26-5">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__get__</span>(<span class="va" style="color: #111111;">self</span>, obj, objtype<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb26-6">        <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">len</span>(os.listdir(obj.dirname))</span>
+<span id="cb26-7"></span>
+<span id="cb26-8"><span class="kw" style="color: #003B4F;">class</span> Directory:</span>
+<span id="cb26-9"></span>
+<span id="cb26-10">    size <span class="op" style="color: #5E5E5E;">=</span> DirectorySize()              <span class="co" style="color: #5E5E5E;"># Descriptor instance</span></span>
+<span id="cb26-11"></span>
+<span id="cb26-12">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, dirname):</span>
+<span id="cb26-13">        <span class="va" style="color: #111111;">self</span>.dirname <span class="op" style="color: #5E5E5E;">=</span> dirname          <span class="co" style="color: #5E5E5E;"># Regular instance attribute</span></span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="46">
+<div class="sourceCode cell-code" id="cb27" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1">s <span class="op" style="color: #5E5E5E;">=</span> Directory(<span class="st" style="color: #20794D;">'songs'</span>)</span>
+<span id="cb27-2">g <span class="op" style="color: #5E5E5E;">=</span> Directory(<span class="st" style="color: #20794D;">'games'</span>)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="09aa2729-6427-4da8-e619-fb6ce2abd29e" data-execution_count="54">
+<div class="sourceCode cell-code" id="cb28" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1">s.size</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="54">
+<pre><code>4</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="5f1ace26-b65a-4747-dccf-150ae2da1111" data-execution_count="48">
+<div class="sourceCode cell-code" id="cb30" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1">g.size</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="48">
+<pre><code>2</code></pre>
+</div>
+</div>
+<p>Removing a file then calling the descriptor’s <code>__get__</code> dynamically calculates the new value:</p>
+<div class="cell" data-outputid="0e7788d5-e734-40fc-df0c-07077782244a" data-execution_count="49">
+<div class="sourceCode cell-code" id="cb32" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1">os.remove(<span class="st" style="color: #20794D;">'games/game1.txt'</span>)            <span class="co" style="color: #5E5E5E;"># Delete a game</span></span>
+<span id="cb32-2">g.size</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="49">
+<pre><code>1</code></pre>
+</div>
+</div>
+</section>
+<section id="managed-attributes" class="level3">
+<h3 class="anchored" data-anchor-id="managed-attributes">Managed attributes</h3>
+<blockquote class="blockquote">
+<p>The descriptor is assigned to a public attribute in the class dictionary while the actual data is stored as a private attribute in the instance dictionary.</p>
+</blockquote>
+<p>Note that I wasn’t able to see the logging output in this notebook so I’m using print statements instead.</p>
+<div class="cell" data-execution_count="81">
+<div class="sourceCode cell-code" id="cb34" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><span class="kw" style="color: #003B4F;">class</span> LoggedAgeAccess:</span>
+<span id="cb34-2"></span>
+<span id="cb34-3">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__get__</span>(<span class="va" style="color: #111111;">self</span>, obj, objtype<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb34-4">        value <span class="op" style="color: #5E5E5E;">=</span> obj._age</span>
+<span id="cb34-5">        <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'Accessing age giving </span><span class="sc" style="color: #5E5E5E;">{</span>value<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span>)</span>
+<span id="cb34-6">        <span class="cf" style="color: #003B4F;">return</span> value</span>
+<span id="cb34-7"></span>
+<span id="cb34-8">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__set__</span>(<span class="va" style="color: #111111;">self</span>, obj, value):</span>
+<span id="cb34-9">        <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'Updating age to </span><span class="sc" style="color: #5E5E5E;">{</span>value<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span>)</span>
+<span id="cb34-10">        obj._age <span class="op" style="color: #5E5E5E;">=</span> value</span>
+<span id="cb34-11"></span>
+<span id="cb34-12"><span class="kw" style="color: #003B4F;">class</span> Person:</span>
+<span id="cb34-13"></span>
+<span id="cb34-14">    age <span class="op" style="color: #5E5E5E;">=</span> LoggedAgeAccess()             <span class="co" style="color: #5E5E5E;"># Descriptor instance</span></span>
+<span id="cb34-15"></span>
+<span id="cb34-16">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, name, age):</span>
+<span id="cb34-17">        <span class="va" style="color: #111111;">self</span>.name <span class="op" style="color: #5E5E5E;">=</span> name                <span class="co" style="color: #5E5E5E;"># Regular instance attribute</span></span>
+<span id="cb34-18">        <span class="va" style="color: #111111;">self</span>.age <span class="op" style="color: #5E5E5E;">=</span> age                  <span class="co" style="color: #5E5E5E;"># Calls __set__()</span></span>
+<span id="cb34-19"></span>
+<span id="cb34-20">    <span class="kw" style="color: #003B4F;">def</span> birthday(<span class="va" style="color: #111111;">self</span>):</span>
+<span id="cb34-21">        <span class="va" style="color: #111111;">self</span>.age <span class="op" style="color: #5E5E5E;">+=</span> <span class="dv" style="color: #AD0000;">1</span>                   <span class="co" style="color: #5E5E5E;"># Calls both __get__() and __set__()</span></span></code></pre></div>
+</div>
+<div class="cell" data-outputid="8b75d44a-d3d3-4a0f-8b6a-b1526c61850c" data-execution_count="82">
+<div class="sourceCode cell-code" id="cb35" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1">mary <span class="op" style="color: #5E5E5E;">=</span> Person(<span class="st" style="color: #20794D;">'Mary M'</span>, <span class="dv" style="color: #AD0000;">30</span>)         <span class="co" style="color: #5E5E5E;"># The initial age update is logged</span></span>
+<span id="cb35-2">dave <span class="op" style="color: #5E5E5E;">=</span> Person(<span class="st" style="color: #20794D;">'David D'</span>, <span class="dv" style="color: #AD0000;">40</span>)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Updating age to 30
+Updating age to 40</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="6bfbbf95-7e19-4375-e7d0-3ea569224486" data-execution_count="83">
+<div class="sourceCode cell-code" id="cb37" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><span class="bu" style="color: null;">vars</span>(mary), <span class="bu" style="color: null;">vars</span>(dave)</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="83">
+<pre><code>({'name': 'Mary M', '_age': 30}, {'name': 'David D', '_age': 40})</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="b498be42-317d-4880-e5cd-0ec735143778" data-execution_count="84">
+<div class="sourceCode cell-code" id="cb39" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1">mary.age</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Accessing age giving 30</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="84">
+<pre><code>30</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="c30f9e43-22cb-4d26-b75b-75d9c486f9b9" data-execution_count="85">
+<div class="sourceCode cell-code" id="cb42" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1">mary.birthday()</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Accessing age giving 30
+Updating age to 31</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="317f28b0-1e3a-49ed-ef6b-fa6904e9c636" data-execution_count="86">
+<div class="sourceCode cell-code" id="cb44" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1">mary.age</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Accessing age giving 31</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="86">
+<pre><code>31</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="805635b0-8485-4fdb-b066-60314f8ff50c" data-execution_count="87">
+<div class="sourceCode cell-code" id="cb47" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1">dave.name</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="87">
+<pre><code>'David D'</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="a14b4606-f0e2-4654-956e-0b937a8bc394" data-execution_count="88">
+<div class="sourceCode cell-code" id="cb49" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1">dave.age</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Accessing age giving 40</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="88">
+<pre><code>40</code></pre>
+</div>
+</div>
+</section>
+<section id="customized-names" class="level3">
+<h3 class="anchored" data-anchor-id="customized-names">Customized names</h3>
+<blockquote class="blockquote">
+<p>When a class uses descriptors, it can inform each descriptor about which variable name was used.</p>
+</blockquote>
+<div class="cell" data-execution_count="99">
+<div class="sourceCode cell-code" id="cb52" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><span class="kw" style="color: #003B4F;">class</span> LoggedAccess:</span>
+<span id="cb52-2"></span>
+<span id="cb52-3">    <span class="kw" style="color: #003B4F;">def</span> __set_name__(<span class="va" style="color: #111111;">self</span>, owner, name):</span>
+<span id="cb52-4">        <span class="va" style="color: #111111;">self</span>.public_name <span class="op" style="color: #5E5E5E;">=</span> name</span>
+<span id="cb52-5">        <span class="va" style="color: #111111;">self</span>.private_name <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">'_'</span> <span class="op" style="color: #5E5E5E;">+</span> name</span>
+<span id="cb52-6"></span>
+<span id="cb52-7">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__get__</span>(<span class="va" style="color: #111111;">self</span>, obj, objtype<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb52-8">        value <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">getattr</span>(obj, <span class="va" style="color: #111111;">self</span>.private_name)</span>
+<span id="cb52-9">        <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'Accessing </span><span class="sc" style="color: #5E5E5E;">{</span><span class="va" style="color: #111111;">self</span><span class="sc" style="color: #5E5E5E;">.</span>public_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;"> giving </span><span class="sc" style="color: #5E5E5E;">{</span>value<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span>)</span>
+<span id="cb52-10">        <span class="cf" style="color: #003B4F;">return</span> value</span>
+<span id="cb52-11"></span>
+<span id="cb52-12">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__set__</span>(<span class="va" style="color: #111111;">self</span>, obj, value):</span>
+<span id="cb52-13">        <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'Updating </span><span class="sc" style="color: #5E5E5E;">{</span><span class="va" style="color: #111111;">self</span><span class="sc" style="color: #5E5E5E;">.</span>public_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;"> to </span><span class="sc" style="color: #5E5E5E;">{</span>value<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span>)</span>
+<span id="cb52-14">        <span class="bu" style="color: null;">setattr</span>(obj, <span class="va" style="color: #111111;">self</span>.private_name, value)</span>
+<span id="cb52-15"></span>
+<span id="cb52-16"><span class="kw" style="color: #003B4F;">class</span> Person:</span>
+<span id="cb52-17"></span>
+<span id="cb52-18">    name <span class="op" style="color: #5E5E5E;">=</span> LoggedAccess()                <span class="co" style="color: #5E5E5E;"># First descriptor instance</span></span>
+<span id="cb52-19">    age <span class="op" style="color: #5E5E5E;">=</span> LoggedAccess()                 <span class="co" style="color: #5E5E5E;"># Second descriptor instance</span></span>
+<span id="cb52-20"></span>
+<span id="cb52-21">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, name, age):</span>
+<span id="cb52-22">        <span class="va" style="color: #111111;">self</span>.name <span class="op" style="color: #5E5E5E;">=</span> name                 <span class="co" style="color: #5E5E5E;"># Calls the first descriptor</span></span>
+<span id="cb52-23">        <span class="va" style="color: #111111;">self</span>.age <span class="op" style="color: #5E5E5E;">=</span> age                   <span class="co" style="color: #5E5E5E;"># Calls the second descriptor</span></span>
+<span id="cb52-24"></span>
+<span id="cb52-25">    <span class="kw" style="color: #003B4F;">def</span> birthday(<span class="va" style="color: #111111;">self</span>):</span>
+<span id="cb52-26">        <span class="va" style="color: #111111;">self</span>.age <span class="op" style="color: #5E5E5E;">+=</span> <span class="dv" style="color: #AD0000;">1</span></span></code></pre></div>
+</div>
+<div class="cell" data-outputid="84700369-3ad4-4565-f86b-10eb90e39f15" data-execution_count="97">
+<div class="sourceCode cell-code" id="cb53" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><span class="bu" style="color: null;">vars</span>(Person)[<span class="st" style="color: #20794D;">'name'</span>]</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="97">
+<pre><code>&lt;__main__.LoggedAccess at 0x78b2edeb8950&gt;</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="7cac51e2-e623-48fd-8fb0-5a24e8eb9ec0" data-execution_count="98">
+<div class="sourceCode cell-code" id="cb55" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><span class="bu" style="color: null;">vars</span>(<span class="bu" style="color: null;">vars</span>(Person)[<span class="st" style="color: #20794D;">'name'</span>])</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="98">
+<pre><code>{'public_name': 'name', 'private_name': '_name'}</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="92758304-fcce-4f59-b09d-4b5e8bd02aae" data-execution_count="91">
+<div class="sourceCode cell-code" id="cb57" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1"><span class="bu" style="color: null;">vars</span>(<span class="bu" style="color: null;">vars</span>(Person)[<span class="st" style="color: #20794D;">'age'</span>])</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="91">
+<pre><code>{'public_name': 'age', 'private_name': '_age'}</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="1eaab803-e055-4a57-c28e-be9a86a91e4e" data-execution_count="92">
+<div class="sourceCode cell-code" id="cb59" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1">pete <span class="op" style="color: #5E5E5E;">=</span> Person(<span class="st" style="color: #20794D;">'Peter P'</span>, <span class="dv" style="color: #AD0000;">10</span>)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Updating name to Peter P
+Updating age to 10</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="90fbd1f4-dd19-4e81-ddc0-fa6fc51f8cca" data-execution_count="93">
+<div class="sourceCode cell-code" id="cb61" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb61-1">kate <span class="op" style="color: #5E5E5E;">=</span> Person(<span class="st" style="color: #20794D;">'Catherine C'</span>, <span class="dv" style="color: #AD0000;">20</span>)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Updating name to Catherine C
+Updating age to 20</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="aa93dc1b-bbef-4bba-ec4f-adea7923f972" data-execution_count="94">
+<div class="sourceCode cell-code" id="cb63" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1"><span class="bu" style="color: null;">vars</span>(pete)</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="94">
+<pre><code>{'_name': 'Peter P', '_age': 10}</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="b45e31dc-98a5-4fca-c3ab-f0f18e80416f" data-execution_count="95">
+<div class="sourceCode cell-code" id="cb65" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><span class="bu" style="color: null;">vars</span>(kate)</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="95">
+<pre><code>{'_name': 'Catherine C', '_age': 20}</code></pre>
+</div>
+</div>
+<p>I think the main takeaway here is that we didn’t specify the name of the field so we could use the same descriptor for both <code>name</code> and <code>age</code>.</p>
+</section>
+<section id="closing-thoughts" class="level3">
+<h3 class="anchored" data-anchor-id="closing-thoughts">Closing thoughts</h3>
+<p>Looking at how <code>__set_name__</code> behaves (the example in the <a href="https://docs.python.org/3/reference/datamodel.html#object.__set_name__">docs</a>):</p>
+<div class="cell" data-outputid="0db303bd-1e64-4471-940d-7dd8c37833e8" data-execution_count="103">
+<div class="sourceCode cell-code" id="cb67" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb67-1"><span class="kw" style="color: #003B4F;">class</span> C:</span>
+<span id="cb67-2">    <span class="kw" style="color: #003B4F;">def</span> __set_name__(<span class="va" style="color: #111111;">self</span>, owner, name):</span>
+<span id="cb67-3">        <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"__set_name__ called with owner=</span><span class="sc" style="color: #5E5E5E;">{</span>owner<span class="sc" style="color: #5E5E5E;">.</span><span class="va" style="color: #111111;">__name__</span><span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">, name='</span><span class="sc" style="color: #5E5E5E;">{</span>name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'"</span>)</span>
+<span id="cb67-4">        <span class="va" style="color: #111111;">self</span>.name <span class="op" style="color: #5E5E5E;">=</span> name</span>
+<span id="cb67-5"></span>
+<span id="cb67-6"><span class="kw" style="color: #003B4F;">class</span> A:</span>
+<span id="cb67-7">    x <span class="op" style="color: #5E5E5E;">=</span> C()  <span class="co" style="color: #5E5E5E;"># This will trigger __set_name__</span></span>
+<span id="cb67-8">    y <span class="op" style="color: #5E5E5E;">=</span> C()  <span class="co" style="color: #5E5E5E;"># This will trigger it again with a different name</span></span>
+<span id="cb67-9">    bananas <span class="op" style="color: #5E5E5E;">=</span> C()</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__set_name__ called with owner=A, name='x'
+__set_name__ called with owner=A, name='y'
+__set_name__ called with owner=A, name='bananas'</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="940a7982-0418-4c1f-aa86-adf2fecace1f" data-execution_count="104">
+<div class="sourceCode cell-code" id="cb69" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb69-1">a <span class="op" style="color: #5E5E5E;">=</span> A()</span>
+<span id="cb69-2">a.x, a.y, a.x.name, a.y.name, a.bananas.name</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="104">
+<pre><code>(&lt;__main__.C at 0x78b331674190&gt;,
+ &lt;__main__.C at 0x78b2df52ccd0&gt;,
+ 'x',
+ 'y',
+ 'bananas')</code></pre>
+</div>
+</div>
+<p>The part of particular interest to me is:</p>
+<blockquote class="blockquote">
+<p>Descriptors are used throughout the language. It is how functions turn into bound methods.</p>
+</blockquote>
+</section>
+</section>
+<section id="complete-practical-example" class="level2">
+<h2 class="anchored" data-anchor-id="complete-practical-example">Complete practical example</h2>
+<section id="validator-class" class="level3">
+<h3 class="anchored" data-anchor-id="validator-class">Validator class</h3>
+<blockquote class="blockquote">
+<p>A validator is a descriptor for managed attribute access. Prior to storing any data, it verifies that the new value meets various type and range restrictions. If those restrictions aren’t met, it raises an exception to prevent data corruption at its source.</p>
+</blockquote>
+<div class="cell" data-execution_count="117">
+<div class="sourceCode cell-code" id="cb71" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb71-1"><span class="im" style="color: #00769E;">from</span> abc <span class="im" style="color: #00769E;">import</span> ABC, abstractmethod</span>
+<span id="cb71-2"></span>
+<span id="cb71-3"><span class="kw" style="color: #003B4F;">class</span> Validator(ABC):</span>
+<span id="cb71-4"></span>
+<span id="cb71-5">    <span class="kw" style="color: #003B4F;">def</span> __set_name__(<span class="va" style="color: #111111;">self</span>, owner, name):</span>
+<span id="cb71-6">        <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"__set_name__ is called"</span>)</span>
+<span id="cb71-7">        <span class="va" style="color: #111111;">self</span>.private_name <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">'_'</span> <span class="op" style="color: #5E5E5E;">+</span> name</span>
+<span id="cb71-8"></span>
+<span id="cb71-9">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__get__</span>(<span class="va" style="color: #111111;">self</span>, obj, objtype<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb71-10">        <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"__get__ is called"</span>)</span>
+<span id="cb71-11">        <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">getattr</span>(obj, <span class="va" style="color: #111111;">self</span>.private_name)</span>
+<span id="cb71-12"></span>
+<span id="cb71-13">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__set__</span>(<span class="va" style="color: #111111;">self</span>, obj, value):</span>
+<span id="cb71-14">        <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"__set__ is called"</span>)</span>
+<span id="cb71-15">        <span class="va" style="color: #111111;">self</span>.validate(value)</span>
+<span id="cb71-16">        <span class="bu" style="color: null;">setattr</span>(obj, <span class="va" style="color: #111111;">self</span>.private_name, value)</span>
+<span id="cb71-17"></span>
+<span id="cb71-18">    <span class="at" style="color: #657422;">@abstractmethod</span></span>
+<span id="cb71-19">    <span class="kw" style="color: #003B4F;">def</span> validate(<span class="va" style="color: #111111;">self</span>, value):</span>
+<span id="cb71-20">        <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"validate is called"</span>)</span>
+<span id="cb71-21">        <span class="cf" style="color: #003B4F;">pass</span></span></code></pre></div>
+</div>
+</section>
+<section id="custom-validators" class="level3">
+<h3 class="anchored" data-anchor-id="custom-validators">Custom validators</h3>
+<blockquote class="blockquote">
+<p>Here are three practical data validation utilities:</p>
+<ol type="1">
+<li><p><code>OneOf</code> verifies that a value is one of a restricted set of options.</p></li>
+<li><p><code>Number</code> verifies that a value is either an int or float. Optionally, it verifies that a value is between a given minimum or maximum.</p></li>
+<li><p><code>String</code> verifies that a value is a str. Optionally, it validates a given minimum or maximum length. It can validate a user-defined predicate as well.</p></li>
+</ol>
+</blockquote>
+<div class="cell" data-execution_count="118">
+<div class="sourceCode cell-code" id="cb72" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb72-1"><span class="kw" style="color: #003B4F;">class</span> OneOf(Validator):</span>
+<span id="cb72-2"></span>
+<span id="cb72-3">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, <span class="op" style="color: #5E5E5E;">*</span>options):</span>
+<span id="cb72-4">        <span class="va" style="color: #111111;">self</span>.options <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">set</span>(options)</span>
+<span id="cb72-5"></span>
+<span id="cb72-6">    <span class="kw" style="color: #003B4F;">def</span> validate(<span class="va" style="color: #111111;">self</span>, value):</span>
+<span id="cb72-7">        <span class="cf" style="color: #003B4F;">if</span> value <span class="kw" style="color: #003B4F;">not</span> <span class="kw" style="color: #003B4F;">in</span> <span class="va" style="color: #111111;">self</span>.options:</span>
+<span id="cb72-8">            <span class="cf" style="color: #003B4F;">raise</span> <span class="pp" style="color: #AD0000;">ValueError</span>(</span>
+<span id="cb72-9">                <span class="ss" style="color: #20794D;">f'Expected </span><span class="sc" style="color: #5E5E5E;">{</span>value<span class="sc" style="color: #5E5E5E;">!r}</span><span class="ss" style="color: #20794D;"> to be one of </span><span class="sc" style="color: #5E5E5E;">{</span><span class="va" style="color: #111111;">self</span><span class="sc" style="color: #5E5E5E;">.</span>options<span class="sc" style="color: #5E5E5E;">!r}</span><span class="ss" style="color: #20794D;">'</span></span>
+<span id="cb72-10">            )</span>
+<span id="cb72-11"></span>
+<span id="cb72-12"><span class="kw" style="color: #003B4F;">class</span> Number(Validator):</span>
+<span id="cb72-13"></span>
+<span id="cb72-14">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, minvalue<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>, maxvalue<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb72-15">        <span class="va" style="color: #111111;">self</span>.minvalue <span class="op" style="color: #5E5E5E;">=</span> minvalue</span>
+<span id="cb72-16">        <span class="va" style="color: #111111;">self</span>.maxvalue <span class="op" style="color: #5E5E5E;">=</span> maxvalue</span>
+<span id="cb72-17"></span>
+<span id="cb72-18">    <span class="kw" style="color: #003B4F;">def</span> validate(<span class="va" style="color: #111111;">self</span>, value):</span>
+<span id="cb72-19">        <span class="cf" style="color: #003B4F;">if</span> <span class="kw" style="color: #003B4F;">not</span> <span class="bu" style="color: null;">isinstance</span>(value, (<span class="bu" style="color: null;">int</span>, <span class="bu" style="color: null;">float</span>)):</span>
+<span id="cb72-20">            <span class="cf" style="color: #003B4F;">raise</span> <span class="pp" style="color: #AD0000;">TypeError</span>(<span class="ss" style="color: #20794D;">f'Expected </span><span class="sc" style="color: #5E5E5E;">{</span>value<span class="sc" style="color: #5E5E5E;">!r}</span><span class="ss" style="color: #20794D;"> to be an int or float'</span>)</span>
+<span id="cb72-21">        <span class="cf" style="color: #003B4F;">if</span> <span class="va" style="color: #111111;">self</span>.minvalue <span class="kw" style="color: #003B4F;">is</span> <span class="kw" style="color: #003B4F;">not</span> <span class="va" style="color: #111111;">None</span> <span class="kw" style="color: #003B4F;">and</span> value <span class="op" style="color: #5E5E5E;">&lt;</span> <span class="va" style="color: #111111;">self</span>.minvalue:</span>
+<span id="cb72-22">            <span class="cf" style="color: #003B4F;">raise</span> <span class="pp" style="color: #AD0000;">ValueError</span>(</span>
+<span id="cb72-23">                <span class="ss" style="color: #20794D;">f'Expected </span><span class="sc" style="color: #5E5E5E;">{</span>value<span class="sc" style="color: #5E5E5E;">!r}</span><span class="ss" style="color: #20794D;"> to be at least </span><span class="sc" style="color: #5E5E5E;">{</span><span class="va" style="color: #111111;">self</span><span class="sc" style="color: #5E5E5E;">.</span>minvalue<span class="sc" style="color: #5E5E5E;">!r}</span><span class="ss" style="color: #20794D;">'</span></span>
+<span id="cb72-24">            )</span>
+<span id="cb72-25">        <span class="cf" style="color: #003B4F;">if</span> <span class="va" style="color: #111111;">self</span>.maxvalue <span class="kw" style="color: #003B4F;">is</span> <span class="kw" style="color: #003B4F;">not</span> <span class="va" style="color: #111111;">None</span> <span class="kw" style="color: #003B4F;">and</span> value <span class="op" style="color: #5E5E5E;">&gt;</span> <span class="va" style="color: #111111;">self</span>.maxvalue:</span>
+<span id="cb72-26">            <span class="cf" style="color: #003B4F;">raise</span> <span class="pp" style="color: #AD0000;">ValueError</span>(</span>
+<span id="cb72-27">                <span class="ss" style="color: #20794D;">f'Expected </span><span class="sc" style="color: #5E5E5E;">{</span>value<span class="sc" style="color: #5E5E5E;">!r}</span><span class="ss" style="color: #20794D;"> to be no more than </span><span class="sc" style="color: #5E5E5E;">{</span><span class="va" style="color: #111111;">self</span><span class="sc" style="color: #5E5E5E;">.</span>maxvalue<span class="sc" style="color: #5E5E5E;">!r}</span><span class="ss" style="color: #20794D;">'</span></span>
+<span id="cb72-28">            )</span>
+<span id="cb72-29"></span>
+<span id="cb72-30"><span class="kw" style="color: #003B4F;">class</span> String(Validator):</span>
+<span id="cb72-31"></span>
+<span id="cb72-32">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, minsize<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>, maxsize<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>, predicate<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb72-33">        <span class="va" style="color: #111111;">self</span>.minsize <span class="op" style="color: #5E5E5E;">=</span> minsize</span>
+<span id="cb72-34">        <span class="va" style="color: #111111;">self</span>.maxsize <span class="op" style="color: #5E5E5E;">=</span> maxsize</span>
+<span id="cb72-35">        <span class="va" style="color: #111111;">self</span>.predicate <span class="op" style="color: #5E5E5E;">=</span> predicate</span>
+<span id="cb72-36"></span>
+<span id="cb72-37">    <span class="kw" style="color: #003B4F;">def</span> validate(<span class="va" style="color: #111111;">self</span>, value):</span>
+<span id="cb72-38">        <span class="cf" style="color: #003B4F;">if</span> <span class="kw" style="color: #003B4F;">not</span> <span class="bu" style="color: null;">isinstance</span>(value, <span class="bu" style="color: null;">str</span>):</span>
+<span id="cb72-39">            <span class="cf" style="color: #003B4F;">raise</span> <span class="pp" style="color: #AD0000;">TypeError</span>(<span class="ss" style="color: #20794D;">f'Expected </span><span class="sc" style="color: #5E5E5E;">{</span>value<span class="sc" style="color: #5E5E5E;">!r}</span><span class="ss" style="color: #20794D;"> to be an str'</span>)</span>
+<span id="cb72-40">        <span class="cf" style="color: #003B4F;">if</span> <span class="va" style="color: #111111;">self</span>.minsize <span class="kw" style="color: #003B4F;">is</span> <span class="kw" style="color: #003B4F;">not</span> <span class="va" style="color: #111111;">None</span> <span class="kw" style="color: #003B4F;">and</span> <span class="bu" style="color: null;">len</span>(value) <span class="op" style="color: #5E5E5E;">&lt;</span> <span class="va" style="color: #111111;">self</span>.minsize:</span>
+<span id="cb72-41">            <span class="cf" style="color: #003B4F;">raise</span> <span class="pp" style="color: #AD0000;">ValueError</span>(</span>
+<span id="cb72-42">                <span class="ss" style="color: #20794D;">f'Expected </span><span class="sc" style="color: #5E5E5E;">{</span>value<span class="sc" style="color: #5E5E5E;">!r}</span><span class="ss" style="color: #20794D;"> to be no smaller than </span><span class="sc" style="color: #5E5E5E;">{</span><span class="va" style="color: #111111;">self</span><span class="sc" style="color: #5E5E5E;">.</span>minsize<span class="sc" style="color: #5E5E5E;">!r}</span><span class="ss" style="color: #20794D;">'</span></span>
+<span id="cb72-43">            )</span>
+<span id="cb72-44">        <span class="cf" style="color: #003B4F;">if</span> <span class="va" style="color: #111111;">self</span>.maxsize <span class="kw" style="color: #003B4F;">is</span> <span class="kw" style="color: #003B4F;">not</span> <span class="va" style="color: #111111;">None</span> <span class="kw" style="color: #003B4F;">and</span> <span class="bu" style="color: null;">len</span>(value) <span class="op" style="color: #5E5E5E;">&gt;</span> <span class="va" style="color: #111111;">self</span>.maxsize:</span>
+<span id="cb72-45">            <span class="cf" style="color: #003B4F;">raise</span> <span class="pp" style="color: #AD0000;">ValueError</span>(</span>
+<span id="cb72-46">                <span class="ss" style="color: #20794D;">f'Expected </span><span class="sc" style="color: #5E5E5E;">{</span>value<span class="sc" style="color: #5E5E5E;">!r}</span><span class="ss" style="color: #20794D;"> to be no bigger than </span><span class="sc" style="color: #5E5E5E;">{</span><span class="va" style="color: #111111;">self</span><span class="sc" style="color: #5E5E5E;">.</span>maxsize<span class="sc" style="color: #5E5E5E;">!r}</span><span class="ss" style="color: #20794D;">'</span></span>
+<span id="cb72-47">            )</span>
+<span id="cb72-48">        <span class="cf" style="color: #003B4F;">if</span> <span class="va" style="color: #111111;">self</span>.predicate <span class="kw" style="color: #003B4F;">is</span> <span class="kw" style="color: #003B4F;">not</span> <span class="va" style="color: #111111;">None</span> <span class="kw" style="color: #003B4F;">and</span> <span class="kw" style="color: #003B4F;">not</span> <span class="va" style="color: #111111;">self</span>.predicate(value):</span>
+<span id="cb72-49">            <span class="cf" style="color: #003B4F;">raise</span> <span class="pp" style="color: #AD0000;">ValueError</span>(</span>
+<span id="cb72-50">                <span class="ss" style="color: #20794D;">f'Expected </span><span class="sc" style="color: #5E5E5E;">{</span><span class="va" style="color: #111111;">self</span><span class="sc" style="color: #5E5E5E;">.</span>predicate<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;"> to be true for </span><span class="sc" style="color: #5E5E5E;">{</span>value<span class="sc" style="color: #5E5E5E;">!r}</span><span class="ss" style="color: #20794D;">'</span></span>
+<span id="cb72-51">            )</span></code></pre></div>
+</div>
+</section>
+<section id="practical-application" class="level3">
+<h3 class="anchored" data-anchor-id="practical-application">Practical application</h3>
+<div class="cell" data-outputid="a291dd22-396d-4771-ef6d-f9ccf1dd7aa8" data-execution_count="119">
+<div class="sourceCode cell-code" id="cb73" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb73-1"><span class="kw" style="color: #003B4F;">class</span> Component:</span>
+<span id="cb73-2"></span>
+<span id="cb73-3">    name <span class="op" style="color: #5E5E5E;">=</span> String(minsize<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">3</span>, maxsize<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">10</span>, predicate<span class="op" style="color: #5E5E5E;">=</span><span class="bu" style="color: null;">str</span>.isupper)</span>
+<span id="cb73-4">    kind <span class="op" style="color: #5E5E5E;">=</span> OneOf(<span class="st" style="color: #20794D;">'wood'</span>, <span class="st" style="color: #20794D;">'metal'</span>, <span class="st" style="color: #20794D;">'plastic'</span>)</span>
+<span id="cb73-5">    quantity <span class="op" style="color: #5E5E5E;">=</span> Number(minvalue<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>)</span>
+<span id="cb73-6"></span>
+<span id="cb73-7">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, name, kind, quantity):</span>
+<span id="cb73-8">        <span class="va" style="color: #111111;">self</span>.name <span class="op" style="color: #5E5E5E;">=</span> name</span>
+<span id="cb73-9">        <span class="va" style="color: #111111;">self</span>.kind <span class="op" style="color: #5E5E5E;">=</span> kind</span>
+<span id="cb73-10">        <span class="va" style="color: #111111;">self</span>.quantity <span class="op" style="color: #5E5E5E;">=</span> quantity</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__set_name__ is called
+__set_name__ is called
+__set_name__ is called</code></pre>
+</div>
+</div>
+<blockquote class="blockquote">
+<p>The descriptors prevent invalid instances from being created:</p>
+</blockquote>
+<div class="cell" data-outputid="3b846377-b1de-40cd-dc38-47f088d7bda6" data-execution_count="120">
+<div class="sourceCode cell-code" id="cb75" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb75-1">Component(<span class="st" style="color: #20794D;">'Widget'</span>, <span class="st" style="color: #20794D;">'metal'</span>, <span class="dv" style="color: #AD0000;">5</span>)      <span class="co" style="color: #5E5E5E;"># Blocked: 'Widget' is not all uppercase</span></span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__set__ is called</code></pre>
+</div>
+<div class="cell-output cell-output-error">
+<pre><code>ValueError: Expected &lt;method 'isupper' of 'str' objects&gt; to be true for 'Widget'</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="a1ff6411-3569-4dca-91df-dc09c8cfe544" data-execution_count="121">
+<div class="sourceCode cell-code" id="cb78" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb78-1">Component(<span class="st" style="color: #20794D;">'WIDGET'</span>, <span class="st" style="color: #20794D;">'metle'</span>, <span class="dv" style="color: #AD0000;">5</span>)      <span class="co" style="color: #5E5E5E;"># Blocked: 'metle' is misspelled</span></span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__set__ is called
+__set__ is called</code></pre>
+</div>
+<div class="cell-output cell-output-error">
+<pre><code>ValueError: Expected 'metle' to be one of {'metal', 'plastic', 'wood'}</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="8b1180ca-b0c2-4911-a392-e358c0b51258" data-execution_count="122">
+<div class="sourceCode cell-code" id="cb81" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb81-1">Component(<span class="st" style="color: #20794D;">'WIDGET'</span>, <span class="st" style="color: #20794D;">'metal'</span>, <span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">5</span>)     <span class="co" style="color: #5E5E5E;"># Blocked: -5 is negative</span></span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__set__ is called
+__set__ is called
+__set__ is called</code></pre>
+</div>
+<div class="cell-output cell-output-error">
+<pre><code>ValueError: Expected -5 to be at least 0</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="f79c42d5-1ba2-48b0-a112-012fbf3be47b" data-execution_count="123">
+<div class="sourceCode cell-code" id="cb84" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb84-1">Component(<span class="st" style="color: #20794D;">'WIDGET'</span>, <span class="st" style="color: #20794D;">'metal'</span>, <span class="st" style="color: #20794D;">'V'</span>)    <span class="co" style="color: #5E5E5E;"># Blocked: 'V' isn't a number</span></span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__set__ is called
+__set__ is called
+__set__ is called</code></pre>
+</div>
+<div class="cell-output cell-output-error">
+<pre><code>TypeError: Expected 'V' to be an int or float</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="b0422385-73be-45e5-b490-fe4632f4fe19" data-execution_count="124">
+<div class="sourceCode cell-code" id="cb87" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb87-1">c <span class="op" style="color: #5E5E5E;">=</span> Component(<span class="st" style="color: #20794D;">'WIDGET'</span>, <span class="st" style="color: #20794D;">'metal'</span>, <span class="dv" style="color: #AD0000;">5</span>)  <span class="co" style="color: #5E5E5E;"># Allowed:  The inputs are valid</span></span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__set__ is called
+__set__ is called
+__set__ is called</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="bdccab04-b422-445b-dd67-18994ae02b77" data-execution_count="125">
+<div class="sourceCode cell-code" id="cb89" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb89-1">c.name</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__get__ is called</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="125">
+<pre><code>'WIDGET'</code></pre>
+</div>
+</div>
+</section>
+</section>
+<section id="technical-tutorial" class="level2">
+<h2 class="anchored" data-anchor-id="technical-tutorial">Technical tutorial</h2>
+<p>After the reading the introduction of this guide I assumed I would skip the technical tutorial, expecting it to be too technical, but after skimming it I’ve decided to go through it as it might clear some things up for me and the following line was attractive:</p>
+<blockquote class="blockquote">
+<p>Learning about descriptors not only provides access to a larger toolset, it creates a deeper understanding of how Python works.</p>
+</blockquote>
+<section id="definition-and-introduction" class="level3">
+<h3 class="anchored" data-anchor-id="definition-and-introduction">Definition and introduction</h3>
+<p>Reiterating the important definition that a descriptor is anything that has one of the methods in the descriptor protocol:</p>
+<blockquote class="blockquote">
+<p>In general, a descriptor is an attribute value that has one of the methods in the descriptor protocol. Those methods are <code>__get__()</code>, <code>__set__()</code>, and <code>__delete__()</code>. If any of those methods are defined for an attribute, it is said to be a descriptor.</p>
+</blockquote>
+<p>And the main goal of descriptors:</p>
+<blockquote class="blockquote">
+<p>The default behavior for attribute access is to get, set, or delete the attribute from an object’s dictionary.</p>
+</blockquote>
+</section>
+<section id="descriptor-protocol" class="level3">
+<h3 class="anchored" data-anchor-id="descriptor-protocol">Descriptor protocol</h3>
+<p>I don’t have any comments for this section other than reiterating the following points:</p>
+<blockquote class="blockquote">
+<p><code>descr.__get__(self, obj, type=None)</code></p>
+<p><code>descr.__set__(self, obj, value)</code></p>
+<p><code>descr.__delete__(self, obj)</code></p>
+<p>That is all there is to it. Define any of these methods and an object is considered a descriptor and can override default behavior upon being looked up as an attribute.</p>
+</blockquote>
+<blockquote class="blockquote">
+<p>If an object defines <code>__set__()</code> or <code>__delete__()</code>, it is considered a data descriptor. Descriptors that only define <code>__get__()</code> are called non-data descriptors (they are often used for methods but other uses are possible).</p>
+</blockquote>
+</section>
+<section id="overview-of-descriptor-invocation" class="level3">
+<h3 class="anchored" data-anchor-id="overview-of-descriptor-invocation">Overview of descriptor invocation</h3>
+<blockquote class="blockquote">
+<p>A descriptor can be called directly with <code>desc.__get__(obj)</code> or <code>desc.__get__(None, cls)</code>.</p>
+</blockquote>
+<blockquote class="blockquote">
+<p>But it is more common for a descriptor to be invoked automatically from attribute access.</p>
+</blockquote>
+<p>We saw this earlier, but putting that example here again:</p>
+<div class="cell" data-outputid="4b62a4a6-552d-4080-eb17-deeba13a03de" data-execution_count="127">
+<div class="sourceCode cell-code" id="cb92" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb92-1"><span class="kw" style="color: #003B4F;">class</span> Ten2:</span>
+<span id="cb92-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__get__</span>(<span class="va" style="color: #111111;">self</span>, obj, objtype<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb92-3">        <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"__get__ called with obj=</span><span class="sc" style="color: #5E5E5E;">{</span>obj<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">, objtype=</span><span class="sc" style="color: #5E5E5E;">{</span>objtype<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
+<span id="cb92-4">        <span class="cf" style="color: #003B4F;">return</span> <span class="dv" style="color: #AD0000;">10</span></span>
+<span id="cb92-5"></span>
+<span id="cb92-6"><span class="kw" style="color: #003B4F;">class</span> A2:</span>
+<span id="cb92-7">    x <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">5</span></span>
+<span id="cb92-8">    y <span class="op" style="color: #5E5E5E;">=</span> Ten2()  <span class="co" style="color: #5E5E5E;"># Descriptor instance</span></span>
+<span id="cb92-9"></span>
+<span id="cb92-10">a2 <span class="op" style="color: #5E5E5E;">=</span> A2()</span>
+<span id="cb92-11">a2.y</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__get__ called with obj=&lt;__main__.A2 object at 0x78b2ded96890&gt;, objtype=&lt;class '__main__.A2'&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="127">
+<pre><code>10</code></pre>
+</div>
+</div>
+</section>
+<section id="invocation-from-an-instance" class="level3">
+<h3 class="anchored" data-anchor-id="invocation-from-an-instance">Invocation from an instance</h3>
+<blockquote class="blockquote">
+<p>Instance lookup scans through a chain of namespaces giving data descriptors the highest priority, followed by instance variables, then non-data descriptors, then class variables, and lastly <code>__getattr__()</code> if it is provided.</p>
+</blockquote>
+<p>I’ve added some print statements in their example code to show which option is triggered:</p>
+<div class="cell" data-execution_count="138">
+<div class="sourceCode cell-code" id="cb95" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb95-1"><span class="kw" style="color: #003B4F;">def</span> find_name_in_mro(cls, name, default):</span>
+<span id="cb95-2">    <span class="co" style="color: #5E5E5E;">"Emulate _PyType_Lookup() in Objects/typeobject.c"</span></span>
+<span id="cb95-3">    <span class="cf" style="color: #003B4F;">for</span> base <span class="kw" style="color: #003B4F;">in</span> cls.__mro__:</span>
+<span id="cb95-4">        <span class="cf" style="color: #003B4F;">if</span> name <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">vars</span>(base):</span>
+<span id="cb95-5">            <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">vars</span>(base)[name]</span>
+<span id="cb95-6">    <span class="cf" style="color: #003B4F;">return</span> default</span>
+<span id="cb95-7"></span>
+<span id="cb95-8"><span class="kw" style="color: #003B4F;">def</span> object_getattribute(obj, name):</span>
+<span id="cb95-9">    <span class="co" style="color: #5E5E5E;">"Emulate PyObject_GenericGetAttr() in Objects/object.c"</span></span>
+<span id="cb95-10">    null <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">object</span>()</span>
+<span id="cb95-11">    objtype <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">type</span>(obj)</span>
+<span id="cb95-12">    cls_var <span class="op" style="color: #5E5E5E;">=</span> find_name_in_mro(objtype, name, null)</span>
+<span id="cb95-13">    descr_get <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">getattr</span>(<span class="bu" style="color: null;">type</span>(cls_var), <span class="st" style="color: #20794D;">'__get__'</span>, null)</span>
+<span id="cb95-14">    <span class="cf" style="color: #003B4F;">if</span> descr_get <span class="kw" style="color: #003B4F;">is</span> <span class="kw" style="color: #003B4F;">not</span> null:</span>
+<span id="cb95-15">        <span class="cf" style="color: #003B4F;">if</span> (<span class="bu" style="color: null;">hasattr</span>(<span class="bu" style="color: null;">type</span>(cls_var), <span class="st" style="color: #20794D;">'__set__'</span>)</span>
+<span id="cb95-16">            <span class="kw" style="color: #003B4F;">or</span> <span class="bu" style="color: null;">hasattr</span>(<span class="bu" style="color: null;">type</span>(cls_var), <span class="st" style="color: #20794D;">'__delete__'</span>)):</span>
+<span id="cb95-17">            <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"returning data descriptor set/delete"</span>)</span>
+<span id="cb95-18">            <span class="cf" style="color: #003B4F;">return</span> descr_get(cls_var, obj, objtype)     <span class="co" style="color: #5E5E5E;"># data descriptor</span></span>
+<span id="cb95-19">    <span class="cf" style="color: #003B4F;">if</span> <span class="bu" style="color: null;">hasattr</span>(obj, <span class="st" style="color: #20794D;">'__dict__'</span>) <span class="kw" style="color: #003B4F;">and</span> name <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">vars</span>(obj):</span>
+<span id="cb95-20">        <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"returning instance variable"</span>)</span>
+<span id="cb95-21">        <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">vars</span>(obj)[name]                          <span class="co" style="color: #5E5E5E;"># instance variable</span></span>
+<span id="cb95-22">    <span class="cf" style="color: #003B4F;">if</span> descr_get <span class="kw" style="color: #003B4F;">is</span> <span class="kw" style="color: #003B4F;">not</span> null:</span>
+<span id="cb95-23">        <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"returning descr_get"</span>)</span>
+<span id="cb95-24">        <span class="cf" style="color: #003B4F;">return</span> descr_get(cls_var, obj, objtype)         <span class="co" style="color: #5E5E5E;"># non-data descriptor</span></span>
+<span id="cb95-25">    <span class="cf" style="color: #003B4F;">if</span> cls_var <span class="kw" style="color: #003B4F;">is</span> <span class="kw" style="color: #003B4F;">not</span> null:</span>
+<span id="cb95-26">        <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"returning class variable"</span>)</span>
+<span id="cb95-27">        <span class="cf" style="color: #003B4F;">return</span> cls_var                                  <span class="co" style="color: #5E5E5E;"># class variable</span></span>
+<span id="cb95-28">    <span class="cf" style="color: #003B4F;">raise</span> <span class="pp" style="color: #AD0000;">AttributeError</span>(name)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="7624e6f8-8312-40d2-9c43-178a8e8a5655" data-execution_count="139">
+<div class="sourceCode cell-code" id="cb96" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb96-1">object_getattribute(a2, <span class="st" style="color: #20794D;">'y'</span>)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>returning descr_get
+__get__ called with obj=&lt;__main__.A2 object at 0x78b2ded96890&gt;, objtype=&lt;class '__main__.A2'&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="139">
+<pre><code>10</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="588ae176-621c-4ae7-b37c-c7a616007844" data-execution_count="140">
+<div class="sourceCode cell-code" id="cb99" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb99-1">object_getattribute(a2, <span class="st" style="color: #20794D;">'x'</span>)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>returning class variable</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="140">
+<pre><code>5</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="145">
+<div class="sourceCode cell-code" id="cb102" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb102-1"><span class="kw" style="color: #003B4F;">def</span> getattr_hook(obj, name):</span>
+<span id="cb102-2">    <span class="co" style="color: #5E5E5E;">"Emulate slot_tp_getattr_hook() in Objects/typeobject.c"</span></span>
+<span id="cb102-3">    <span class="cf" style="color: #003B4F;">try</span>:</span>
+<span id="cb102-4">        <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"__getattribute__"</span>)</span>
+<span id="cb102-5">        <span class="cf" style="color: #003B4F;">return</span> obj.<span class="fu" style="color: #4758AB;">__getattribute__</span>(name)</span>
+<span id="cb102-6">    <span class="cf" style="color: #003B4F;">except</span> <span class="pp" style="color: #AD0000;">AttributeError</span>:</span>
+<span id="cb102-7">        <span class="cf" style="color: #003B4F;">if</span> <span class="kw" style="color: #003B4F;">not</span> <span class="bu" style="color: null;">hasattr</span>(<span class="bu" style="color: null;">type</span>(obj), <span class="st" style="color: #20794D;">'__getattr__'</span>):</span>
+<span id="cb102-8">            <span class="cf" style="color: #003B4F;">raise</span></span>
+<span id="cb102-9">    <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"__getattr__"</span>)</span>
+<span id="cb102-10">    <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">type</span>(obj).<span class="fu" style="color: #4758AB;">__getattr__</span>(obj, name)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="0aabb2c0-7a6d-416b-893c-47b6c94dd29e" data-execution_count="146">
+<div class="sourceCode cell-code" id="cb103" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb103-1">getattr_hook(a2, <span class="st" style="color: #20794D;">'y'</span>)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__getattribute__
+__get__ called with obj=&lt;__main__.A2 object at 0x78b2ded96890&gt;, objtype=&lt;class '__main__.A2'&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="146">
+<pre><code>10</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="f95a8401-3380-4234-b372-e43d61463745" data-execution_count="147">
+<div class="sourceCode cell-code" id="cb106" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb106-1">getattr_hook(a2, <span class="st" style="color: #20794D;">'x'</span>)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__getattribute__</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="147">
+<pre><code>5</code></pre>
+</div>
+</div>
+</section>
+<section id="invocation-from-a-class" class="level3">
+<h3 class="anchored" data-anchor-id="invocation-from-a-class">Invocation from a class</h3>
+<blockquote class="blockquote">
+<p>The logic for a dotted lookup such as <code>A.x</code> is in <code>type.__getattribute__()</code>.</p>
+</blockquote>
+<div class="cell" data-execution_count="150">
+<div class="sourceCode cell-code" id="cb109" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb109-1">A2.<span class="fu" style="color: #4758AB;">__getattribute__</span>??</span></code></pre></div>
+</div>
+<pre><code>Signature:   A2.__getattribute__(*args, **kwargs)
+Type:        wrapper_descriptor
+String form: &lt;slot wrapper '__getattribute__' of 'object' objects&gt;
+Docstring:   Return getattr(self, name).</code></pre>
+<div class="cell" data-outputid="a7e35d14-2e01-4cb6-f616-cc491f83a923" data-execution_count="152">
+<div class="sourceCode cell-code" id="cb111" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb111-1">A2.<span class="fu" style="color: #4758AB;">__getattribute__</span>(A2, <span class="st" style="color: #20794D;">'y'</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="152">
+<pre><code>&lt;__main__.Ten2 at 0x78b2dee79310&gt;</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="da9fcb9a-e92a-4040-eaee-008bfaff133b" data-execution_count="153">
+<div class="sourceCode cell-code" id="cb113" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb113-1">A2.<span class="fu" style="color: #4758AB;">__getattribute__</span>(A2, <span class="st" style="color: #20794D;">'x'</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="153">
+<pre><code>5</code></pre>
+</div>
+</div>
+</section>
+<section id="invocation-from-super" class="level3">
+<h3 class="anchored" data-anchor-id="invocation-from-super">Invocation from super</h3>
+<blockquote class="blockquote">
+<p>A dotted lookup such as <code>super(A, obj).m</code> searches <code>obj.__class__.__mro__</code> for the base class <code>B</code> immediately following <code>A</code> and then returns <code>B.__dict__['m'].__get__(obj, A)</code>. If not a descriptor, <code>m</code> is returned unchanged.</p>
+</blockquote>
+<div class="cell" data-execution_count="175">
+<div class="sourceCode cell-code" id="cb115" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb115-1"><span class="kw" style="color: #003B4F;">class</span> Base:</span>
+<span id="cb115-2">    z <span class="op" style="color: #5E5E5E;">=</span> Ten2()  <span class="co" style="color: #5E5E5E;"># Descriptor in the base class</span></span>
+<span id="cb115-3"></span>
+<span id="cb115-4"><span class="kw" style="color: #003B4F;">class</span> A2(Base):</span>
+<span id="cb115-5">    x <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">5</span></span>
+<span id="cb115-6">    y <span class="op" style="color: #5E5E5E;">=</span> Ten2()  <span class="co" style="color: #5E5E5E;"># Descriptor instance in A2</span></span>
+<span id="cb115-7"></span>
+<span id="cb115-8">    <span class="kw" style="color: #003B4F;">def</span> show_super_lookup(<span class="va" style="color: #111111;">self</span>):</span>
+<span id="cb115-9">        <span class="co" style="color: #5E5E5E;"># This will trigger the descriptor lookup through super()</span></span>
+<span id="cb115-10">        <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">super</span>().z</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="31c162b5-50cb-4d2f-aeab-40bc3a875242" data-execution_count="176">
+<div class="sourceCode cell-code" id="cb116" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb116-1">a <span class="op" style="color: #5E5E5E;">=</span> A2()</span>
+<span id="cb116-2">a.y</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__get__ called with obj=&lt;__main__.A2 object at 0x78b2dededa90&gt;, objtype=&lt;class '__main__.A2'&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="176">
+<pre><code>10</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="506d9028-2db4-425b-e3e3-2dadd34ff683" data-execution_count="177">
+<div class="sourceCode cell-code" id="cb119" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb119-1"><span class="bu" style="color: null;">super</span>(A2, a).z</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__get__ called with obj=&lt;__main__.A2 object at 0x78b2dededa90&gt;, objtype=&lt;class '__main__.A2'&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="177">
+<pre><code>10</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="f4e57871-b58e-4058-ca54-b2d696eca82e" data-execution_count="178">
+<div class="sourceCode cell-code" id="cb122" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb122-1">Base.__dict__[<span class="st" style="color: #20794D;">'z'</span>].<span class="fu" style="color: #4758AB;">__get__</span>(a, A2)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__get__ called with obj=&lt;__main__.A2 object at 0x78b2dededa90&gt;, objtype=&lt;class '__main__.A2'&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="178">
+<pre><code>10</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="b2270d8e-31ea-4f77-d03f-f9679b1e541e" data-execution_count="179">
+<div class="sourceCode cell-code" id="cb125" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb125-1">a.__class__.__mro__</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="179">
+<pre><code>(__main__.A2, __main__.Base, object)</code></pre>
+</div>
+</div>
+</section>
+<section id="summary-of-invocation-logic" class="level3">
+<h3 class="anchored" data-anchor-id="summary-of-invocation-logic">Summary of invocation logic</h3>
+<p>Showing examples of some of the bullet points in the summary:</p>
+<ul>
+<li>Descriptors are invoked by the <code>__getattribute__()</code> method.</li>
+</ul>
+<div class="cell" data-outputid="ea38ba47-a928-4128-a1fb-cbc231fa3a35" data-execution_count="180">
+<div class="sourceCode cell-code" id="cb127" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb127-1">a.<span class="fu" style="color: #4758AB;">__getattribute__</span>(<span class="st" style="color: #20794D;">'y'</span>)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__get__ called with obj=&lt;__main__.A2 object at 0x78b2dededa90&gt;, objtype=&lt;class '__main__.A2'&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="180">
+<pre><code>10</code></pre>
+</div>
+</div>
+<ul>
+<li>Overriding <code>__getattribute__()</code> prevents automatic descriptor calls because all the descriptor logic is in that method.</li>
+</ul>
+<div class="cell" data-outputid="68ac78c2-2ec1-4ee6-f840-32491435634e" data-execution_count="195">
+<div class="sourceCode cell-code" id="cb130" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb130-1"><span class="kw" style="color: #003B4F;">class</span> MyDescriptor:</span>
+<span id="cb130-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__get__</span>(<span class="va" style="color: #111111;">self</span>, obj, objtype<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb130-3">        <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"Descriptor __get__ called!"</span>)</span>
+<span id="cb130-4">        <span class="cf" style="color: #003B4F;">return</span> <span class="dv" style="color: #AD0000;">42</span></span>
+<span id="cb130-5"></span>
+<span id="cb130-6"><span class="kw" style="color: #003B4F;">class</span> Normal:</span>
+<span id="cb130-7">    x <span class="op" style="color: #5E5E5E;">=</span> MyDescriptor()</span>
+<span id="cb130-8"></span>
+<span id="cb130-9">n <span class="op" style="color: #5E5E5E;">=</span> Normal()</span>
+<span id="cb130-10">n.x</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Descriptor __get__ called!</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="195">
+<pre><code>42</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="4c3bfd01-d824-4254-9e21-daf3ab13b60b" data-execution_count="196">
+<div class="sourceCode cell-code" id="cb133" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb133-1"><span class="kw" style="color: #003B4F;">class</span> OverrideGetattribute:</span>
+<span id="cb133-2">    x <span class="op" style="color: #5E5E5E;">=</span> MyDescriptor()</span>
+<span id="cb133-3">    y <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">5</span></span>
+<span id="cb133-4"></span>
+<span id="cb133-5">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__getattribute__</span>(<span class="va" style="color: #111111;">self</span>, name):</span>
+<span id="cb133-6">        <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"Custom __getattribute__ called for </span><span class="sc" style="color: #5E5E5E;">{</span>name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
+<span id="cb133-7">        <span class="cf" style="color: #003B4F;">if</span> name <span class="op" style="color: #5E5E5E;">==</span> <span class="st" style="color: #20794D;">'x'</span>:</span>
+<span id="cb133-8">            <span class="cf" style="color: #003B4F;">return</span> <span class="st" style="color: #20794D;">"Bypassed descriptor"</span></span>
+<span id="cb133-9">        <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">object</span>.<span class="fu" style="color: #4758AB;">__getattribute__</span>(<span class="va" style="color: #111111;">self</span>, name)</span>
+<span id="cb133-10"></span>
+<span id="cb133-11">o <span class="op" style="color: #5E5E5E;">=</span> OverrideGetattribute()</span>
+<span id="cb133-12">o.x</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Custom __getattribute__ called for x</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="196">
+<pre><code>'Bypassed descriptor'</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="db10e098-648b-42ca-8ca4-51a062eb62c8" data-execution_count="197">
+<div class="sourceCode cell-code" id="cb136" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb136-1">o.y</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Custom __getattribute__ called for y</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="197">
+<pre><code>5</code></pre>
+</div>
+</div>
+<ul>
+<li><code>object.__getattribute__()</code> and <code>type.__getattribute__()</code> make different calls to <code>__get__()</code>. The first includes the instance and may include the class. The second puts in <code>None</code> for the instance and always includes the class.</li>
+</ul>
+<div class="cell" data-execution_count="208">
+<div class="sourceCode cell-code" id="cb139" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb139-1"><span class="kw" style="color: #003B4F;">class</span> DetailedDescriptor:</span>
+<span id="cb139-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__get__</span>(<span class="va" style="color: #111111;">self</span>, obj, objtype<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb139-3">        <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"__get__ called with obj=</span><span class="sc" style="color: #5E5E5E;">{</span>obj<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">, objtype=</span><span class="sc" style="color: #5E5E5E;">{</span>objtype<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
+<span id="cb139-4">        <span class="cf" style="color: #003B4F;">return</span> <span class="dv" style="color: #AD0000;">42</span></span>
+<span id="cb139-5"></span>
+<span id="cb139-6"><span class="kw" style="color: #003B4F;">class</span> Normal:</span>
+<span id="cb139-7">    x <span class="op" style="color: #5E5E5E;">=</span> DetailedDescriptor()</span>
+<span id="cb139-8"></span>
+<span id="cb139-9">n <span class="op" style="color: #5E5E5E;">=</span> Normal()</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="0d60c5f0-9623-4c6f-ccb4-fbcddfa7a428" data-execution_count="209">
+<div class="sourceCode cell-code" id="cb140" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb140-1">n.x</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__get__ called with obj=&lt;__main__.Normal object at 0x78b2dedf0750&gt;, objtype=&lt;class '__main__.Normal'&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="209">
+<pre><code>42</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="cc7f4537-465e-48e7-c91d-0060eac405d9" data-execution_count="210">
+<div class="sourceCode cell-code" id="cb143" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb143-1">Normal.x</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>__get__ called with obj=None, objtype=&lt;class '__main__.Normal'&gt;</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="210">
+<pre><code>42</code></pre>
+</div>
+</div>
+<ul>
+<li>Data descriptors always override instance dictionaries.</li>
+</ul>
+<div class="cell" data-execution_count="211">
+<div class="sourceCode cell-code" id="cb146" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb146-1"><span class="kw" style="color: #003B4F;">class</span> DataDescriptor:</span>
+<span id="cb146-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, initial_value<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb146-3">        <span class="va" style="color: #111111;">self</span>.value <span class="op" style="color: #5E5E5E;">=</span> initial_value</span>
+<span id="cb146-4"></span>
+<span id="cb146-5">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__get__</span>(<span class="va" style="color: #111111;">self</span>, obj, objtype<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb146-6">        <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"DataDescriptor.__get__ called"</span>)</span>
+<span id="cb146-7">        <span class="cf" style="color: #003B4F;">return</span> <span class="va" style="color: #111111;">self</span>.value</span>
+<span id="cb146-8"></span>
+<span id="cb146-9">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__set__</span>(<span class="va" style="color: #111111;">self</span>, obj, value):</span>
+<span id="cb146-10">        <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"DataDescriptor.__set__ called with value: </span><span class="sc" style="color: #5E5E5E;">{</span>value<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
+<span id="cb146-11">        <span class="va" style="color: #111111;">self</span>.value <span class="op" style="color: #5E5E5E;">=</span> value</span>
+<span id="cb146-12"></span>
+<span id="cb146-13"><span class="kw" style="color: #003B4F;">class</span> Example:</span>
+<span id="cb146-14">    x <span class="op" style="color: #5E5E5E;">=</span> DataDescriptor(<span class="dv" style="color: #AD0000;">42</span>)  <span class="co" style="color: #5E5E5E;"># Data descriptor defined in class</span></span>
+<span id="cb146-15"></span>
+<span id="cb146-16">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>):</span>
+<span id="cb146-17">        <span class="co" style="color: #5E5E5E;"># Try to override with instance attribute</span></span>
+<span id="cb146-18">        <span class="va" style="color: #111111;">self</span>.__dict__[<span class="st" style="color: #20794D;">'x'</span>] <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">"Instance value"</span></span>
+<span id="cb146-19"></span>
+<span id="cb146-20"></span>
+<span id="cb146-21">example <span class="op" style="color: #5E5E5E;">=</span> Example()</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="1733a8ce-6f53-4e41-9649-7fa4ddd997f3" data-execution_count="212">
+<div class="sourceCode cell-code" id="cb147" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb147-1">example.__dict__</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="212">
+<pre><code>{'x': 'Instance value'}</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="1d03bcd6-c2b8-4c63-cbfc-cc7c91dbe214" data-execution_count="213">
+<div class="sourceCode cell-code" id="cb149" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb149-1">example.x</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>DataDescriptor.__get__ called</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="213">
+<pre><code>42</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="11962f2b-4023-4831-cbb2-cff4a1d85fa1" data-execution_count="215">
+<div class="sourceCode cell-code" id="cb152" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb152-1">example.x <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">100</span></span>
+<span id="cb152-2">example.__dict__[<span class="st" style="color: #20794D;">'x'</span>]</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>DataDescriptor.__set__ called with value: 100</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="215">
+<pre><code>'Instance value'</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="b74e3010-a30c-4e4e-b9e3-6d8ddee5a1e8" data-execution_count="216">
+<div class="sourceCode cell-code" id="cb155" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb155-1">example.x</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>DataDescriptor.__get__ called</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="216">
+<pre><code>100</code></pre>
+</div>
+</div>
+<ul>
+<li>Non-data descriptors may be overridden by instance dictionaries.</li>
+</ul>
+<div class="cell" data-execution_count="217">
+<div class="sourceCode cell-code" id="cb158" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb158-1"><span class="kw" style="color: #003B4F;">class</span> NonDataDescriptor:</span>
+<span id="cb158-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, initial_value<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb158-3">        <span class="va" style="color: #111111;">self</span>.value <span class="op" style="color: #5E5E5E;">=</span> initial_value</span>
+<span id="cb158-4"></span>
+<span id="cb158-5">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__get__</span>(<span class="va" style="color: #111111;">self</span>, obj, objtype<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb158-6">        <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"DataDescriptor.__get__ called"</span>)</span>
+<span id="cb158-7">        <span class="cf" style="color: #003B4F;">return</span> <span class="va" style="color: #111111;">self</span>.value</span>
+<span id="cb158-8"></span>
+<span id="cb158-9"><span class="kw" style="color: #003B4F;">class</span> Example:</span>
+<span id="cb158-10">    x <span class="op" style="color: #5E5E5E;">=</span> NonDataDescriptor(<span class="dv" style="color: #AD0000;">42</span>)  <span class="co" style="color: #5E5E5E;"># Data descriptor defined in class</span></span>
+<span id="cb158-11"></span>
+<span id="cb158-12">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>):</span>
+<span id="cb158-13">        <span class="co" style="color: #5E5E5E;"># Try to override with instance attribute</span></span>
+<span id="cb158-14">        <span class="va" style="color: #111111;">self</span>.__dict__[<span class="st" style="color: #20794D;">'x'</span>] <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">"Instance value"</span></span>
+<span id="cb158-15"></span>
+<span id="cb158-16"></span>
+<span id="cb158-17">example <span class="op" style="color: #5E5E5E;">=</span> Example()</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="2e68841b-5462-42ae-d551-9bda604be404" data-execution_count="218">
+<div class="sourceCode cell-code" id="cb159" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb159-1">example.__dict__</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="218">
+<pre><code>{'x': 'Instance value'}</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="01acab7f-edb3-4c11-e650-0fa57a156ceb" data-execution_count="219">
+<div class="sourceCode cell-code" id="cb161" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb161-1">example.x</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="219">
+<pre><code>'Instance value'</code></pre>
+</div>
+</div>
+</section>
+<section id="automatic-name-notification" class="level3">
+<h3 class="anchored" data-anchor-id="automatic-name-notification">Automatic name notification</h3>
+<blockquote class="blockquote">
+<p>Sometimes it is desirable for a descriptor to know what class variable name it was assigned to. When a new class is created, the <code>type</code> metaclass scans the dictionary of the new class. If any of the entries are descriptors and if they define <code>__set_name__()</code>, that method is called with two arguments. The owner is the class where the descriptor is used, and the name is the class variable the descriptor was assigned to.</p>
+</blockquote>
+<div class="cell" data-execution_count="227">
+<div class="sourceCode cell-code" id="cb163" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb163-1"><span class="kw" style="color: #003B4F;">class</span> NameTracker:</span>
+<span id="cb163-2">   <span class="kw" style="color: #003B4F;">def</span> __set_name__(<span class="va" style="color: #111111;">self</span>, owner, name): <span class="va" style="color: #111111;">self</span>.name <span class="op" style="color: #5E5E5E;">=</span> name</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="228">
+<div class="sourceCode cell-code" id="cb164" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb164-1">class_dict <span class="op" style="color: #5E5E5E;">=</span> {</span>
+<span id="cb164-2">        <span class="st" style="color: #20794D;">'x'</span>: NameTracker(),</span>
+<span id="cb164-3">        <span class="st" style="color: #20794D;">'y'</span>: NameTracker(),</span>
+<span id="cb164-4">        <span class="st" style="color: #20794D;">'z'</span>: <span class="dv" style="color: #AD0000;">5</span></span>
+<span id="cb164-5">    }</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="229">
+<div class="sourceCode cell-code" id="cb165" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb165-1">Demo <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">type</span>(<span class="st" style="color: #20794D;">'Demo'</span>, (), class_dict)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="c1ee1f3c-ddbe-4e35-bced-a11f96ae3cc4" data-execution_count="231">
+<div class="sourceCode cell-code" id="cb166" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb166-1">Demo.x.name</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="231">
+<pre><code>'x'</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="b3867517-a51b-4675-b24b-70b33ce13579" data-execution_count="232">
+<div class="sourceCode cell-code" id="cb168" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb168-1">Demo.y.name</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="232">
+<pre><code>'y'</code></pre>
+</div>
+</div>
+<p>I’m skipping the ORM example since I don’t have access to the example database.</p>
+</section>
+</section>
+<section id="pure-python-equivalents" class="level2">
+<h2 class="anchored" data-anchor-id="pure-python-equivalents">Pure Python Equivalents</h2>
+<p>Finally! The section I’m most interested in.</p>
+<blockquote class="blockquote">
+<p>Properties, bound methods, static methods, class methods, and <code>__slots__</code> are all based on the descriptor protocol.</p>
+</blockquote>
+<p>I’m going to focus on the functions and methods section.</p>
+<section id="functions-and-methods" class="level3">
+<h3 class="anchored" data-anchor-id="functions-and-methods">Functions and methods</h3>
+<blockquote class="blockquote">
+<p>Functions stored in class dictionaries get turned into methods when invoked. Methods only differ from regular functions in that the object instance is prepended to the other arguments. By convention, the instance is called self but could be called this or any other variable name.</p>
+</blockquote>
+<blockquote class="blockquote">
+<p>Methods can be created manually with types.MethodType which is roughly equivalent to:</p>
+</blockquote>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb170" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb170-1"><span class="kw" style="color: #003B4F;">class</span> MethodType:</span>
+<span id="cb170-2">    <span class="co" style="color: #5E5E5E;">"Emulate PyMethod_Type in Objects/classobject.c"</span></span>
+<span id="cb170-3"></span>
+<span id="cb170-4">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, func, obj):</span>
+<span id="cb170-5">        <span class="va" style="color: #111111;">self</span>.__func__ <span class="op" style="color: #5E5E5E;">=</span> func</span>
+<span id="cb170-6">        <span class="va" style="color: #111111;">self</span>.__self__ <span class="op" style="color: #5E5E5E;">=</span> obj</span>
+<span id="cb170-7"></span>
+<span id="cb170-8">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__call__</span>(<span class="va" style="color: #111111;">self</span>, <span class="op" style="color: #5E5E5E;">*</span>args, <span class="op" style="color: #5E5E5E;">**</span>kwargs):</span>
+<span id="cb170-9">        func <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.__func__</span>
+<span id="cb170-10">        obj <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.__self__</span>
+<span id="cb170-11">        <span class="cf" style="color: #003B4F;">return</span> func(obj, <span class="op" style="color: #5E5E5E;">*</span>args, <span class="op" style="color: #5E5E5E;">**</span>kwargs)</span>
+<span id="cb170-12"></span>
+<span id="cb170-13">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__getattribute__</span>(<span class="va" style="color: #111111;">self</span>, name):</span>
+<span id="cb170-14">        <span class="co" style="color: #5E5E5E;">"Emulate method_getset() in Objects/classobject.c"</span></span>
+<span id="cb170-15">        <span class="cf" style="color: #003B4F;">if</span> name <span class="op" style="color: #5E5E5E;">==</span> <span class="st" style="color: #20794D;">'__doc__'</span>:</span>
+<span id="cb170-16">            <span class="cf" style="color: #003B4F;">return</span> <span class="va" style="color: #111111;">self</span>.__func__.__doc__</span>
+<span id="cb170-17">        <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">object</span>.<span class="fu" style="color: #4758AB;">__getattribute__</span>(<span class="va" style="color: #111111;">self</span>, name)</span>
+<span id="cb170-18"></span>
+<span id="cb170-19">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__getattr__</span>(<span class="va" style="color: #111111;">self</span>, name):</span>
+<span id="cb170-20">        <span class="co" style="color: #5E5E5E;">"Emulate method_getattro() in Objects/classobject.c"</span></span>
+<span id="cb170-21">        <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">getattr</span>(<span class="va" style="color: #111111;">self</span>.__func__, name)</span>
+<span id="cb170-22"></span>
+<span id="cb170-23">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__get__</span>(<span class="va" style="color: #111111;">self</span>, obj, objtype<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb170-24">        <span class="co" style="color: #5E5E5E;">"Emulate method_descr_get() in Objects/classobject.c"</span></span>
+<span id="cb170-25">        <span class="cf" style="color: #003B4F;">return</span> <span class="va" style="color: #111111;">self</span></span></code></pre></div>
+</div>
+<p>The key dunder method of interest is <code>__call</code>__:</p>
+<div class="sourceCode" id="cb171" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb171-1"><span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__call__</span>(<span class="va" style="color: #111111;">self</span>, <span class="op" style="color: #5E5E5E;">*</span>args, <span class="op" style="color: #5E5E5E;">**</span>kwargs):</span>
+<span id="cb171-2">    func <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.__func__</span>
+<span id="cb171-3">    obj <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.__self__</span>
+<span id="cb171-4">    <span class="cf" style="color: #003B4F;">return</span> func(obj, <span class="op" style="color: #5E5E5E;">*</span>args, <span class="op" style="color: #5E5E5E;">**</span>kwargs)</span></code></pre></div>
+<p>In the example of the self attention module, it has no positional arguments <code>*args</code> and so when I passed <code>self_attn</code> to the <code>obj</code> parameter in <code>func(obj, *args, **kwargs)</code> it understood it to be the first keyword argument.</p>
+<blockquote class="blockquote">
+<p>The interesting behavior occurs during dotted access from an instance. The dotted lookup calls <strong>get</strong>() which returns a bound method object:</p>
+</blockquote>
+<div class="cell" data-execution_count="236">
+<div class="sourceCode cell-code" id="cb172" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb172-1"><span class="kw" style="color: #003B4F;">class</span> D:</span>
+<span id="cb172-2">    <span class="kw" style="color: #003B4F;">def</span> f(<span class="va" style="color: #111111;">self</span>):</span>
+<span id="cb172-3">         <span class="cf" style="color: #003B4F;">return</span> <span class="va" style="color: #111111;">self</span></span></code></pre></div>
+</div>
+<div class="cell" data-outputid="d7863453-4518-4486-909a-226a3a4b8b2c" data-execution_count="238">
+<div class="sourceCode cell-code" id="cb173" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb173-1">d <span class="op" style="color: #5E5E5E;">=</span> D()</span>
+<span id="cb173-2"><span class="bu" style="color: null;">print</span>(d.f)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>&lt;bound method D.f of &lt;__main__.D object at 0x78b2dec54790&gt;&gt;</code></pre>
+</div>
+</div>
+<blockquote class="blockquote">
+<p>Internally, the bound method stores the underlying function and the bound instance:</p>
+</blockquote>
+<div class="cell" data-outputid="e01f04f2-79f4-4fb7-df6d-734f9a3490e7" data-execution_count="240">
+<div class="sourceCode cell-code" id="cb175" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb175-1"><span class="bu" style="color: null;">print</span>(d.f.__func__)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>&lt;function D.f at 0x78b2dedd3ba0&gt;</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="be868138-560a-4319-d92a-2572e6d78318" data-execution_count="241">
+<div class="sourceCode cell-code" id="cb177" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb177-1"><span class="bu" style="color: null;">print</span>(d.f.__self__)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>&lt;__main__.D object at 0x78b2dec54790&gt;</code></pre>
+</div>
+</div>
+<blockquote class="blockquote">
+<p>If you have ever wondered where <code>self</code> comes from in regular methods or where <code>cls</code> comes from in class methods, this is it!</p>
+</blockquote>
+</section>
+<section id="kinds-of-methods" class="level3">
+<h3 class="anchored" data-anchor-id="kinds-of-methods">Kinds of methods</h3>
+<p>Here’s the crux of what I was looking for:</p>
+<blockquote class="blockquote">
+<p>To recap, functions have a <code>__get__()</code> method so that they can be converted to a method when accessed as attributes. The non-data descriptor transforms an <code>obj.f(*args</code>) call into <code>f(obj, *args)</code>. Calling <code>cls.f(*args)</code> becomes <code>f(*args)</code>.</p>
+</blockquote>
+<p>If I call <code>__get__(d)</code> on <code>d.f</code> it creates a bound method which passes in the object as <code>self</code>, the first argument of a bound method.</p>
+<div class="cell" data-outputid="881f67c4-ba12-49a2-f010-d585a5594103" data-execution_count="243">
+<div class="sourceCode cell-code" id="cb179" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb179-1"><span class="bu" style="color: null;">print</span>(d.f.<span class="fu" style="color: #4758AB;">__get__</span>(d))</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>&lt;bound method D.f of &lt;__main__.D object at 0x78b2dec54790&gt;&gt;</code></pre>
+</div>
+</div>
+<p>Now when I call <code>d.f.__get__(d)()</code> I don’t need to explicitly pass in the object:</p>
+<div class="cell" data-outputid="b9d99ad4-baa0-4101-b3bc-a8de2a759be3" data-execution_count="244">
+<div class="sourceCode cell-code" id="cb181" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb181-1">d.f.<span class="fu" style="color: #4758AB;">__get__</span>(d)()</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="244">
+<pre><code>&lt;__main__.D at 0x78b2dec54790&gt;</code></pre>
+</div>
+</div>
+</section>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>Thanks to vibe coding, Claude introduced me to Python behavior I was unfamiliar with, and thanks to the excellent Python documentation, I understood it at a much deeper level than I was planning to.</p>
+<p>I think something that still confuses me, and where I feel empathy for <a href="https://discuss.python.org/t/changing-the-name-of-get-to-bind/14243">this poster</a>, is how <code>__get__</code> has special behavior for functions where it binds it to the given object.</p>
+<p>In the Primer, initial examples of <code>__get__</code> all, well, get a value:</p>
+<div class="sourceCode" id="cb183" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb183-1"><span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__get__</span>(<span class="va" style="color: #111111;">self</span>, obj, objtype<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb183-2">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"__get__ called with obj=</span><span class="sc" style="color: #5E5E5E;">{</span>obj<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">, objtype=</span><span class="sc" style="color: #5E5E5E;">{</span>objtype<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
+<span id="cb183-3">    <span class="cf" style="color: #003B4F;">return</span> <span class="dv" style="color: #AD0000;">10</span></span>
+<span id="cb183-4"></span>
+<span id="cb183-5"></span>
+<span id="cb183-6"><span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__get__</span>(<span class="va" style="color: #111111;">self</span>, obj, objtype<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb183-7">    <span class="cf" style="color: #003B4F;">return</span> <span class="bu" style="color: null;">len</span>(os.listdir(obj.dirname))</span>
+<span id="cb183-8"></span>
+<span id="cb183-9"></span>
+<span id="cb183-10"><span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__get__</span>(<span class="va" style="color: #111111;">self</span>, obj, objtype<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
+<span id="cb183-11">    value <span class="op" style="color: #5E5E5E;">=</span> obj._age</span>
+<span id="cb183-12">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'Accessing age giving </span><span class="sc" style="color: #5E5E5E;">{</span>value<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span>)</span>
+<span id="cb183-13">    <span class="cf" style="color: #003B4F;">return</span> value</span></code></pre></div>
+<p>How that behavior is related to binding a function to an object is beyond my current understanding.</p>
+<p>This poster’s response does make sense:</p>
+<blockquote class="blockquote">
+<p>If descriptors were only callables that bind as methods when accessed as an attribute, then perhaps <code>__bind__()</code> would be a reasonable name for the method. But the descriptor protocol (i.e.&nbsp;<code>__get__</code>, <code>__set__</code>, and <code>__delete__</code>) is a means of implementing a computed attribute in general, which is not necessarily about binding a callable to the instance or type. For example, the <code>__get__()</code> method of a property named <code>x</code> might return the instance attribute <code>_x</code>.</p>
+</blockquote>
+<p>So perhaps of a computed attributed is generalizable whether your using <code>__get__</code> on a callable descriptor or otherwise. For a function, the “computation” of the attribute is binding it to the object.</p>
+<p>I hope you enjoyed this blog post! I’m trying to <a href="https://www.youtube.com/@vishal_learner">grow my YouTube channel</a> so please give that a look/subscribe.</p>
+
+
+</section>
+
+ ]]></description>
+  <category>python</category>
+  <category>deep learning</category>
+  <category>LLM</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-04-01-Python-Descriptor/index.html</guid>
+  <pubDate>Tue, 01 Apr 2025 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>TIL: Creating a Custom Composer Callback</title>
   <dc:creator>Vishal Bakshi</dc:creator>
@@ -20849,499 +21985,6 @@ Answer: ""With the first layer, if the kernel size is 3x3, with four output filt
   <guid>https://vishalbakshi.github.io/blog/posts/2024-10-22-fastbookRAG-cs-error-analysis/index.html</guid>
   <pubDate>Tue, 22 Oct 2024 07:00:00 GMT</pubDate>
   <media:content url="https://vishalbakshi.github.io/blog/posts/2024-10-22-fastbookRAG-cs-error-analysis/1.png" medium="image" type="image/png" height="33" width="144"/>
-</item>
-<item>
-  <title>Experimenting with os.fork</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2024-09-30-os-fork/index.html</link>
-  <description><![CDATA[ 
-
-
-
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<p>In Lesson 10 of the fastai course (Part 2) we’re introduced to <code>os.fork</code>, specifically in the context of random number generation. In this notebook I’ll get some more reps working with <code>os.fork</code>.</p>
-<p>In the Lesson, Jeremy shows how random number generation in different libraries is handled across parent and child processes, as shown below (using <code>seed</code> and <code>rand</code> as defined in the lesson):</p>
-<div class="cell" data-execution_count="1">
-<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im" style="color: #00769E;">import</span> os</span>
-<span id="cb1-2"><span class="im" style="color: #00769E;">import</span> random</span>
-<span id="cb1-3"><span class="im" style="color: #00769E;">import</span> numpy <span class="im" style="color: #00769E;">as</span> np</span>
-<span id="cb1-4"><span class="im" style="color: #00769E;">import</span> torch</span>
-<span id="cb1-5"><span class="im" style="color: #00769E;">import</span> fcntl</span>
-<span id="cb1-6"><span class="im" style="color: #00769E;">import</span> time</span>
-<span id="cb1-7"><span class="im" style="color: #00769E;">import</span> signal</span>
-<span id="cb1-8"><span class="im" style="color: #00769E;">import</span> sys</span></code></pre></div>
-</div>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">rnd_state <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">None</span></span>
-<span id="cb2-2"><span class="kw" style="color: #003B4F;">def</span> seed(a):</span>
-<span id="cb2-3">    <span class="kw" style="color: #003B4F;">global</span> rnd_state</span>
-<span id="cb2-4">    a, x <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">divmod</span>(a, <span class="dv" style="color: #AD0000;">30268</span>)</span>
-<span id="cb2-5">    a, y <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">divmod</span>(a, <span class="dv" style="color: #AD0000;">30306</span>)</span>
-<span id="cb2-6">    a, z <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">divmod</span>(a, <span class="dv" style="color: #AD0000;">30322</span>)</span>
-<span id="cb2-7">    rnd_state <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">int</span>(x)<span class="op" style="color: #5E5E5E;">+</span><span class="dv" style="color: #AD0000;">1</span>, <span class="bu" style="color: null;">int</span>(y)<span class="op" style="color: #5E5E5E;">+</span><span class="dv" style="color: #AD0000;">1</span>, <span class="bu" style="color: null;">int</span>(z)<span class="op" style="color: #5E5E5E;">+</span><span class="dv" style="color: #AD0000;">1</span></span></code></pre></div>
-</div>
-<div class="cell" data-outputid="2552ec0e-148c-40b3-f92e-56c5f5a299a2">
-<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1">seed(<span class="dv" style="color: #AD0000;">457428938475</span>)</span>
-<span id="cb3-2">rnd_state</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="3">
-<pre><code>(4976, 20238, 499)</code></pre>
-</div>
-</div>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><span class="kw" style="color: #003B4F;">def</span> rand():</span>
-<span id="cb5-2">    <span class="kw" style="color: #003B4F;">global</span> rnd_state</span>
-<span id="cb5-3">    x, y, z <span class="op" style="color: #5E5E5E;">=</span> rnd_state</span>
-<span id="cb5-4">    x <span class="op" style="color: #5E5E5E;">=</span> (<span class="dv" style="color: #AD0000;">171</span> <span class="op" style="color: #5E5E5E;">*</span> x) <span class="op" style="color: #5E5E5E;">%</span> <span class="dv" style="color: #AD0000;">30269</span></span>
-<span id="cb5-5">    y <span class="op" style="color: #5E5E5E;">=</span> (<span class="dv" style="color: #AD0000;">172</span> <span class="op" style="color: #5E5E5E;">*</span> y) <span class="op" style="color: #5E5E5E;">%</span> <span class="dv" style="color: #AD0000;">30307</span></span>
-<span id="cb5-6">    z <span class="op" style="color: #5E5E5E;">=</span> (<span class="dv" style="color: #AD0000;">170</span> <span class="op" style="color: #5E5E5E;">*</span> z) <span class="op" style="color: #5E5E5E;">%</span> <span class="dv" style="color: #AD0000;">30323</span></span>
-<span id="cb5-7">    rnd_state <span class="op" style="color: #5E5E5E;">=</span> x,y,z</span>
-<span id="cb5-8">    <span class="cf" style="color: #003B4F;">return</span> (x<span class="op" style="color: #5E5E5E;">/</span><span class="dv" style="color: #AD0000;">30269</span> <span class="op" style="color: #5E5E5E;">+</span> y<span class="op" style="color: #5E5E5E;">/</span><span class="dv" style="color: #AD0000;">30307</span> <span class="op" style="color: #5E5E5E;">+</span> z<span class="op" style="color: #5E5E5E;">/</span><span class="dv" style="color: #AD0000;">30323</span>) <span class="op" style="color: #5E5E5E;">%</span> <span class="fl" style="color: #AD0000;">1.0</span></span></code></pre></div>
-</div>
-<p>The from-scratch <code>rand</code> function generates the same random number in both parent and child processes because they share the same random state:</p>
-<div class="cell" data-outputid="36b2eba4-4a77-494d-a85f-dfe9320bccc7">
-<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><span class="cf" style="color: #003B4F;">if</span> os.fork(): <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'In parent: </span><span class="sc" style="color: #5E5E5E;">{</span>rand()<span class="sc" style="color: #5E5E5E;">,</span> rnd_state<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span>)</span>
-<span id="cb6-2"><span class="cf" style="color: #003B4F;">else</span>:</span>
-<span id="cb6-3">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'In child: </span><span class="sc" style="color: #5E5E5E;">{</span>rand()<span class="sc" style="color: #5E5E5E;">,</span> rnd_state<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span>)</span>
-<span id="cb6-4">    os._exit(os.EX_OK)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>In parent: (0.7645251082582081, (3364, 25938, 24184))
-In child: (0.7645251082582081, (3364, 25938, 24184))</code></pre>
-</div>
-</div>
-<p><code>torch</code> does the same:</p>
-<div class="cell" data-outputid="84bd9b2c-751e-4463-abef-12dc1812f318">
-<div class="sourceCode cell-code" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><span class="cf" style="color: #003B4F;">if</span> os.fork(): <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'In parent: </span><span class="sc" style="color: #5E5E5E;">{</span>torch<span class="sc" style="color: #5E5E5E;">.</span>rand(<span class="dv" style="color: #AD0000;">1</span>)<span class="sc" style="color: #5E5E5E;">.</span>item()<span class="sc" style="color: #5E5E5E;">,</span> torch<span class="sc" style="color: #5E5E5E;">.</span>get_rng_state()<span class="sc" style="color: #5E5E5E;">.</span><span class="bu" style="color: null;">sum</span>()<span class="sc" style="color: #5E5E5E;">.</span>item()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span>)</span>
-<span id="cb8-2"><span class="cf" style="color: #003B4F;">else</span>:</span>
-<span id="cb8-3">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'In child: </span><span class="sc" style="color: #5E5E5E;">{</span>torch<span class="sc" style="color: #5E5E5E;">.</span>rand(<span class="dv" style="color: #AD0000;">1</span>)<span class="sc" style="color: #5E5E5E;">.</span>item()<span class="sc" style="color: #5E5E5E;">,</span> torch<span class="sc" style="color: #5E5E5E;">.</span>get_rng_state()<span class="sc" style="color: #5E5E5E;">.</span><span class="bu" style="color: null;">sum</span>()<span class="sc" style="color: #5E5E5E;">.</span>item()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span>)</span>
-<span id="cb8-4">    os._exit(os.EX_OK)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>In parent: (0.0692816972732544, 325580)
-In child: (0.0692816972732544, 325580)</code></pre>
-</div>
-</div>
-<p>As does NumPy:</p>
-<div class="cell" data-outputid="efd0261b-27fc-4d7c-ad41-4240c2d169d0">
-<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><span class="cf" style="color: #003B4F;">if</span> os.fork(): <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'In parent: </span><span class="sc" style="color: #5E5E5E;">{</span>np<span class="sc" style="color: #5E5E5E;">.</span>random<span class="sc" style="color: #5E5E5E;">.</span>rand(<span class="dv" style="color: #AD0000;">1</span>)[<span class="dv" style="color: #AD0000;">0</span>]<span class="sc" style="color: #5E5E5E;">,</span> np<span class="sc" style="color: #5E5E5E;">.</span>random<span class="sc" style="color: #5E5E5E;">.</span>get_state()[<span class="dv" style="color: #AD0000;">1</span>]<span class="sc" style="color: #5E5E5E;">.</span><span class="bu" style="color: null;">sum</span>()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span>)</span>
-<span id="cb10-2"><span class="cf" style="color: #003B4F;">else</span>:</span>
-<span id="cb10-3">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'In child: </span><span class="sc" style="color: #5E5E5E;">{</span>np<span class="sc" style="color: #5E5E5E;">.</span>random<span class="sc" style="color: #5E5E5E;">.</span>rand(<span class="dv" style="color: #AD0000;">1</span>)[<span class="dv" style="color: #AD0000;">0</span>]<span class="sc" style="color: #5E5E5E;">,</span> np<span class="sc" style="color: #5E5E5E;">.</span>random<span class="sc" style="color: #5E5E5E;">.</span>get_state()[<span class="dv" style="color: #AD0000;">1</span>]<span class="sc" style="color: #5E5E5E;">.</span><span class="bu" style="color: null;">sum</span>()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span>)</span>
-<span id="cb10-4">    os._exit(os.EX_OK)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>In child: (0.8234897720205184, 1375830894290)
-In parent: (0.8234897720205184, 1375830894290)</code></pre>
-</div>
-</div>
-<p>The Python standard library generates different random numbers in the parent and the child, indicating that the random state has changed:</p>
-<div class="cell" data-outputid="023a4721-a66d-45f0-c076-9f49d3d901b9">
-<div class="sourceCode cell-code" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><span class="cf" style="color: #003B4F;">if</span> os.fork(): <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'In parent: </span><span class="sc" style="color: #5E5E5E;">{</span>random<span class="sc" style="color: #5E5E5E;">.</span>random()<span class="sc" style="color: #5E5E5E;">,</span> <span class="bu" style="color: null;">sum</span>(random.getstate()[<span class="dv" style="color: #AD0000;">1</span>])<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span>)</span>
-<span id="cb12-2"><span class="cf" style="color: #003B4F;">else</span>:</span>
-<span id="cb12-3">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'In child: </span><span class="sc" style="color: #5E5E5E;">{</span>random<span class="sc" style="color: #5E5E5E;">.</span>random()<span class="sc" style="color: #5E5E5E;">,</span> <span class="bu" style="color: null;">sum</span>(random.getstate()[<span class="dv" style="color: #AD0000;">1</span>])<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span>)</span>
-<span id="cb12-4">    os._exit(os.EX_OK)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>In parent: (0.7978973512537335, 1327601590235)
-In child: (0.5603922565589059, 1333438682830)</code></pre>
-</div>
-</div>
-<p>Jeremy also mentioned in the video that there used to be a bug in fastai related to this <code>os.fork</code> behavior which resulted in incorrectly handling data augmentations across multiple processes. I poked around the fastai repo and found <a href="https://github.com/fastai/fastai/issues/215">this issue</a> and <a href="https://github.com/fastai/fastai/pull/234">corresponding PR</a> which might have been the ones he was referring to? I’m not sure, but it did lead me down an interesting rabbit hole in the fastai repo and I learned a couple of new things that I’ll share.</p>
-<p>In the PR, they introduce the following line:</p>
-<div class="sourceCode" id="cb14" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><span class="va" style="color: #111111;">self</span>.store <span class="op" style="color: #5E5E5E;">=</span> threading.local()</span></code></pre></div>
-<p><code>self.store</code> is reference throughout the PR, for example:</p>
-<div class="sourceCode" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><span class="kw" style="color: #003B4F;">def</span> set_state(<span class="va" style="color: #111111;">self</span>):</span>
-<span id="cb15-2">        <span class="va" style="color: #111111;">self</span>.store.rand_r <span class="op" style="color: #5E5E5E;">=</span> random.uniform(<span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">1</span>)</span>
-<span id="cb15-3">        <span class="va" style="color: #111111;">self</span>.store.rand_c <span class="op" style="color: #5E5E5E;">=</span> random.uniform(<span class="dv" style="color: #AD0000;">0</span>, <span class="dv" style="color: #AD0000;">1</span>)</span></code></pre></div>
-<p>The corresponding GitHub issue linked to <a href="https://stackoverflow.com/questions/1408171/thread-local-storage-in-python">this StackOverflow post</a> which talks about <code>threading.local()</code>. I didn’t quite follow the post so I copy/pasted its text as a prompt to Claude and asked it to create an example to illustrate the core concepts of <code>threading.local</code>. It gave me the following example:</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb16" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><span class="im" style="color: #00769E;">import</span> threading</span>
-<span id="cb16-2"><span class="im" style="color: #00769E;">import</span> multiprocessing</span>
-<span id="cb16-3"><span class="im" style="color: #00769E;">import</span> time</span>
-<span id="cb16-4"><span class="im" style="color: #00769E;">import</span> random</span></code></pre></div>
-</div>
-<p>First, <code>threading.local</code> is instantiated as a global variable:</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><span class="co" style="color: #5E5E5E;"># Thread-local storage for threading module</span></span>
-<span id="cb17-2">thread_local <span class="op" style="color: #5E5E5E;">=</span> threading.local()</span></code></pre></div>
-</div>
-<p>Next, we have a function that creates a worker. Claude defines a worker as follows (I found similar definitions with Google searches):</p>
-<blockquote class="blockquote">
-<p>a unit of execution that performs a specific task or job. In the context of concurrent programming, a worker is typically implemented as either a thread or a process, depending on the chosen concurrency model.</p>
-</blockquote>
-<p><code>threading_worker</code> adds a <code>count</code> attribute to <code>thread_local</code> (if it doesn’t have it already) or increments <code>count</code> by 1 if it exists.</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb18" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><span class="kw" style="color: #003B4F;">def</span> threading_worker(worker_id):</span>
-<span id="cb18-2">    <span class="cf" style="color: #003B4F;">if</span> <span class="kw" style="color: #003B4F;">not</span> <span class="bu" style="color: null;">hasattr</span>(thread_local, <span class="st" style="color: #20794D;">'count'</span>):</span>
-<span id="cb18-3">        <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'</span><span class="ch" style="color: #20794D;">\n\t</span><span class="ss" style="color: #20794D;">Worker </span><span class="sc" style="color: #5E5E5E;">{</span>worker_id<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">: instantiating `count`'</span>)</span>
-<span id="cb18-4">        thread_local.count <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">0</span></span>
-<span id="cb18-5">    thread_local.count <span class="op" style="color: #5E5E5E;">+=</span> <span class="dv" style="color: #AD0000;">1</span></span>
-<span id="cb18-6">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"Threading: Worker </span><span class="sc" style="color: #5E5E5E;">{</span>worker_id<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">, Count: </span><span class="sc" style="color: #5E5E5E;">{</span>thread_local<span class="sc" style="color: #5E5E5E;">.</span>count<span class="sc" style="color: #5E5E5E;">}</span><span class="ch" style="color: #20794D;">\n</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb18-7">    time.sleep(random.random())</span></code></pre></div>
-</div>
-<p>To illustrate, we create 5 threads and pass <code>threading_worker</code> to each one. The result is that each worker has its own “private view” to the global <code>thread_local</code>, as exhibited by <code>thread_local.count</code> for each <code>worker_id</code> having the same value of <code>1</code>.</p>
-<p>Finally, Claude explains that the purpose of <code>thread.join()</code> is to complete the action in the thread before returning to the main thread. Note that the final print statement, <code>print("Threading example finished.")</code> is run after all threads finish executing.</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb19" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><span class="kw" style="color: #003B4F;">def</span> run_threading_example():</span>
-<span id="cb19-2">    threads <span class="op" style="color: #5E5E5E;">=</span> []</span>
-<span id="cb19-3">    <span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(<span class="dv" style="color: #AD0000;">5</span>):</span>
-<span id="cb19-4">        thread <span class="op" style="color: #5E5E5E;">=</span> threading.Thread(target<span class="op" style="color: #5E5E5E;">=</span>threading_worker, args<span class="op" style="color: #5E5E5E;">=</span>(i,))</span>
-<span id="cb19-5">        threads.append(thread)</span>
-<span id="cb19-6">        thread.start()</span>
-<span id="cb19-7"></span>
-<span id="cb19-8">    <span class="cf" style="color: #003B4F;">for</span> thread <span class="kw" style="color: #003B4F;">in</span> threads:</span>
-<span id="cb19-9">        thread.join()</span>
-<span id="cb19-10"></span>
-<span id="cb19-11">    <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"Threading example finished."</span>)</span></code></pre></div>
-</div>
-<p>It’s interesting to note that each Worker instantiates <code>count</code> before adding <code>1</code> to it (as expected), but the order of each thread instantiating <code>count</code> (0, 1, 2, 3, 4) is not the same order of each thread adding <code>1</code> (0, 1, 3, 4, 2; which I didn’t expect).</p>
-<div class="cell" data-outputid="b6c733ed-9081-4749-9e3c-0000d29aa849">
-<div class="sourceCode cell-code" id="cb20" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1">run_threading_example()</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-    Worker 0: instantiating `count`
-Threading: Worker 0, Count: 1
-
-
-    Worker 1: instantiating `count`
-Threading: Worker 1, Count: 1
-
-
-    Worker 2: instantiating `count`
-
-    Worker 3: instantiating `count`
-Threading: Worker 3, Count: 1
-
-
-    Worker 4: instantiating `count`
-Threading: Worker 4, Count: 1
-
-Threading: Worker 2, Count: 1
-
-Threading example finished.</code></pre>
-</div>
-</div>
-<p>There is much to learn when it comes to threading and multiprocessing, but I’ll exit this rabbit hole for now.</p>
-<p>The second thing I learned was this clever way to index into a tuple using a boolean expression:</p>
-<div class="sourceCode" id="cb22" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><span class="at" style="color: #657422;">@property</span></span>
-<span id="cb22-2"><span class="kw" style="color: #003B4F;">def</span> multi_processing_context(<span class="va" style="color: #111111;">self</span>): <span class="cf" style="color: #003B4F;">return</span> (<span class="va" style="color: #111111;">None</span>,multiprocessing)[<span class="va" style="color: #111111;">self</span>.num_workers<span class="op" style="color: #5E5E5E;">&gt;</span><span class="dv" style="color: #AD0000;">0</span>]</span></code></pre></div>
-<p>I commented about this on Twitter and Jeremy replied:</p>
-<blockquote class="twitter-tweet blockquote">
-<p lang="en" dir="ltr">
-Alternatively you can use <code>a if pred else b</code> btw. (Most people seem to hate both options ;) )
-</p>
-— Jeremy Howard (<span class="citation" data-cites="jeremyphoward">@jeremyphoward</span>) <a href="https://twitter.com/jeremyphoward/status/1839864334073376786?ref_src=twsrc%5Etfw">September 28, 2024</a>
-</blockquote>
-<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
-<p>Years back when I getting into web development, one of the patterns in JavaScript I enjoyed was the <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Conditional_operator">ternary operator</a>:</p>
-<div class="sourceCode" id="cb23" style="background: #f1f3f5;"><pre class="sourceCode javascript code-with-copy"><code class="sourceCode javascript"><span id="cb23-1">a <span class="op" style="color: #5E5E5E;">=</span> is_true <span class="op" style="color: #5E5E5E;">?</span> val_if_true <span class="op" style="color: #5E5E5E;">:</span> val_if_false</span></code></pre></div>
-<p>From what I understand, Python doesn’t have such an operator so anytime I come across a concise way to execute logic using a boolean expression, I’m excited to see it.</p>
-<p>With that short interlude out of the way, I’ll now dig in to <code>os.fork</code>.</p>
-</section>
-<section id="os.fork-experiments" class="level2">
-<h2 class="anchored" data-anchor-id="os.fork-experiments"><code>os.fork</code> Experiments</h2>
-<p>I prompted Claude to give me some examples using <code>os.fork</code> with the following prompt:</p>
-<blockquote class="blockquote">
-<p>I want to better understand what <code>os.fork</code> does. what’s a good set of experiments I can run to understand it’s functionality?</p>
-</blockquote>
-<p>Claude with responded with four experiments, which I’ll run through next.</p>
-<section id="basic-os.fork-example" class="level3">
-<h3 class="anchored" data-anchor-id="basic-os.fork-example">Basic <code>os.fork()</code> example</h3>
-<p>I’ll start with a definition from the “fork” Wikipedia page:</p>
-<blockquote class="blockquote">
-<p>In computing, particularly in the context of the Unix operating system and its workalikes, fork is an operation whereby a process creates a copy of itself. It is an interface which is required for compliance with the POSIX and Single UNIX Specification standards. It is usually implemented as a C standard library wrapper to the fork, clone, or other system calls of the kernel. Fork is the primary method of process creation on Unix-like operating systems.</p>
-</blockquote>
-<blockquote class="blockquote">
-<p>In multitasking operating systems, processes (running programs) need a way to create new processes, e.g.&nbsp;to run other programs. Fork and its variants are typically the only way of doing so in Unix-like systems. For a process to start the execution of a different program, it first forks to create a copy of itself. Then, the copy, called the “child process”, calls the exec system call to overlay itself with the other program: it ceases execution of its former program in favor of the other.</p>
-</blockquote>
-<p>Next, I’ll look at the definition of <code>os.getpid</code> from the docs before using it:</p>
-<blockquote class="blockquote">
-<p>Return the parent’s process id. When the parent process has exited, on Unix the id returned is the one of the init process (1), on Windows it is still the same id, which may be already reused by another process.</p>
-</blockquote>
-<div class="cell" data-outputid="b5b8d001-e4d8-4ad3-e3b1-a2761cd7cc00" data-execution_count="2">
-<div class="sourceCode cell-code" id="cb24" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"Main process PID: </span><span class="sc" style="color: #5E5E5E;">{</span>os<span class="sc" style="color: #5E5E5E;">.</span>getpid()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Main process PID: 436</code></pre>
-</div>
-</div>
-<p>Next, I’ll call <code>os.fork</code>:</p>
-<blockquote class="blockquote">
-<p>Fork a child process. Return 0 in the child and the child’s process id in the parent. If an error occurs OSError is raised.</p>
-<p>Note that some platforms including FreeBSD &lt;= 6.3 and Cygwin have known issues when using fork() from a thread.</p>
-</blockquote>
-<div class="cell" data-outputid="970f2d58-f685-455a-993f-0fd49416407f" data-execution_count="3">
-<div class="sourceCode cell-code" id="cb26" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><span class="cf" style="color: #003B4F;">if</span> os.fork(): <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'In parent: </span><span class="sc" style="color: #5E5E5E;">{</span>os<span class="sc" style="color: #5E5E5E;">.</span>getpid()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span>)</span>
-<span id="cb26-2"><span class="cf" style="color: #003B4F;">else</span>:</span>
-<span id="cb26-3">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f'In child: </span><span class="sc" style="color: #5E5E5E;">{</span>os<span class="sc" style="color: #5E5E5E;">.</span>getpid()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span>)</span>
-<span id="cb26-4">    os._exit(os.EX_OK)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>In parent: 436
-In child: 580</code></pre>
-</div>
-</div>
-<p>It’s important to note that I took the above code straight from Lesson’s 10’s <a href="https://github.com/fastai/course22p2/blob/master/nbs/01_matmul.ipynb">01_matmul.ipynb</a>.</p>
-<p>When I tried to run the following in Colab, the cell wouldn’t execute and would just hang:</p>
-<div class="sourceCode" id="cb28" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1">pid <span class="op" style="color: #5E5E5E;">=</span> os.fork()</span></code></pre></div>
-<p>When I tried to run that locally on my MacBook, I got the following error:</p>
-<pre><code>OSError: [Errno 9] Bad file descriptor</code></pre>
-<p>I found <a href="https://stackoverflow.com/questions/76238761/why-does-running-the-following-code-with-os-fork-in-a-jupyter-notebook-cause-t">this StackOverflow post</a> which talks about similar issues, and that <code>os.fork</code> doesn’t play nice with Jupyter Notebooks. Claude also seemed to agree, recommending that I either use the <code>os._exit</code> approach from Lesson 10, or put my <code>os.fork</code>-related code in a separate <code>.py</code> script outside the notebook.</p>
-<p>I asked Claude to rewrite the <code>os.fork</code> experiments using that if/else approach.</p>
-<p>When I run the following code block, it’s interesting to note that the child process runs before the parent process. I wonder if that means <code>os.fork</code> returneed <code>0</code>? Claude says no:</p>
-<blockquote class="blockquote">
-<p>The reason it might seem like the child process runs first is due to how process scheduling works in operating systems. When os.fork() is called, both the parent and child processes are ready to run, and the operating system’s scheduler decides which one to execute first. In this case, the child process got scheduled to run before the parent continued.</p>
-</blockquote>
-<p>It adds the following context:</p>
-<blockquote class="blockquote">
-<p>This behavior - where the child might run before the parent continues - is normal and expected in multi-process programming. It’s one of the reasons why synchronization mechanisms are often needed when working with multiple processes.</p>
-</blockquote>
-<div class="cell" data-outputid="3b16b5c1-d59f-4867-fa5b-c5141720a17b" data-execution_count="4">
-<div class="sourceCode cell-code" id="cb30" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"</span><span class="ch" style="color: #20794D;">\n</span><span class="ss" style="color: #20794D;">Main process PID: </span><span class="sc" style="color: #5E5E5E;">{</span>os<span class="sc" style="color: #5E5E5E;">.</span>getpid()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb30-2"></span>
-<span id="cb30-3"><span class="cf" style="color: #003B4F;">if</span> os.fork():</span>
-<span id="cb30-4">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"</span><span class="ch" style="color: #20794D;">\n</span><span class="ss" style="color: #20794D;">In parent: </span><span class="sc" style="color: #5E5E5E;">{</span>os<span class="sc" style="color: #5E5E5E;">.</span>getpid()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb30-5"><span class="cf" style="color: #003B4F;">else</span>:</span>
-<span id="cb30-6">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"</span><span class="ch" style="color: #20794D;">\n</span><span class="ss" style="color: #20794D;">In child: </span><span class="sc" style="color: #5E5E5E;">{</span>os<span class="sc" style="color: #5E5E5E;">.</span>getpid()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">, Parent PID: </span><span class="sc" style="color: #5E5E5E;">{</span>os<span class="sc" style="color: #5E5E5E;">.</span>getppid()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb30-7">    os._exit(os.EX_OK)</span>
-<span id="cb30-8"></span>
-<span id="cb30-9"><span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"</span><span class="ch" style="color: #20794D;">\n</span><span class="ss" style="color: #20794D;">This will be printed only by the parent process. PID: </span><span class="sc" style="color: #5E5E5E;">{</span>os<span class="sc" style="color: #5E5E5E;">.</span>getpid()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-Main process PID: 436
-
-In child: 853, Parent PID: 436
-Main process PID: 436
-
-In parent: 436
-
-This will be printed only by the parent process. PID: 436
-</code></pre>
-</div>
-</div>
-</section>
-<section id="memory-independence-example" class="level3">
-<h3 class="anchored" data-anchor-id="memory-independence-example">Memory Independence Example</h3>
-<p>The following example illustrates how “forked processes have independent memory spaces and that changes to variables in one process don’t affect the other process” as Claude states it.</p>
-<p>The global <code>shared_variable</code> maintains its global value of <code>0</code> in the child process, before <code>1</code> is added to it to give it a final value of <code>1</code> in the child process. Meanwhile, in the parent process, it’s final value is <code>2</code>. This reminds me of the <code>threading.local</code> behavior.</p>
-<div class="cell" data-outputid="2c0c29e9-c3ca-4fa5-cb86-485ab6cf7ab6" data-execution_count="5">
-<div class="sourceCode cell-code" id="cb32" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1">shared_variable <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">0</span></span>
-<span id="cb32-2"></span>
-<span id="cb32-3"><span class="cf" style="color: #003B4F;">if</span> os.fork():</span>
-<span id="cb32-4">    <span class="co" style="color: #5E5E5E;"># Parent process</span></span>
-<span id="cb32-5">    shared_variable <span class="op" style="color: #5E5E5E;">+=</span>  <span class="dv" style="color: #AD0000;">2</span></span>
-<span id="cb32-6">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"</span><span class="ch" style="color: #20794D;">\n</span><span class="ss" style="color: #20794D;">In parent: </span><span class="sc" style="color: #5E5E5E;">{</span>os<span class="sc" style="color: #5E5E5E;">.</span>getpid()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">, shared_variable = </span><span class="sc" style="color: #5E5E5E;">{</span>shared_variable<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb32-7"><span class="cf" style="color: #003B4F;">else</span>:</span>
-<span id="cb32-8">    <span class="co" style="color: #5E5E5E;"># Child process</span></span>
-<span id="cb32-9">    shared_variable <span class="op" style="color: #5E5E5E;">+=</span> <span class="dv" style="color: #AD0000;">1</span></span>
-<span id="cb32-10">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"</span><span class="ch" style="color: #20794D;">\n</span><span class="ss" style="color: #20794D;">In child: </span><span class="sc" style="color: #5E5E5E;">{</span>os<span class="sc" style="color: #5E5E5E;">.</span>getpid()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">, shared_variable = </span><span class="sc" style="color: #5E5E5E;">{</span>shared_variable<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb32-11">    os._exit(os.EX_OK)</span>
-<span id="cb32-12"></span>
-<span id="cb32-13"><span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"Final shared_variable in parent: </span><span class="sc" style="color: #5E5E5E;">{</span>shared_variable<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>
-In parent: 436, shared_variable = 2
-Final shared_variable in parent: 2
-
-In child: 902, shared_variable = 1</code></pre>
-</div>
-</div>
-</section>
-<section id="file-descriptor-inheritance" class="level3">
-<h3 class="anchored" data-anchor-id="file-descriptor-inheritance">File Descriptor Inheritance</h3>
-<p>Claude then provided the following code to illustrate how to write to the same file different data from the parent and child process. However, this code resulted in only the parent writing to the file:</p>
-<div class="cell" data-outputid="8a3b6a28-af29-480b-eac3-623d6d16fe58" data-execution_count="30">
-<div class="sourceCode cell-code" id="cb34" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(<span class="st" style="color: #20794D;">"test.txt"</span>, <span class="st" style="color: #20794D;">"w"</span>) <span class="im" style="color: #00769E;">as</span> f:</span>
-<span id="cb34-2">    <span class="cf" style="color: #003B4F;">if</span> os.fork():</span>
-<span id="cb34-3">        <span class="co" style="color: #5E5E5E;"># parent process</span></span>
-<span id="cb34-4">        f.write(<span class="st" style="color: #20794D;">"Written by parent</span><span class="ch" style="color: #20794D;">\n</span><span class="st" style="color: #20794D;">"</span>)</span>
-<span id="cb34-5">    <span class="cf" style="color: #003B4F;">else</span>:</span>
-<span id="cb34-6">        <span class="co" style="color: #5E5E5E;"># child process</span></span>
-<span id="cb34-7">        f.write(<span class="st" style="color: #20794D;">"Written by child</span><span class="ch" style="color: #20794D;">\n</span><span class="st" style="color: #20794D;">"</span>)</span>
-<span id="cb34-8">        os._exit(os.EX_OK)</span>
-<span id="cb34-9"></span>
-<span id="cb34-10"><span class="co" style="color: #5E5E5E;"># Run this after the script to see the contents:</span></span>
-<span id="cb34-11"><span class="bu" style="color: null;">print</span>(<span class="bu" style="color: null;">open</span>(<span class="st" style="color: #20794D;">"test.txt"</span>, <span class="st" style="color: #20794D;">"r"</span>).read())</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Written by parent
-</code></pre>
-</div>
-</div>
-<p>Claude then suggested using “file locking” and “flushing” to ensure the writing happens before process execution has ended, but this didn’t help. Sometimes it wrote from both processes, sometimes just from one. I’ve illustrated both examples below:</p>
-<div class="cell" data-execution_count="34">
-<div class="sourceCode cell-code" id="cb36" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><span class="kw" style="color: #003B4F;">def</span> do_write():</span>
-<span id="cb36-2">  <span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(<span class="st" style="color: #20794D;">"test.txt"</span>, <span class="st" style="color: #20794D;">"w"</span>) <span class="im" style="color: #00769E;">as</span> f:</span>
-<span id="cb36-3">      <span class="cf" style="color: #003B4F;">if</span> os.fork():</span>
-<span id="cb36-4">          <span class="co" style="color: #5E5E5E;"># parent process</span></span>
-<span id="cb36-5">          fcntl.flock(f, fcntl.LOCK_EX)</span>
-<span id="cb36-6">          f.write(<span class="st" style="color: #20794D;">"Written by parent</span><span class="ch" style="color: #20794D;">\n</span><span class="st" style="color: #20794D;">"</span>)</span>
-<span id="cb36-7">          f.flush()</span>
-<span id="cb36-8">          fcntl.flock(f, fcntl.LOCK_UN)</span>
-<span id="cb36-9">      <span class="cf" style="color: #003B4F;">else</span>:</span>
-<span id="cb36-10">          <span class="co" style="color: #5E5E5E;"># child process</span></span>
-<span id="cb36-11">          fcntl.flock(f, fcntl.LOCK_EX)</span>
-<span id="cb36-12">          f.write(<span class="st" style="color: #20794D;">"Written by child</span><span class="ch" style="color: #20794D;">\n</span><span class="st" style="color: #20794D;">"</span>)</span>
-<span id="cb36-13">          f.flush()</span>
-<span id="cb36-14">          fcntl.flock(f, fcntl.LOCK_UN)</span>
-<span id="cb36-15">          os._exit(os.EX_OK)</span>
-<span id="cb36-16"></span>
-<span id="cb36-17">  <span class="co" style="color: #5E5E5E;"># Run this after the script to see the contents:</span></span>
-<span id="cb36-18">  <span class="bu" style="color: null;">print</span>(<span class="bu" style="color: null;">open</span>(<span class="st" style="color: #20794D;">"test.txt"</span>, <span class="st" style="color: #20794D;">"r"</span>).read())</span></code></pre></div>
-</div>
-<div class="cell" data-outputid="1d3d8637-3d27-4e2f-cf75-bce8d9cdc9d2" data-execution_count="35">
-<div class="sourceCode cell-code" id="cb37" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1">do_write()</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Written by parent
-</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="dc38ab69-53c3-4bb5-b436-632280801d52" data-execution_count="37">
-<div class="sourceCode cell-code" id="cb39" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1">do_write()</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Written by child
-Written by parent
-</code></pre>
-</div>
-</div>
-<p>I wanted something deterministic so I prompted Claude again. It responded with the following solution where “the child writes first and then signals the parent”. A couple of things to note:</p>
-<ul>
-<li>The child sends a <code>SIGUSR1</code> signal to the parent pid. (SIGUSR1 stands for “User-defined signal 1”)</li>
-<li>Inside <code>parent_process</code>, the file is opened in “append mode”.</li>
-</ul>
-<div class="cell" data-execution_count="56">
-<div class="sourceCode cell-code" id="cb41" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><span class="kw" style="color: #003B4F;">def</span> child_process(parent_pid):</span>
-<span id="cb41-2">  time.sleep(<span class="fl" style="color: #AD0000;">0.1</span>)  <span class="co" style="color: #5E5E5E;"># Small delay to ensure parent is waiting</span></span>
-<span id="cb41-3">  <span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(<span class="st" style="color: #20794D;">"test.txt"</span>, <span class="st" style="color: #20794D;">"w"</span>) <span class="im" style="color: #00769E;">as</span> f:</span>
-<span id="cb41-4">    f.write(<span class="st" style="color: #20794D;">"Written by child</span><span class="ch" style="color: #20794D;">\n</span><span class="st" style="color: #20794D;">"</span>)</span>
-<span id="cb41-5">    f.flush()</span>
-<span id="cb41-6">  os.kill(parent_pid, signal.SIGUSR1) <span class="co" style="color: #5E5E5E;"># this is where the child sends a signal to the parent</span></span>
-<span id="cb41-7">  os._exit(os.EX_OK)</span>
-<span id="cb41-8"></span>
-<span id="cb41-9"><span class="kw" style="color: #003B4F;">def</span> parent_process(signum, frame):</span>
-<span id="cb41-10">  <span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(<span class="st" style="color: #20794D;">"test.txt"</span>, <span class="st" style="color: #20794D;">"a"</span>) <span class="im" style="color: #00769E;">as</span> f: <span class="co" style="color: #5E5E5E;"># notice the "a" for "append mode"</span></span>
-<span id="cb41-11">      f.write(<span class="st" style="color: #20794D;">"Written by parent</span><span class="ch" style="color: #20794D;">\n</span><span class="st" style="color: #20794D;">"</span>)</span>
-<span id="cb41-12">      f.flush()</span>
-<span id="cb41-13"></span>
-<span id="cb41-14"><span class="kw" style="color: #003B4F;">def</span> do_write2():</span>
-<span id="cb41-15">  signal.signal(signal.SIGUSR1, parent_process)</span>
-<span id="cb41-16"></span>
-<span id="cb41-17">  parent_pid <span class="op" style="color: #5E5E5E;">=</span> os.getpid()</span>
-<span id="cb41-18"></span>
-<span id="cb41-19">  <span class="cf" style="color: #003B4F;">if</span> os.fork() <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">0</span>:</span>
-<span id="cb41-20">      child_process(parent_pid)</span>
-<span id="cb41-21">  <span class="cf" style="color: #003B4F;">else</span>:</span>
-<span id="cb41-22">      signal.pause()  <span class="co" style="color: #5E5E5E;"># Wait for signal from child</span></span>
-<span id="cb41-23"></span>
-<span id="cb41-24">  <span class="co" style="color: #5E5E5E;"># Read and print the file contents</span></span>
-<span id="cb41-25">  <span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(<span class="st" style="color: #20794D;">"test.txt"</span>, <span class="st" style="color: #20794D;">"r"</span>) <span class="im" style="color: #00769E;">as</span> f:</span>
-<span id="cb41-26">    res <span class="op" style="color: #5E5E5E;">=</span> f.read()</span>
-<span id="cb41-27">  <span class="cf" style="color: #003B4F;">return</span> res</span></code></pre></div>
-</div>
-<p>This works as expected! At least for the 1000 times that I ran it:</p>
-<div class="cell" data-execution_count="55">
-<div class="sourceCode cell-code" id="cb42" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><span class="cf" style="color: #003B4F;">for</span> _ <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(<span class="dv" style="color: #AD0000;">1000</span>):</span>
-<span id="cb42-2">  res <span class="op" style="color: #5E5E5E;">=</span> do_write2()</span>
-<span id="cb42-3">  <span class="cf" style="color: #003B4F;">assert</span> res <span class="op" style="color: #5E5E5E;">==</span> <span class="st" style="color: #20794D;">'Written by child</span><span class="ch" style="color: #20794D;">\n</span><span class="st" style="color: #20794D;">Written by parent</span><span class="ch" style="color: #20794D;">\n</span><span class="st" style="color: #20794D;">'</span></span></code></pre></div>
-</div>
-<p>I noticed that <code>parent_process</code> is passed <code>signum</code> and <code>frame</code>. I asked Claude to define these:</p>
-<blockquote class="blockquote">
-<p><code>signum</code>: This parameter represents the signal number that was caught. In this case, it will be <code>signal.SIGUSR1</code>, which is the signal sent by the child process to the parent. The <code>signum</code> allows the signal handler to identify which signal triggered it, which can be useful if the same handler is used for multiple signals. <code>frame</code>: This parameter is a frame object representing the stack frame of the interrupted code when the signal was received. It contains information about the program’s execution state at the time the signal was caught, such as the current line number and local variables.</p>
-</blockquote>
-<p>I’ll print out <code>signum</code> and <code>frame</code> to see what they look like here:</p>
-<div class="cell" data-execution_count="58">
-<div class="sourceCode cell-code" id="cb43" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><span class="kw" style="color: #003B4F;">def</span> parent_process(signum, frame):</span>
-<span id="cb43-2">  <span class="bu" style="color: null;">print</span>(signum, frame)</span>
-<span id="cb43-3">  <span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(<span class="st" style="color: #20794D;">"test.txt"</span>, <span class="st" style="color: #20794D;">"a"</span>) <span class="im" style="color: #00769E;">as</span> f: <span class="co" style="color: #5E5E5E;"># notice the "a" for "append mode"</span></span>
-<span id="cb43-4">      f.write(<span class="st" style="color: #20794D;">"Written by parent</span><span class="ch" style="color: #20794D;">\n</span><span class="st" style="color: #20794D;">"</span>)</span>
-<span id="cb43-5">      f.flush()</span></code></pre></div>
-</div>
-<p><code>signum</code> has a value of <code>10</code> and <code>frame</code> has the additional information as Claude described.</p>
-<div class="cell" data-outputid="4effc089-5cf3-4ec9-b188-162db1b74a02" data-execution_count="59">
-<div class="sourceCode cell-code" id="cb44" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1">do_write2()</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>10 &lt;frame at 0x56005af01c30, file '&lt;ipython-input-56-0f16beee5172&gt;', line 22, code do_write2&gt;</code></pre>
-</div>
-<div class="cell-output cell-output-display" data-execution_count="59">
-<pre><code>'Written by child\nWritten by parent\n'</code></pre>
-</div>
-</div>
-</section>
-<section id="exit-status" class="level3">
-<h3 class="anchored" data-anchor-id="exit-status">Exit Status</h3>
-<p>Claude describes the following code as a way to illustrate how “the parent can wait for the child to finish and retrieve its exit status.” I added a couple of print statements to see more clearly that the parent process waits for the child process to exit.</p>
-<p>Claude describes the <code>-1</code> in <code>os.waitpid(-1, 0)</code> as follows:</p>
-<blockquote class="blockquote">
-<p>When <code>-1</code> is used as the first argument to <code>os.waitpid()</code>, it tells the function to wait for any child process to terminate.</p>
-</blockquote>
-<p>The <code>0</code> in <code>os.waitpid(-1, 0)</code> is explained in the docs:</p>
-<blockquote class="blockquote">
-<p>The semantics of the call are affected by the value of the integer options, which should be 0 for normal operation.</p>
-</blockquote>
-<div class="cell" data-execution_count="40">
-<div class="sourceCode cell-code" id="cb47" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><span class="kw" style="color: #003B4F;">def</span> do_exit():</span>
-<span id="cb47-2">    <span class="cf" style="color: #003B4F;">if</span> os.fork():</span>
-<span id="cb47-3">        <span class="co" style="color: #5E5E5E;"># Parent process</span></span>
-<span id="cb47-4">        <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"Parent waiting..."</span>)</span>
-<span id="cb47-5">        child_pid, status <span class="op" style="color: #5E5E5E;">=</span> os.waitpid(<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>, <span class="dv" style="color: #AD0000;">0</span>)</span>
-<span id="cb47-6">        <span class="bu" style="color: null;">print</span>(<span class="st" style="color: #20794D;">"Parent done waiting!"</span>)</span>
-<span id="cb47-7">        <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"In parent: </span><span class="sc" style="color: #5E5E5E;">{</span>os<span class="sc" style="color: #5E5E5E;">.</span>getpid()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb47-8">        <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"Child process (PID </span><span class="sc" style="color: #5E5E5E;">{</span>child_pid<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">) exited with status </span><span class="sc" style="color: #5E5E5E;">{</span>os<span class="sc" style="color: #5E5E5E;">.</span>WEXITSTATUS(status)<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb47-9">    <span class="cf" style="color: #003B4F;">else</span>:</span>
-<span id="cb47-10">        <span class="co" style="color: #5E5E5E;"># Child process</span></span>
-<span id="cb47-11">        <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"In child: </span><span class="sc" style="color: #5E5E5E;">{</span>os<span class="sc" style="color: #5E5E5E;">.</span>getpid()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">, exiting with status 5"</span>)</span>
-<span id="cb47-12">        os._exit(<span class="dv" style="color: #AD0000;">5</span>)  <span class="co" style="color: #5E5E5E;"># Use os._exit to avoid affecting the notebook process</span></span>
-<span id="cb47-13"></span>
-<span id="cb47-14">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"This will be printed only by the parent process. PID: </span><span class="sc" style="color: #5E5E5E;">{</span>os<span class="sc" style="color: #5E5E5E;">.</span>getpid()<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span></code></pre></div>
-</div>
-<p>However, when I run <code>do_exit</code>, based on the child pid’s shown, it creates two different child processes (<code>4475</code> and <code>4448</code>):</p>
-<div class="cell" data-outputid="c87b6f20-90c7-4ad4-a1ea-b0c737019e06" data-execution_count="45">
-<div class="sourceCode cell-code" id="cb48" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1">do_exit()</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>In child: 4475, exiting with status 5Parent waiting...
-Parent done waiting!
-In parent: 436
-Child process (PID 4448) exited with status 5
-This will be printed only by the parent process. PID: 436
-</code></pre>
-</div>
-</div>
-<p>And note that <code>do_exit</code> print statements don’t always run in that order, indicating that the child process is not running first even though we have used <code>waitpid</code>:</p>
-<div class="cell" data-outputid="8b1e05a6-2e59-4a30-bb58-518435ff3728" data-execution_count="8">
-<div class="sourceCode cell-code" id="cb50" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1">do_exit()</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Parent waiting...
-Parent done waiting!
-In parent: 436
-Child process (PID 902) exited with status 0
-This will be printed only by the parent process. PID: 436
-In child: 1249, exiting with status 5</code></pre>
-</div>
-</div>
-<p>When I put that code into a <code>.py</code> file and run it from the shell, it behaves as expected (there is only one child process created, <code>5221</code>, and it runs first while the parent process waits):</p>
-<div class="cell" data-outputid="57f8fa14-f0b9-47e1-c89a-03fa56a2ee81" data-execution_count="48">
-<div class="sourceCode cell-code" id="cb52" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><span class="op" style="color: #5E5E5E;">!</span>python3 do_exit.py</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Parent waiting...
-In child: 5221, exiting with status 5
-Parent done waiting!
-In parent: 5216
-Child process (PID 5221) exited with status 5
-This will be printed only by the parent process. PID: 5216</code></pre>
-</div>
-</div>
-</section>
-</section>
-<section id="final-thoughts" class="level2">
-<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
-<p>Working with <code>os.fork</code> was tougher than I expected. I assumed it would be plug-and-play, but I encountered non-deterministic behavior, which seems to be common when working with multiple processes.</p>
-<p>I also learned that <code>os.fork</code> behaves (or misbehaves) differently when running inside a notebook cell compared to running in the shell. For instance, executing <code>pid = os.fork</code> in a notebook cell causes the execution to hang when trying to return the child’s process ID, or spawns multiple child processes when using the <code>if os_fork:/else:</code> pattern.</p>
-<p>There are some ways to make <code>os.fork</code> behave in a notebook environment, as we saw when synchronizing work between the child and parent by having the child signal the parent before both wrote to the same file.</p>
-<p>Another key concept I observed was memory independence— even in a notebook environment, the parent and child processes have their own private access to global variables, allowing you to assign different values to the same variable in each process.</p>
-<p>Future work: I want to run a similar set of experiments with the <code>multiprocessing</code> library, as I see it used more often (for example, in the fastai repo).</p>
-<p>I hope you enjoyed this blog post. Follow me on Twitter <a href="https://twitter.com/vishal_learner"><span class="citation" data-cites="vishal_learner">@vishal_learner</span></a>.</p>
-
-
-</section>
-
- ]]></description>
-  <category>python</category>
-  <category>fastai</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2024-09-30-os-fork/index.html</guid>
-  <pubDate>Mon, 30 Sep 2024 07:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
