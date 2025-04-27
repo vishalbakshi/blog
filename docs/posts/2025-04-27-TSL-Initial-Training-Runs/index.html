@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2025-04-27">
+<meta name="description" content="I share my progress on the TinyScaleLab project where I’m studying small language models trained on the Tiny Stories dataset. I discuss the architecture of my four model sizes (5M, 25M, 60M, and 125M parameters), compare training costs between L4 and A100 GPUs, and outline my plans for developing an evaluation framework using LLM judges. This project aims to investigate both the training dynamics of tiny models and their language capabilities across grammar, context tracking, factual knowledge, reasoning, creativity, and storytelling.">
+
+<title>Vishal Bakshi’s Blog - TinyScale Lab Update: Training Cost Analysis and Evaluation Infrastructure Plans</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Vishal Bakshi’s Blog</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#model-sizes" id="toc-model-sizes" class="nav-link" data-scroll-target="#model-sizes">Model Sizes</a></li>
+  <li><a href="#training-dataset" id="toc-training-dataset" class="nav-link" data-scroll-target="#training-dataset">Training Dataset</a></li>
+  <li><a href="#training-duration" id="toc-training-duration" class="nav-link" data-scroll-target="#training-duration">Training Duration</a></li>
+  <li><a href="#training-gpus" id="toc-training-gpus" class="nav-link" data-scroll-target="#training-gpus">Training GPUs</a></li>
+  <li><a href="#results" id="toc-results" class="nav-link" data-scroll-target="#results">Results</a></li>
+  <li><a href="#takeaways" id="toc-takeaways" class="nav-link" data-scroll-target="#takeaways">Takeaways</a></li>
+  <li><a href="#appendix" id="toc-appendix" class="nav-link" data-scroll-target="#appendix">Appendix</a>
+  <ul class="collapse">
+  <li><a href="#m" id="toc-m" class="nav-link" data-scroll-target="#m">5M</a></li>
+  <li><a href="#m-1" id="toc-m-1" class="nav-link" data-scroll-target="#m-1">25M</a></li>
+  <li><a href="#m-2" id="toc-m-2" class="nav-link" data-scroll-target="#m-2">60M</a></li>
+  <li><a href="#m-3" id="toc-m-3" class="nav-link" data-scroll-target="#m-3">125M</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">TinyScale Lab Update: Training Cost Analysis and Evaluation Infrastructure Plans</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">LLM</div>
+    <div class="quarto-category">deep learning</div>
+    <div class="quarto-category">TinyScale-Lab</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    I share my progress on the TinyScaleLab project where I’m studying small language models trained on the Tiny Stories dataset. I discuss the architecture of my four model sizes (5M, 25M, 60M, and 125M parameters), compare training costs between L4 and A100 GPUs, and outline my plans for developing an evaluation framework using LLM judges. This project aims to investigate both the training dynamics of tiny models and their language capabilities across grammar, context tracking, factual knowledge, reasoning, creativity, and storytelling.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">April 27, 2025</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In this notebook I’ll share results from some quick and dirty training runs executed so I get a rough but reasonable estimate of training time and costs using L4 and A100 GPUs on Google Colab Pro.</p>
+</section>
+<section id="model-sizes" class="level2">
+<h2 class="anchored" data-anchor-id="model-sizes">Model Sizes</h2>
+<p>In these experiments, I’m training four model sizes: 5M, 25M, 60M and 125M. I’ve chosen to roughly follow the TinyStories models, using the hidden dimension and intermediate dimension for the TinyStories-1M, -8M, -28M and -33M models, in each case there is a 4x increase from hidden to intermediate dimension in the MLP layers. These are just initial architectural choices which might change over the course of the project as I learn more about what results in a better performing model.</p>
+<p>For now, I’m using 8 attention heads (for all models) and the Llama-2 tokenizer with a 32000 vocab size.</p>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Model Name</th>
+<th style="text-align: center;">Hidden Dim</th>
+<th style="text-align: center;">Intermediate Dim</th>
+<th style="text-align: center;">Number of Layers</th>
+<th style="text-align: center;">Number of Params</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">5M</td>
+<td style="text-align: center;">64</td>
+<td style="text-align: center;">256</td>
+<td style="text-align: center;">13</td>
+<td style="text-align: center;">4_949_696</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">25M</td>
+<td style="text-align: center;">256</td>
+<td style="text-align: center;">1024</td>
+<td style="text-align: center;">8</td>
+<td style="text-align: center;">24_776_960</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">60M</td>
+<td style="text-align: center;">512</td>
+<td style="text-align: center;">2048</td>
+<td style="text-align: center;">6</td>
+<td style="text-align: center;">57_940_480</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">125M</td>
+<td style="text-align: center;">768</td>
+<td style="text-align: center;">3072</td>
+<td style="text-align: center;">8</td>
+<td style="text-align: center;">124_662_528</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="training-dataset" class="level2">
+<h2 class="anchored" data-anchor-id="training-dataset">Training Dataset</h2>
+<p>I’ve tokenized the <a href="https://huggingface.co/datasets/roneneldan/TinyStories/blob/main/TinyStories_all_data.tar.gz">TinyStories_all_data.tar.gz</a> dataset which contains 4.9M stories generated by GPT3.5 and GPT4, using the <code>meta-llama/Llama-2-7b-hf</code> tokenizer. I haven’t performed any data cleaning (yet). The total number of tokens in this dataset is little over 1B: <strong>1_028_013_532</strong>.</p>
+</section>
+<section id="training-duration" class="level2">
+<h2 class="anchored" data-anchor-id="training-duration">Training Duration</h2>
+<p>I’m training all initial runs for 1 epoch.</p>
+</section>
+<section id="training-gpus" class="level2">
+<h2 class="anchored" data-anchor-id="training-gpus">Training GPUs</h2>
+<p>I trained the 5M and 25M models on both L4 (22.5 GB VRAM) and A100 (40GB VRAM) GPUs. I trained the 60M and 125M models on the A100 GPU.</p>
+</section>
+<section id="results" class="level2">
+<h2 class="anchored" data-anchor-id="results">Results</h2>
+<p>All models are trained for 1 epoch (1.03 tokens):</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Hardware</th>
+<th style="text-align: center;">Model Size</th>
+<th style="text-align: center;">Time (hr)</th>
+<th style="text-align: center;">Batch Size</th>
+<th style="text-align: center;">Max Memory</th>
+<th style="text-align: center;">Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">L4</td>
+<td style="text-align: center;">5M</td>
+<td style="text-align: center;">0.87</td>
+<td style="text-align: center;">384</td>
+<td style="text-align: center;">20%</td>
+<td style="text-align: center;">$0.18</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">L4</td>
+<td style="text-align: center;">25M</td>
+<td style="text-align: center;">1.45</td>
+<td style="text-align: center;">288</td>
+<td style="text-align: center;">65%</td>
+<td style="text-align: center;">$0.30</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">A100-40GB</td>
+<td style="text-align: center;">5M</td>
+<td style="text-align: center;">0.32</td>
+<td style="text-align: center;">2048</td>
+<td style="text-align: center;">78%</td>
+<td style="text-align: center;">$0.25</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">A100-40GB</td>
+<td style="text-align: center;">25M</td>
+<td style="text-align: center;">0.35</td>
+<td style="text-align: center;">1536</td>
+<td style="text-align: center;">98%</td>
+<td style="text-align: center;">$0.27</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">A100-40GB</td>
+<td style="text-align: center;">60M</td>
+<td style="text-align: center;">0.54</td>
+<td style="text-align: center;">1152</td>
+<td style="text-align: center;">86%</td>
+<td style="text-align: center;">$0.41</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">A100-40GB</td>
+<td style="text-align: center;">125M</td>
+<td style="text-align: center;">1.10</td>
+<td style="text-align: center;">512</td>
+<td style="text-align: center;">99%</td>
+<td style="text-align: center;">$0.84</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="takeaways" class="level2">
+<h2 class="anchored" data-anchor-id="takeaways">Takeaways</h2>
+<p>From this analysis, only the 5M model makes sense to train on the L4. It’s 3 cents cheaper per hour to train the 25M model on the A100, though I’m flirting with OOM so I should reduce the batch size.</p>
+<p>I’ll need to perform longer trainings to get a sense of how many full epochs I need to produce coherent language-generating models, but from my TinyHackathon experience, it took 20 epochs for the 60M model to perform decently (3/5 LLM Judge overall score). I would expect the 125M model to require less epochs, and the smaller models more epochs, to achieve comparable performance. But we’ll see!</p>
+</section>
+<section id="appendix" class="level2">
+<h2 class="anchored" data-anchor-id="appendix">Appendix</h2>
+<p>Here are the <code>LlamaConfig</code> objects for each model:</p>
+<section id="m" class="level3">
+<h3 class="anchored" data-anchor-id="m">5M</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>config <span class="op">=</span> LlamaConfig(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    vocab_size<span class="op">=</span><span class="dv">32000</span>,</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    hidden_size<span class="op">=</span><span class="dv">64</span>,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    intermediate_size<span class="op">=</span><span class="dv">256</span>,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    num_hidden_layers<span class="op">=</span><span class="dv">13</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    num_attention_heads<span class="op">=</span><span class="dv">8</span>,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    max_position_embeddings<span class="op">=</span><span class="dv">512</span>,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    rope_theta<span class="op">=</span><span class="fl">10000.0</span>,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    attention_bias<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    mlp_bias<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    attn_implementation<span class="op">=</span><span class="st">"flash_attention_2"</span>,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    torch_dtype<span class="op">=</span><span class="st">"bfloat16"</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="m-1" class="level3">
+<h3 class="anchored" data-anchor-id="m-1">25M</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>config <span class="op">=</span> LlamaConfig(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    vocab_size<span class="op">=</span><span class="dv">32000</span>,</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    hidden_size<span class="op">=</span><span class="dv">256</span>,</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    intermediate_size<span class="op">=</span><span class="dv">1024</span>,</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    num_hidden_layers<span class="op">=</span><span class="dv">8</span>,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    num_attention_heads<span class="op">=</span><span class="dv">8</span>,</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    max_position_embeddings<span class="op">=</span><span class="dv">512</span>,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    rope_theta<span class="op">=</span><span class="fl">10000.0</span>,</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    attention_bias<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    mlp_bias<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    attn_implementation<span class="op">=</span><span class="st">"flash_attention_2"</span>,</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    torch_dtype<span class="op">=</span><span class="st">"bfloat16"</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="m-2" class="level3">
+<h3 class="anchored" data-anchor-id="m-2">60M</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>config <span class="op">=</span> LlamaConfig(</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    vocab_size<span class="op">=</span><span class="dv">32000</span>,</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    hidden_size<span class="op">=</span><span class="dv">512</span>,</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    intermediate_size<span class="op">=</span><span class="dv">2048</span>,</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    num_hidden_layers<span class="op">=</span><span class="dv">6</span>,</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    num_attention_heads<span class="op">=</span><span class="dv">8</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    max_position_embeddings<span class="op">=</span><span class="dv">512</span>,</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    rope_theta<span class="op">=</span><span class="fl">10000.0</span>,</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    attention_bias<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    mlp_bias<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    attn_implementation<span class="op">=</span><span class="st">"flash_attention_2"</span>,</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    torch_dtype<span class="op">=</span><span class="st">"bfloat16"</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="m-3" class="level3">
+<h3 class="anchored" data-anchor-id="m-3">125M</h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>config <span class="op">=</span> LlamaConfig(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    vocab_size<span class="op">=</span><span class="dv">32000</span>,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    hidden_size<span class="op">=</span><span class="dv">768</span>,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    intermediate_size<span class="op">=</span><span class="dv">3072</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    num_hidden_layers<span class="op">=</span><span class="dv">8</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    num_attention_heads<span class="op">=</span><span class="dv">8</span>,</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    max_position_embeddings<span class="op">=</span><span class="dv">512</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    rope_theta<span class="op">=</span><span class="fl">10000.0</span>,</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    attention_bias<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    mlp_bias<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    attn_implementation<span class="op">=</span><span class="st">"flash_attention_2"</span>,</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    torch_dtype<span class="op">=</span><span class="st">"bfloat16"</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>
