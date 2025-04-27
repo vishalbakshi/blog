@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2025-04-26">
+<meta name="description" content="In TinyScale Lab, I’m exploring the connection between training dynamics and model capabilities using tiny language models (3M-120M parameters) as research proxies. This project bridges insights from the TinyStories and Small-scale proxies papers to understand how training stability affects emergent capabilities like grammar, consistency, and reasoning. By demonstrating that meaningful ML research is possible with modest computational resources, I hope to make AI research more accessible and democratized for resource-constrained researchers worldwide.">
+
+<title>Vishal Bakshi’s Blog - TinyScale Lab: Bridging Training Dynamics and Model Capabilities</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Vishal Bakshi’s Blog</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#introduction" id="toc-introduction" class="nav-link active" data-scroll-target="#introduction">Introduction</a></li>
+  <li><a href="#research-hypotheses" id="toc-research-hypotheses" class="nav-link" data-scroll-target="#research-hypotheses">Research Hypotheses</a></li>
+  <li><a href="#experimental-design" id="toc-experimental-design" class="nav-link" data-scroll-target="#experimental-design">Experimental Design</a></li>
+  <li><a href="#success-criteria" id="toc-success-criteria" class="nav-link" data-scroll-target="#success-criteria">Success Criteria</a></li>
+  <li><a href="#risk-assessment" id="toc-risk-assessment" class="nav-link" data-scroll-target="#risk-assessment">Risk Assessment</a></li>
+  <li><a href="#risk-mitigation" id="toc-risk-mitigation" class="nav-link" data-scroll-target="#risk-mitigation">Risk Mitigation</a></li>
+  <li><a href="#deliverables" id="toc-deliverables" class="nav-link" data-scroll-target="#deliverables">Deliverables</a></li>
+  <li><a href="#timeline-and-budget" id="toc-timeline-and-budget" class="nav-link" data-scroll-target="#timeline-and-budget">Timeline and Budget</a></li>
+  <li><a href="#closing-thoughts" id="toc-closing-thoughts" class="nav-link" data-scroll-target="#closing-thoughts">Closing Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">TinyScale Lab: Bridging Training Dynamics and Model Capabilities</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">LLM</div>
+    <div class="quarto-category">deep learning</div>
+    <div class="quarto-category">TinyScale-Lab</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    In TinyScale Lab, I’m exploring the connection between training dynamics and model capabilities using tiny language models (3M-120M parameters) as research proxies. This project bridges insights from the TinyStories and Small-scale proxies papers to understand how training stability affects emergent capabilities like grammar, consistency, and reasoning. By demonstrating that meaningful ML research is possible with modest computational resources, I hope to make AI research more accessible and democratized for resource-constrained researchers worldwide.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">April 26, 2025</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<iframe width="560" height="315" src="https://www.youtube.com/embed/82mE39Ef5eY?si=5h9fdvnAF0071VcA" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+<section id="introduction" class="level2">
+<h2 class="anchored" data-anchor-id="introduction">Introduction</h2>
+<p>I’m excited to announce the kickoff of TinyScale Lab, a research project focused on exploring the connection between training dynamics and model capabilities. This research is motivated by two papers that I’ve studied in detail: <a href="https://arxiv.org/abs/2305.07759">“TinyStories: How Small Can Language Models Be and Still Speak Coherent English?” by Ronen Eldan and Yuanzhi Li</a>, and <a href="https://arxiv.org/abs/2309.14322">“Small-scale proxies for Large-scale Transformer Training Instabilities” by Wortsman, et al</a>.</p>
+<p>Most LLM training-related research requires computational resources that are financially out of reach for individual researchers or small teams. At the same time, recent work has shown that tiny models exhibit emergent capabilities (as demonstrated in the TinyStories paper) and exhibit large-scale training dynamics (as shown in the Small-scale proxies paper).</p>
+<p>While I don’t claim to be creating a definitive blueprint, I believe this approach—using tiny models as proxies to study phenomena relevant to models of all sizes—represents an underexplored path that could benefit other resource-constrained researchers.</p>
+<p>I think this is how most of the world’s potential researchers would need to work. Making ML research accessible to resource-constrained environments isn’t trivial - it’s essential for the field’s diversity and progress.</p>
+</section>
+<section id="research-hypotheses" class="level2">
+<h2 class="anchored" data-anchor-id="research-hypotheses">Research Hypotheses</h2>
+<p>I’ve developed four main hypotheses that will guide my research:</p>
+<ol type="1">
+<li><strong>H1</strong>: Training stability directly affects specific model capabilities in predictable ways.</li>
+<li><strong>H2</strong>: Different model capabilities (like grammar or consistency) respond differently to training adjustments.</li>
+<li><strong>H3</strong>: Early training signals can predict which capabilities a model will or won’t develop before training is complete.</li>
+<li><strong>H4</strong>: Techniques that stabilize training will have varying effects on different types of model capabilities.</li>
+</ol>
+<p>I’ve kept these hypotheses general at a high level because I really don’t know what I’m going to learn, but I do have a sense based on the TinyStories and Small-scale proxies papers that there is something around these four elements that I’m going to experience, and I expect to see some relationships.</p>
+<p>I want to bridge the TinyStories paper analysis on emergent capabilities (grammar, consistency, factual knowledge, reasoning, etc.) with the Small-scale proxies paper training dynamics analysis (attention logits, training instabilities, learning rates, etc.).</p>
+</section>
+<section id="experimental-design" class="level2">
+<h2 class="anchored" data-anchor-id="experimental-design">Experimental Design</h2>
+<p>For my experimental design, I’ve decided to focus on four model sizes: - ~3M parameters - ~20M parameters - ~60M parameters - ~120M parameters</p>
+<p>This follows the TinyStories paper closely, with the addition of a 120M parameter model.</p>
+<p>I’ll use the same learning rates as the Small-scale proxies paper, ranging from 3e-4 to 3e-1 with seven learning rates in total: <code>{3e-4, 1e-3, 3e-3, 1e-2, 3e-2, 1e-1, 3e-1}</code></p>
+<p>I’ll implement two stability techniques from the Small-scale proxies paper: - QK layer norm (to mitigate attention logit growth) - Z loss (to mitigate output logit divergence)</p>
+<p>What will remain fixed across all training runs are the datasets, the number of training steps, and other hyperparameters like weight decay and warm-up steps.</p>
+<p>The training dynamics I’ll log throughout training include: - Logits - Gradients - Parameters - Loss</p>
+<p>For each of these, I’ll capture norms, means, maximum values, and RMS values.</p>
+<p>The capabilities I want to evaluate are split into three categories: 1. <strong>Foundational language</strong>: Grammar and context-tracking (consistency) 2. <strong>Emergent capabilities</strong>: Factual knowledge, reasoning, and creativity 3. <strong>Story-related</strong>: Plot</p>
+<p>The relationship between these training dynamics and capabilities is what I want to explore.</p>
+</section>
+<section id="success-criteria" class="level2">
+<h2 class="anchored" data-anchor-id="success-criteria">Success Criteria</h2>
+<p>My success criteria are simple but not easy: establishing clear connections between training dynamics and tiny model capabilities. This work is exploratory, and I’m open to discovering that the relationships might be more complex or different than initially hypothesized.</p>
+</section>
+<section id="risk-assessment" class="level2">
+<h2 class="anchored" data-anchor-id="risk-assessment">Risk Assessment</h2>
+<p>I’ve identified several risks that could impact this project:</p>
+<ol type="1">
+<li>Lack of connection between training dynamics and tiny model capabilities</li>
+<li>Technical challenges in monitoring complex training dynamics</li>
+<li>Sub-optimal parameter usage</li>
+<li>Compute and inference costs ballooning beyond budget</li>
+</ol>
+</section>
+<section id="risk-mitigation" class="level2">
+<h2 class="anchored" data-anchor-id="risk-mitigation">Risk Mitigation</h2>
+<p>To mitigate these risks, I plan to:</p>
+<ol type="1">
+<li>Shorten the iteration loop</li>
+<li>Ensure evaluations are robust from the start</li>
+<li>Start at the tiniest scale and progressively increase model size</li>
+<li>Implement early stopping to avoid wasting compute</li>
+</ol>
+<p>I learned from the fastAI course and community that you want to shorten the iteration loop and ensure that evals are robust from the start. This gives you quick, immediate, robust, clear signal when you get feedback on how your model is performing.</p>
+</section>
+<section id="deliverables" class="level2">
+<h2 class="anchored" data-anchor-id="deliverables">Deliverables</h2>
+<p>My commitment is to produce:</p>
+<ol type="1">
+<li>Comprehensive research repositories including code, trained models, and detailed datasets (training dynamics and LLM Judge scores)</li>
+<li>Weekly video content and blog posts</li>
+<li>Technical report</li>
+<li>Interactive visualizations</li>
+</ol>
+<p>The main thing I want to emphasize is that I’ll be doing this publicly and open-source. All models, code, and findings will be freely available to enable broader participation in ML research.</p>
+</section>
+<section id="timeline-and-budget" class="level2">
+<h2 class="anchored" data-anchor-id="timeline-and-budget">Timeline and Budget</h2>
+<p>I’ve broken the project into four phases:</p>
+<ol type="1">
+<li><strong>Phase 1</strong>: Eval/Logging Setup, Initial Training Runs (2-3 months)</li>
+<li><strong>Phase 2</strong>: Experimental Implementation (3-4 months)</li>
+<li><strong>Phase 3</strong>: Analysis &amp; Synthesis (2-3 months)</li>
+<li><strong>Phase 4</strong>: Documentation &amp; Finalization (1 month)</li>
+</ol>
+<p>At minimum, I think this work will take eight months, and it could go well past a year.</p>
+<p>For the budget, I’m estimating: - <strong>Training</strong>: $1700 (approximately 100 training runs on 25B tokens) - <strong>Inference</strong>: $200 (using Gemini 2.5 Flash for LLM Judge scoring) - <strong>Total</strong>: $2000</p>
+<p>At this point, I’m considering whether it makes sense to buy my own GPU rig. If this is going to cost $2,000, why not spend a little more or twice as much and get a GPU rig that I can own? There are a lot of variables when it comes to budget and timeline, so I’m going to take it one week at a time and make adjustments as necessary.</p>
+</section>
+<section id="closing-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="closing-thoughts">Closing Thoughts</h2>
+<p>To recap, TinyScale Lab aims to:</p>
+<ol type="1">
+<li>Bridge training dynamics and model capabilities to understand what makes tiny models effective</li>
+<li>Create a systematic framework for understanding how training choices affect specific model capabilities</li>
+<li>Demonstrate that meaningful ML research is accessible with modest computational resources</li>
+<li>Open-source all models, code, and findings to enable broader participation in ML research</li>
+</ol>
+<p>As Nick Sirianni (championship winning coach of the Philadelphia Eagles) said, “You cannot be great without the greatness of others.” I truly stand on the shoulders of giants, especially the authors of the TinyStories and Small-scale proxies papers. Without their work and contributions in the open source space, I would not be able to even approach this kind of research.</p>
+<p>If someone with similar interests sees this work and it inspires them, or they can use something I built that saves them time, saves them money, or gives them insight–that would be the best reward that comes out of this work.</p>
+<p>I hope you’ll follow along with this journey. I’ll be keeping everything in the <a href="https://www.youtube.com/playlist?list=PLVaenshL7UUD8iFmDDUpLCcuB-K_72mwI">TinyScale Lab playlist on my YouTube</a> and will tag related posts on my blog.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>
