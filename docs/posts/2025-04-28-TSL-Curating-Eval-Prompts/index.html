@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2025-04-28">
+<meta name="description" content="Designing simple, robust, effective evals is one of the most enjoyable experiences in ML. It’s truly empowering to take something squishy like language and build structure around it to consistently track performance. In this post, I’ll walk through my process for the TinyScaleLab project, covering how I approached curating evaluation prompts, defining scoring criteria, and designing a template for an LLM Judge.">
+
+<title>Vishal Bakshi’s Blog - Curating Evaluation Prompts, Defining Scoring Criteria, and Designing an LLM Judge Prompt Template</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Vishal Bakshi’s Blog</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#recap-and-initial-approach" id="toc-recap-and-initial-approach" class="nav-link active" data-scroll-target="#recap-and-initial-approach">Recap and Initial Approach</a></li>
+  <li><a href="#one-prompt-to-score-them-all" id="toc-one-prompt-to-score-them-all" class="nav-link" data-scroll-target="#one-prompt-to-score-them-all">One Prompt to Score them All?</a></li>
+  <li><a href="#analyzing-the-44-prompts" id="toc-analyzing-the-44-prompts" class="nav-link" data-scroll-target="#analyzing-the-44-prompts">Analyzing the 44 Prompts</a></li>
+  <li><a href="#prompts-for-creativity-and-plot" id="toc-prompts-for-creativity-and-plot" class="nav-link" data-scroll-target="#prompts-for-creativity-and-plot">Prompts for Creativity and Plot</a></li>
+  <li><a href="#curating-category-specific-prompts" id="toc-curating-category-specific-prompts" class="nav-link" data-scroll-target="#curating-category-specific-prompts">Curating Category-Specific Prompts</a></li>
+  <li><a href="#current-evaluation-prompt-set" id="toc-current-evaluation-prompt-set" class="nav-link" data-scroll-target="#current-evaluation-prompt-set">Current Evaluation Prompt Set</a></li>
+  <li><a href="#scoring-category-rubrics" id="toc-scoring-category-rubrics" class="nav-link" data-scroll-target="#scoring-category-rubrics">Scoring Category Rubrics</a>
+  <ul class="collapse">
+  <li><a href="#grammar" id="toc-grammar" class="nav-link" data-scroll-target="#grammar">Grammar</a></li>
+  <li><a href="#creativity" id="toc-creativity" class="nav-link" data-scroll-target="#creativity">Creativity</a></li>
+  <li><a href="#plot" id="toc-plot" class="nav-link" data-scroll-target="#plot">Plot</a></li>
+  <li><a href="#factual-knowledge" id="toc-factual-knowledge" class="nav-link" data-scroll-target="#factual-knowledge">Factual Knowledge</a></li>
+  </ul></li>
+  <li><a href="#reasoning" id="toc-reasoning" class="nav-link" data-scroll-target="#reasoning">Reasoning</a>
+  <ul class="collapse">
+  <li><a href="#context-tracking" id="toc-context-tracking" class="nav-link" data-scroll-target="#context-tracking">Context-Tracking</a></li>
+  </ul></li>
+  <li><a href="#llm-judge-prompt-template" id="toc-llm-judge-prompt-template" class="nav-link" data-scroll-target="#llm-judge-prompt-template">LLM Judge Prompt Template</a></li>
+  <li><a href="#initial-testing" id="toc-initial-testing" class="nav-link" data-scroll-target="#initial-testing">Initial Testing</a></li>
+  <li><a href="#next-steps" id="toc-next-steps" class="nav-link" data-scroll-target="#next-steps">Next Steps</a></li>
+  <li><a href="#conclusion" id="toc-conclusion" class="nav-link" data-scroll-target="#conclusion">Conclusion</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Curating Evaluation Prompts, Defining Scoring Criteria, and Designing an LLM Judge Prompt Template</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">LLM</div>
+    <div class="quarto-category">deep learning</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    Designing simple, robust, effective evals is one of the most enjoyable experiences in ML. It’s truly empowering to take something squishy like language and build structure around it to consistently track performance. In this post, I’ll walk through my process for the TinyScaleLab project, covering how I approached curating evaluation prompts, defining scoring criteria, and designing a template for an LLM Judge.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">April 28, 2025</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="recap-and-initial-approach" class="level2">
+<h2 class="anchored" data-anchor-id="recap-and-initial-approach">Recap and Initial Approach</h2>
+<p>Initially, I planned to use the 44 evaluation prompts from the Tiny Stories dataset HuggingFace repo. These were the same prompts used in the paper to evaluate various model sizes.</p>
+<p>I also documented the target scores for evaluation based on the TinyStories’ 10-point scoring rubric for my TinyScaleLab architectures:</p>
+<table class="table">
+<colgroup>
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Similar to</th>
+<th style="text-align: center;">Hidden Dim</th>
+<th style="text-align: center;">Num Layers</th>
+<th style="text-align: center;">Eval Loss</th>
+<th style="text-align: center;">Creativity</th>
+<th style="text-align: center;">Grammar</th>
+<th style="text-align: center;">Consistency</th>
+<th style="text-align: center;">Plot</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">TSL-5M</td>
+<td style="text-align: center;">64</td>
+<td style="text-align: center;">12</td>
+<td style="text-align: center;">2.02</td>
+<td style="text-align: center;">4.84</td>
+<td style="text-align: center;">6.19</td>
+<td style="text-align: center;">4.75</td>
+<td style="text-align: center;">4.39</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">TSL-25M</td>
+<td style="text-align: center;">256</td>
+<td style="text-align: center;">8</td>
+<td style="text-align: center;">1.38</td>
+<td style="text-align: center;">6.54</td>
+<td style="text-align: center;">7.72</td>
+<td style="text-align: center;">8.02</td>
+<td style="text-align: center;">7.23</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">TSL-60M</td>
+<td style="text-align: center;">512</td>
+<td style="text-align: center;">Average of 4 and 8 scores</td>
+<td style="text-align: center;">1.23</td>
+<td style="text-align: center;">6.8</td>
+<td style="text-align: center;">8.35</td>
+<td style="text-align: center;">8.7</td>
+<td style="text-align: center;">7.31</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">TSL-125M</td>
+<td style="text-align: center;">768</td>
+<td style="text-align: center;">8</td>
+<td style="text-align: center;">1.18</td>
+<td style="text-align: center;">7.02</td>
+<td style="text-align: center;">8.62</td>
+<td style="text-align: center;">9.34</td>
+<td style="text-align: center;">7.34</td>
+</tr>
+</tbody>
+</table>
+<p>I am particularly interested in matching the scores shown in the table above, which presents results from GPT-4 evaluations of models with different hidden dimensions and layer counts.</p>
+</section>
+<section id="one-prompt-to-score-them-all" class="level2">
+<h2 class="anchored" data-anchor-id="one-prompt-to-score-them-all">One Prompt to Score them All?</h2>
+<p>The Tiny Stories paper used distinct approaches for different capabilities in Section 4.2 (“Knowledge, reasoning and context-tracking”):</p>
+<ul>
+<li><strong>Factual prompts</strong> - testing models’ knowledge of common sense facts</li>
+<li><strong>Reasoning prompts</strong> - testing basic reasoning abilities</li>
+<li><strong>Consistency (context-tracking) prompts</strong> - testing models’ ability to maintain coherence</li>
+</ul>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="1.png" class="lightbox" title="Knowledge, Reasoning and Context-Tracking Section" data-gallery="quarto-lightbox-gallery-1"><img src="1.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Knowledge, Reasoning and Context-Tracking Section</figcaption><p></p>
+</figure>
+</div>
+<p>What caught my attention was how they assessed these differently, using qualitative measures (success, failure, or partial success) rather than the numerical scores used for other categories.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="2.png" class="lightbox" title="Performance Table Example" data-gallery="quarto-lightbox-gallery-2"><img src="2.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Performance Table Example</figcaption><p></p>
+</figure>
+</div>
+</section>
+<section id="analyzing-the-44-prompts" class="level2">
+<h2 class="anchored" data-anchor-id="analyzing-the-44-prompts">Analyzing the 44 Prompts</h2>
+<p>I asked Claude to analyze the 44 prompts from the dataset repository to identify which ones were good evaluators for factual knowledge, reasoning, and context-tracking capabilities.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="3.png" class="lightbox" title="Claude Prompt Analysis" data-gallery="quarto-lightbox-gallery-3"><img src="3.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Claude Prompt Analysis</figcaption><p></p>
+</figure>
+</div>
+<p>When Claude assessed the prompts, I noticed:</p>
+<ol type="1">
+<li>Factual knowledge prompts were the most specific/easiest to isolate.</li>
+<li>Context-tracking prompts were dime a dozen (found everywhere).</li>
+<li>Reasoning was hard to isolate from context-tracking.</li>
+</ol>
+<p>This led me to an important realization: <strong>I needed to curate specific prompts for each scoring category rather than using one set for all</strong>.</p>
+</section>
+<section id="prompts-for-creativity-and-plot" class="level2">
+<h2 class="anchored" data-anchor-id="prompts-for-creativity-and-plot">Prompts for Creativity and Plot</h2>
+<p>For creativity and plot, the challenge was different. Here, I needed prompts that <strong>provided opportunities</strong> for models to exhibit these capabilities.</p>
+<p>When flagging good candidates for creativity, I looked for prompts that allowed creative responses <strong>without sacrificing consistency or plot</strong>. Not all prompts are equal in this regard.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="4.png" class="lightbox" title="Creativity Example" data-gallery="quarto-lightbox-gallery-4"><img src="4.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Creativity Example</figcaption><p></p>
+</figure>
+</div>
+<p>For plot, I sought prompts that provided strong opportunities to resolve conflict or pursue adventure—elements that test a model’s ability to construct a coherent narrative arc.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="5.png" class="lightbox" title="Plot Example" data-gallery="quarto-lightbox-gallery-5"><img src="5.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Plot Example</figcaption><p></p>
+</figure>
+</div>
+</section>
+<section id="curating-category-specific-prompts" class="level2">
+<h2 class="anchored" data-anchor-id="curating-category-specific-prompts">Curating Category-Specific Prompts</h2>
+<p>Using the factual and reasoning prompts from the paper as a foundation, I worked with Claude to generate additional prompts for each category. Here are examples for factual knowledge:</p>
+<ul>
+<li>Alice was so tired when she got back home so she went</li>
+<li>Jack and Lily saw a rain- bow after a rainy day. They were amazed by the colors. Jack said, “Look, Lily. A rainbow has</li>
+<li>Jack and Lily liked to watch the moon at night. They noticed that the moon changed its shape every night. Sometimes the moon was big and round, and sometimes it was</li>
+<li>Jack wanted to read a book, so he went to</li>
+</ul>
+<p>And reasoning prompts:</p>
+<ul>
+<li>Lily likes cats and dogs. She asked her mom for a dog and her mom said no, so instead she asked</li>
+<li>Jack told Mary, ‘If you give me your banana, I’ll give you my apple’. Mary gave Jack her banana so</li>
+<li>On weekends Jack went to visit his grandmother whereas on weekdays he would go to school. Last weekend, when Jack was on his way to</li>
+<li>Lily and Ben were having an argument. Ben said that cake is much better than ice cream and Lily said that</li>
+<li>Lily and Ben are having an argument. They are trying to decide between the park and the swimming pool. Ben says, ‘I want to go to the park’. Lily says</li>
+</ul>
+<p>I followed a similar process for plot prompts:</p>
+<ul>
+<li>Once upon a time, there lived a bunny in a field. Her name was Lucy. Lucy loved to have feasts and parties with her bunny friends. One day, when Lucy was about to leave for a feast at a friend’s house, she realized she’s starting to feel sick. She was so weak she could</li>
+<li>One day a girl walked into the living room and noticed something very strange. There was a huge cabinet standing in the corner. It looked very old and heavy. She walked over and tried to open it, when suddenly</li>
+<li>Once upon a time, there lived a hamster in the forest. Every day, he would walked around the forest looking for adventures. One day, he heard someone calling out from behind the bushes. The hamster listened carefully. He realised that it was a small mouse calling out for help. It got stuck under a heavy log and couldn’t get out. The hamster immediately realized that</li>
+<li>Alice walked into the kitchen and saw Ben who was looking for something but looked frustrated. She said, “Ben, why are you</li>
+</ul>
+<p>And creativity:</p>
+<ul>
+<li>One day a girl walked into the living room and noticed something very strange. There was a huge cabinet standing in the corner. It looked very old and heavy. She walked over and tried to open it, when suddenly</li>
+<li>Once upon a time, there was tiger who liked to play the guitar. One day, a bunny heard the guitar from a distance and</li>
+<li>One day, a bird was flying high over the sea. At some point the bird noticed small boat with a boy sitting inside. The boy looked lost so</li>
+</ul>
+<p>I used most of the original 44 prompts for context-tracking, and sampled 5 from each of the non-Grammar categories for Grammar.</p>
+</section>
+<section id="current-evaluation-prompt-set" class="level2">
+<h2 class="anchored" data-anchor-id="current-evaluation-prompt-set">Current Evaluation Prompt Set</h2>
+<p>My final evaluation set includes: - 25 unique prompts for Reasoning - 25 unique prompts for Factual Knowledge - 25 prompts each for Context-Tracking, Plot, and Creativity (with some overlap) - 25 prompts for Grammar (5 prompts sampled from the other 5 categories)</p>
+<p>This gives me a total of 150 prompts—significantly more than the original 44, but with targeted coverage of each capability.</p>
+</section>
+<section id="scoring-category-rubrics" class="level2">
+<h2 class="anchored" data-anchor-id="scoring-category-rubrics">Scoring Category Rubrics</h2>
+<p>For each scoring category, I developed specific rubrics, taking many of them wholesale from the TinyHackathon competition I recently participated in:</p>
+<section id="grammar" class="level3">
+<h3 class="anchored" data-anchor-id="grammar">Grammar</h3>
+<ul>
+<li>Dialogue formatting and punctuation</li>
+<li>Tense consistency throughout the narrative</li>
+<li>Sentence structure logic, clarity and completion</li>
+<li>Age-appropriate vocabulary usage</li>
+<li>Proper use of pronouns and referents</li>
+</ul>
+</section>
+<section id="creativity" class="level3">
+<h3 class="anchored" data-anchor-id="creativity">Creativity</h3>
+<ul>
+<li>Does the completion offer unexpected or novel elements?</li>
+<li>Are character behavioral and emotional responses predictable or innovative?</li>
+<li>Does the story rely on cliches or create fresh situations?</li>
+<li>Does the writer add unique details to the story world?</li>
+</ul>
+</section>
+<section id="plot" class="level3">
+<h3 class="anchored" data-anchor-id="plot">Plot</h3>
+<ul>
+<li>Is there a clear beginning, middle, and end appropriate to age level?</li>
+<li>Are conflicts addressed rather than abandoned?</li>
+<li>Is the pacing appropriate (not too rushed or dragging)?</li>
+<li>Does the story maintain focus on the central conflict/theme without random diversions?</li>
+</ul>
+</section>
+<section id="factual-knowledge" class="level3">
+<h3 class="anchored" data-anchor-id="factual-knowledge">Factual Knowledge</h3>
+<ul>
+<li>Completion contains only correct factual information relevant to the prompt</li>
+</ul>
+</section>
+</section>
+<section id="reasoning" class="level2">
+<h2 class="anchored" data-anchor-id="reasoning">Reasoning</h2>
+<ul>
+<li>Completion demonstrates correct logical reasoning relevant to the prompt</li>
+</ul>
+<section id="context-tracking" class="level3">
+<h3 class="anchored" data-anchor-id="context-tracking">Context-Tracking</h3>
+<ul>
+<li>Competion maintains complete coherence with prompt</li>
+<li>Correctly references/tracks all objects, characters, and their attributes</li>
+<li>Maintains consistent narrative flow</li>
+</ul>
+<p>Notice that different categories have different numbers of criteria:</p>
+<ul>
+<li>Grammar: 5 criteria</li>
+<li>Creativity: 4 criteria</li>
+<li>Plot: 4 criteria</li>
+<li>Context-tracking: 3 criteria</li>
+<li>Factual knowledge: 1 criterion</li>
+<li>Reasoning: 1 criterion</li>
+</ul>
+<p>This means raw scores aren’t directly comparable across categories, which will require normalization during analysis.</p>
+</section>
+</section>
+<section id="llm-judge-prompt-template" class="level2">
+<h2 class="anchored" data-anchor-id="llm-judge-prompt-template">LLM Judge Prompt Template</h2>
+<p>Instead of using one prompt for all categories, I created a specific judge prompt template for each category:</p>
+<pre><code>&lt;instruction-prompt id="Evaluation"&gt;
+&lt;instruction&gt;
+You are an expert evaluator for tiny language models trained on children's stories. Your task is to score the given model completion (generated using the provided prompt) using the rubric below. Provide a detailed assessment followed by a final total score.
+&lt;/instruction&gt;
+
+&lt;rubric&gt;
+&lt;criteria&gt;
+&lt;criterion id="A"&gt;&lt;/criterion&gt;
+&lt;criterion id="B"&gt;&lt;/criterion&gt;
+&lt;criterion id="C"&gt;&lt;/criterion&gt;
+&lt;criterion id="D"&gt;&lt;/criterion&gt;
+&lt;criterion id="E"&gt;&lt;/criterion&gt;
+&lt;/criteria&gt;
+
+&lt;scoring-scale&gt;
+&lt;level value="1.0"&gt;Criterion is fully satisfied&lt;/level&gt;
+&lt;level value="0.5"&gt;Criterion is partially satisfied&lt;/level&gt;
+&lt;level value="0.0"&gt;Criterion is not satisfied&lt;/level&gt;
+&lt;/scoring-scale&gt;
+
+&lt;scoring-instructions&gt;
+For each criterion A-E, assign a score of 1.0, 0.5, or 0.0 based on how well the completion satisfies that criterion. The final score is the sum of all criterion scores.
+&lt;/scoring-instructions&gt;
+&lt;/rubric&gt;
+
+&lt;generation-prompt&gt;
+{prompt}
+&lt;/generation-prompt&gt;
+
+&lt;completion&gt;
+{completion}
+&lt;/completion&gt;
+
+&lt;response-format&gt;
+Provide your assessment of each criterion with specific examples from the text, then calculate the final score (sum of all criterion scores).
+
+Format your response as:
+&lt;evaluation&gt;
+&lt;criterion-A-score&gt;[0.0, 0.5, or 1.0]&lt;/criterion-A-score&gt;
+&lt;criterion-A-explanation&gt;Your explanation here&lt;/criterion-A-explanation&gt;
+
+&lt;criterion-B-score&gt;[0.0, 0.5, or 1.0]&lt;/criterion-B-score&gt;
+&lt;criterion-B-explanation&gt;Your explanation here&lt;/criterion-B-explanation&gt;
+
+&lt;criterion-C-score&gt;[0.0, 0.5, or 1.0]&lt;/criterion-C-score&gt;
+&lt;criterion-C-explanation&gt;Your explanation here&lt;/criterion-C-explanation&gt;
+
+&lt;criterion-D-score&gt;[0.0, 0.5, or 1.0]&lt;/criterion-D-score&gt;
+&lt;criterion-D-explanation&gt;Your explanation here&lt;/criterion-D-explanation&gt;
+
+&lt;criterion-E-score&gt;[0.0, 0.5, or 1.0]&lt;/criterion-E-score&gt;
+&lt;criterion-E-explanation&gt;Your explanation here&lt;/criterion-E-explanation&gt;
+
+&lt;final-score&gt;[Sum of all criterion scores, between #.# and #.#]&lt;/final-score&gt;
+&lt;/evaluation&gt;
+&lt;/response-format&gt;
+&lt;/instruction-prompt&gt;</code></pre>
+<p>The template includes:</p>
+<ul>
+<li>Instructions for the judge</li>
+<li>Criteria specific to the category being evaluated</li>
+<li>Scoring scale (0, 0.5, 1.0)</li>
+<li>Scoring instructions</li>
+<li>Response format</li>
+</ul>
+</section>
+<section id="initial-testing" class="level2">
+<h2 class="anchored" data-anchor-id="initial-testing">Initial Testing</h2>
+<p>I tested the approach with Claude Haiku 3.5, and the results were promising. When evaluating grammar, it gave a weaker model a score of 3.5/5. When I gave it a larger model’s completion, it scored it 5/5. This suggests the approach can successfully differentiate between model capabilities.</p>
+</section>
+<section id="next-steps" class="level2">
+<h2 class="anchored" data-anchor-id="next-steps">Next Steps</h2>
+<p>My immediate next steps are:</p>
+<ol type="1">
+<li>Generate 150 completions, one for each the 150 prompts, per TinyStories model (1M, 8M, 28M).</li>
+<li>Build an evaluation interface to help grade model responses using FastHTML.</li>
+<li>Score all completions using the 0/0.5/1.0 methodology.</li>
+<li>Compare results with the targets from the Tiny Stories paper.</li>
+<li>Refine scoring rubric if needed.</li>
+</ol>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="6.png" class="lightbox" title="Evaluation Interface Mockup" data-gallery="quarto-lightbox-gallery-6"><img src="6.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Evaluation Interface Mockup</figcaption><p></p>
+</figure>
+</div>
+<p>I expect this to take several days as generating completions, building the interface, and evaluating 450 prompts (150 for each of three models) is no small task! Thankfully, it’s terribly large either.</p>
+</section>
+<section id="conclusion" class="level2">
+<h2 class="anchored" data-anchor-id="conclusion">Conclusion</h2>
+<p>The journey from a simple plan to use 44 prompts to a comprehensive evaluation approach with 150 category-specific prompts shows how even “squishy” concepts like language can be systematically evaluated with the right structure.</p>
+<p>By distinguishing between capabilities that need to be isolated (factual knowledge, reasoning, context-tracking) and those that need opportunities to be exhibited (creativity and plot), I’ve created what I believe is a robust evaluation methodology. Obviously, time, very quickly and definitely, will tell.</p>
+<p>I’m excited to see if this approach gives me scores comparable to those in the Tiny Stories paper. Stay tuned for the results!</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<script>var lightboxQuarto = GLightbox({"openEffect":"zoom","selector":".lightbox","closeEffect":"zoom","descPosition":"bottom","loop":true});</script>
+
+
+
+</body></html>

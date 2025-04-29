@@ -10,7 +10,350 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.2.335</generator>
-<lastBuildDate>Sun, 27 Apr 2025 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Mon, 28 Apr 2025 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>Curating Evaluation Prompts, Defining Scoring Criteria, and Designing an LLM Judge Prompt Template</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-04-28-TSL-Curating-Eval-Prompts/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<section id="recap-and-initial-approach" class="level2">
+<h2 class="anchored" data-anchor-id="recap-and-initial-approach">Recap and Initial Approach</h2>
+<p>Initially, I planned to use the 44 evaluation prompts from the Tiny Stories dataset HuggingFace repo. These were the same prompts used in the paper to evaluate various model sizes.</p>
+<p>I also documented the target scores for evaluation based on the TinyStories’ 10-point scoring rubric for my TinyScaleLab architectures:</p>
+<table class="table">
+<colgroup>
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Similar to</th>
+<th style="text-align: center;">Hidden Dim</th>
+<th style="text-align: center;">Num Layers</th>
+<th style="text-align: center;">Eval Loss</th>
+<th style="text-align: center;">Creativity</th>
+<th style="text-align: center;">Grammar</th>
+<th style="text-align: center;">Consistency</th>
+<th style="text-align: center;">Plot</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">TSL-5M</td>
+<td style="text-align: center;">64</td>
+<td style="text-align: center;">12</td>
+<td style="text-align: center;">2.02</td>
+<td style="text-align: center;">4.84</td>
+<td style="text-align: center;">6.19</td>
+<td style="text-align: center;">4.75</td>
+<td style="text-align: center;">4.39</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">TSL-25M</td>
+<td style="text-align: center;">256</td>
+<td style="text-align: center;">8</td>
+<td style="text-align: center;">1.38</td>
+<td style="text-align: center;">6.54</td>
+<td style="text-align: center;">7.72</td>
+<td style="text-align: center;">8.02</td>
+<td style="text-align: center;">7.23</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">TSL-60M</td>
+<td style="text-align: center;">512</td>
+<td style="text-align: center;">Average of 4 and 8 scores</td>
+<td style="text-align: center;">1.23</td>
+<td style="text-align: center;">6.8</td>
+<td style="text-align: center;">8.35</td>
+<td style="text-align: center;">8.7</td>
+<td style="text-align: center;">7.31</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">TSL-125M</td>
+<td style="text-align: center;">768</td>
+<td style="text-align: center;">8</td>
+<td style="text-align: center;">1.18</td>
+<td style="text-align: center;">7.02</td>
+<td style="text-align: center;">8.62</td>
+<td style="text-align: center;">9.34</td>
+<td style="text-align: center;">7.34</td>
+</tr>
+</tbody>
+</table>
+<p>I am particularly interested in matching the scores shown in the table above, which presents results from GPT-4 evaluations of models with different hidden dimensions and layer counts.</p>
+</section>
+<section id="one-prompt-to-score-them-all" class="level2">
+<h2 class="anchored" data-anchor-id="one-prompt-to-score-them-all">One Prompt to Score them All?</h2>
+<p>The Tiny Stories paper used distinct approaches for different capabilities in Section 4.2 (“Knowledge, reasoning and context-tracking”):</p>
+<ul>
+<li><strong>Factual prompts</strong> - testing models’ knowledge of common sense facts</li>
+<li><strong>Reasoning prompts</strong> - testing basic reasoning abilities</li>
+<li><strong>Consistency (context-tracking) prompts</strong> - testing models’ ability to maintain coherence</li>
+</ul>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="1.png" class="lightbox" title="Knowledge, Reasoning and Context-Tracking Section" data-gallery="quarto-lightbox-gallery-1"><img src="https://vishalbakshi.github.io/blog/posts/2025-04-28-TSL-Curating-Eval-Prompts/1.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Knowledge, Reasoning and Context-Tracking Section</figcaption><p></p>
+</figure>
+</div>
+<p>What caught my attention was how they assessed these differently, using qualitative measures (success, failure, or partial success) rather than the numerical scores used for other categories.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="2.png" class="lightbox" title="Performance Table Example" data-gallery="quarto-lightbox-gallery-2"><img src="https://vishalbakshi.github.io/blog/posts/2025-04-28-TSL-Curating-Eval-Prompts/2.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Performance Table Example</figcaption><p></p>
+</figure>
+</div>
+</section>
+<section id="analyzing-the-44-prompts" class="level2">
+<h2 class="anchored" data-anchor-id="analyzing-the-44-prompts">Analyzing the 44 Prompts</h2>
+<p>I asked Claude to analyze the 44 prompts from the dataset repository to identify which ones were good evaluators for factual knowledge, reasoning, and context-tracking capabilities.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="3.png" class="lightbox" title="Claude Prompt Analysis" data-gallery="quarto-lightbox-gallery-3"><img src="https://vishalbakshi.github.io/blog/posts/2025-04-28-TSL-Curating-Eval-Prompts/3.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Claude Prompt Analysis</figcaption><p></p>
+</figure>
+</div>
+<p>When Claude assessed the prompts, I noticed:</p>
+<ol type="1">
+<li>Factual knowledge prompts were the most specific/easiest to isolate.</li>
+<li>Context-tracking prompts were dime a dozen (found everywhere).</li>
+<li>Reasoning was hard to isolate from context-tracking.</li>
+</ol>
+<p>This led me to an important realization: <strong>I needed to curate specific prompts for each scoring category rather than using one set for all</strong>.</p>
+</section>
+<section id="prompts-for-creativity-and-plot" class="level2">
+<h2 class="anchored" data-anchor-id="prompts-for-creativity-and-plot">Prompts for Creativity and Plot</h2>
+<p>For creativity and plot, the challenge was different. Here, I needed prompts that <strong>provided opportunities</strong> for models to exhibit these capabilities.</p>
+<p>When flagging good candidates for creativity, I looked for prompts that allowed creative responses <strong>without sacrificing consistency or plot</strong>. Not all prompts are equal in this regard.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="4.png" class="lightbox" title="Creativity Example" data-gallery="quarto-lightbox-gallery-4"><img src="https://vishalbakshi.github.io/blog/posts/2025-04-28-TSL-Curating-Eval-Prompts/4.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Creativity Example</figcaption><p></p>
+</figure>
+</div>
+<p>For plot, I sought prompts that provided strong opportunities to resolve conflict or pursue adventure—elements that test a model’s ability to construct a coherent narrative arc.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="5.png" class="lightbox" title="Plot Example" data-gallery="quarto-lightbox-gallery-5"><img src="https://vishalbakshi.github.io/blog/posts/2025-04-28-TSL-Curating-Eval-Prompts/5.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Plot Example</figcaption><p></p>
+</figure>
+</div>
+</section>
+<section id="curating-category-specific-prompts" class="level2">
+<h2 class="anchored" data-anchor-id="curating-category-specific-prompts">Curating Category-Specific Prompts</h2>
+<p>Using the factual and reasoning prompts from the paper as a foundation, I worked with Claude to generate additional prompts for each category. Here are examples for factual knowledge:</p>
+<ul>
+<li>Alice was so tired when she got back home so she went</li>
+<li>Jack and Lily saw a rain- bow after a rainy day. They were amazed by the colors. Jack said, “Look, Lily. A rainbow has</li>
+<li>Jack and Lily liked to watch the moon at night. They noticed that the moon changed its shape every night. Sometimes the moon was big and round, and sometimes it was</li>
+<li>Jack wanted to read a book, so he went to</li>
+</ul>
+<p>And reasoning prompts:</p>
+<ul>
+<li>Lily likes cats and dogs. She asked her mom for a dog and her mom said no, so instead she asked</li>
+<li>Jack told Mary, ‘If you give me your banana, I’ll give you my apple’. Mary gave Jack her banana so</li>
+<li>On weekends Jack went to visit his grandmother whereas on weekdays he would go to school. Last weekend, when Jack was on his way to</li>
+<li>Lily and Ben were having an argument. Ben said that cake is much better than ice cream and Lily said that</li>
+<li>Lily and Ben are having an argument. They are trying to decide between the park and the swimming pool. Ben says, ‘I want to go to the park’. Lily says</li>
+</ul>
+<p>I followed a similar process for plot prompts:</p>
+<ul>
+<li>Once upon a time, there lived a bunny in a field. Her name was Lucy. Lucy loved to have feasts and parties with her bunny friends. One day, when Lucy was about to leave for a feast at a friend’s house, she realized she’s starting to feel sick. She was so weak she could</li>
+<li>One day a girl walked into the living room and noticed something very strange. There was a huge cabinet standing in the corner. It looked very old and heavy. She walked over and tried to open it, when suddenly</li>
+<li>Once upon a time, there lived a hamster in the forest. Every day, he would walked around the forest looking for adventures. One day, he heard someone calling out from behind the bushes. The hamster listened carefully. He realised that it was a small mouse calling out for help. It got stuck under a heavy log and couldn’t get out. The hamster immediately realized that</li>
+<li>Alice walked into the kitchen and saw Ben who was looking for something but looked frustrated. She said, “Ben, why are you</li>
+</ul>
+<p>And creativity:</p>
+<ul>
+<li>One day a girl walked into the living room and noticed something very strange. There was a huge cabinet standing in the corner. It looked very old and heavy. She walked over and tried to open it, when suddenly</li>
+<li>Once upon a time, there was tiger who liked to play the guitar. One day, a bunny heard the guitar from a distance and</li>
+<li>One day, a bird was flying high over the sea. At some point the bird noticed small boat with a boy sitting inside. The boy looked lost so</li>
+</ul>
+<p>I used most of the original 44 prompts for context-tracking, and sampled 5 from each of the non-Grammar categories for Grammar.</p>
+</section>
+<section id="current-evaluation-prompt-set" class="level2">
+<h2 class="anchored" data-anchor-id="current-evaluation-prompt-set">Current Evaluation Prompt Set</h2>
+<p>My final evaluation set includes: - 25 unique prompts for Reasoning - 25 unique prompts for Factual Knowledge - 25 prompts each for Context-Tracking, Plot, and Creativity (with some overlap) - 25 prompts for Grammar (5 prompts sampled from the other 5 categories)</p>
+<p>This gives me a total of 150 prompts—significantly more than the original 44, but with targeted coverage of each capability.</p>
+</section>
+<section id="scoring-category-rubrics" class="level2">
+<h2 class="anchored" data-anchor-id="scoring-category-rubrics">Scoring Category Rubrics</h2>
+<p>For each scoring category, I developed specific rubrics, taking many of them wholesale from the TinyHackathon competition I recently participated in:</p>
+<section id="grammar" class="level3">
+<h3 class="anchored" data-anchor-id="grammar">Grammar</h3>
+<ul>
+<li>Dialogue formatting and punctuation</li>
+<li>Tense consistency throughout the narrative</li>
+<li>Sentence structure logic, clarity and completion</li>
+<li>Age-appropriate vocabulary usage</li>
+<li>Proper use of pronouns and referents</li>
+</ul>
+</section>
+<section id="creativity" class="level3">
+<h3 class="anchored" data-anchor-id="creativity">Creativity</h3>
+<ul>
+<li>Does the completion offer unexpected or novel elements?</li>
+<li>Are character behavioral and emotional responses predictable or innovative?</li>
+<li>Does the story rely on cliches or create fresh situations?</li>
+<li>Does the writer add unique details to the story world?</li>
+</ul>
+</section>
+<section id="plot" class="level3">
+<h3 class="anchored" data-anchor-id="plot">Plot</h3>
+<ul>
+<li>Is there a clear beginning, middle, and end appropriate to age level?</li>
+<li>Are conflicts addressed rather than abandoned?</li>
+<li>Is the pacing appropriate (not too rushed or dragging)?</li>
+<li>Does the story maintain focus on the central conflict/theme without random diversions?</li>
+</ul>
+</section>
+<section id="factual-knowledge" class="level3">
+<h3 class="anchored" data-anchor-id="factual-knowledge">Factual Knowledge</h3>
+<ul>
+<li>Completion contains only correct factual information relevant to the prompt</li>
+</ul>
+</section>
+</section>
+<section id="reasoning" class="level2">
+<h2 class="anchored" data-anchor-id="reasoning">Reasoning</h2>
+<ul>
+<li>Completion demonstrates correct logical reasoning relevant to the prompt</li>
+</ul>
+<section id="context-tracking" class="level3">
+<h3 class="anchored" data-anchor-id="context-tracking">Context-Tracking</h3>
+<ul>
+<li>Competion maintains complete coherence with prompt</li>
+<li>Correctly references/tracks all objects, characters, and their attributes</li>
+<li>Maintains consistent narrative flow</li>
+</ul>
+<p>Notice that different categories have different numbers of criteria:</p>
+<ul>
+<li>Grammar: 5 criteria</li>
+<li>Creativity: 4 criteria</li>
+<li>Plot: 4 criteria</li>
+<li>Context-tracking: 3 criteria</li>
+<li>Factual knowledge: 1 criterion</li>
+<li>Reasoning: 1 criterion</li>
+</ul>
+<p>This means raw scores aren’t directly comparable across categories, which will require normalization during analysis.</p>
+</section>
+</section>
+<section id="llm-judge-prompt-template" class="level2">
+<h2 class="anchored" data-anchor-id="llm-judge-prompt-template">LLM Judge Prompt Template</h2>
+<p>Instead of using one prompt for all categories, I created a specific judge prompt template for each category:</p>
+<pre><code>&lt;instruction-prompt id="Evaluation"&gt;
+&lt;instruction&gt;
+You are an expert evaluator for tiny language models trained on children's stories. Your task is to score the given model completion (generated using the provided prompt) using the rubric below. Provide a detailed assessment followed by a final total score.
+&lt;/instruction&gt;
+
+&lt;rubric&gt;
+&lt;criteria&gt;
+&lt;criterion id="A"&gt;&lt;/criterion&gt;
+&lt;criterion id="B"&gt;&lt;/criterion&gt;
+&lt;criterion id="C"&gt;&lt;/criterion&gt;
+&lt;criterion id="D"&gt;&lt;/criterion&gt;
+&lt;criterion id="E"&gt;&lt;/criterion&gt;
+&lt;/criteria&gt;
+
+&lt;scoring-scale&gt;
+&lt;level value="1.0"&gt;Criterion is fully satisfied&lt;/level&gt;
+&lt;level value="0.5"&gt;Criterion is partially satisfied&lt;/level&gt;
+&lt;level value="0.0"&gt;Criterion is not satisfied&lt;/level&gt;
+&lt;/scoring-scale&gt;
+
+&lt;scoring-instructions&gt;
+For each criterion A-E, assign a score of 1.0, 0.5, or 0.0 based on how well the completion satisfies that criterion. The final score is the sum of all criterion scores.
+&lt;/scoring-instructions&gt;
+&lt;/rubric&gt;
+
+&lt;generation-prompt&gt;
+{prompt}
+&lt;/generation-prompt&gt;
+
+&lt;completion&gt;
+{completion}
+&lt;/completion&gt;
+
+&lt;response-format&gt;
+Provide your assessment of each criterion with specific examples from the text, then calculate the final score (sum of all criterion scores).
+
+Format your response as:
+&lt;evaluation&gt;
+&lt;criterion-A-score&gt;[0.0, 0.5, or 1.0]&lt;/criterion-A-score&gt;
+&lt;criterion-A-explanation&gt;Your explanation here&lt;/criterion-A-explanation&gt;
+
+&lt;criterion-B-score&gt;[0.0, 0.5, or 1.0]&lt;/criterion-B-score&gt;
+&lt;criterion-B-explanation&gt;Your explanation here&lt;/criterion-B-explanation&gt;
+
+&lt;criterion-C-score&gt;[0.0, 0.5, or 1.0]&lt;/criterion-C-score&gt;
+&lt;criterion-C-explanation&gt;Your explanation here&lt;/criterion-C-explanation&gt;
+
+&lt;criterion-D-score&gt;[0.0, 0.5, or 1.0]&lt;/criterion-D-score&gt;
+&lt;criterion-D-explanation&gt;Your explanation here&lt;/criterion-D-explanation&gt;
+
+&lt;criterion-E-score&gt;[0.0, 0.5, or 1.0]&lt;/criterion-E-score&gt;
+&lt;criterion-E-explanation&gt;Your explanation here&lt;/criterion-E-explanation&gt;
+
+&lt;final-score&gt;[Sum of all criterion scores, between #.# and #.#]&lt;/final-score&gt;
+&lt;/evaluation&gt;
+&lt;/response-format&gt;
+&lt;/instruction-prompt&gt;</code></pre>
+<p>The template includes:</p>
+<ul>
+<li>Instructions for the judge</li>
+<li>Criteria specific to the category being evaluated</li>
+<li>Scoring scale (0, 0.5, 1.0)</li>
+<li>Scoring instructions</li>
+<li>Response format</li>
+</ul>
+</section>
+<section id="initial-testing" class="level2">
+<h2 class="anchored" data-anchor-id="initial-testing">Initial Testing</h2>
+<p>I tested the approach with Claude Haiku 3.5, and the results were promising. When evaluating grammar, it gave a weaker model a score of 3.5/5. When I gave it a larger model’s completion, it scored it 5/5. This suggests the approach can successfully differentiate between model capabilities.</p>
+</section>
+<section id="next-steps" class="level2">
+<h2 class="anchored" data-anchor-id="next-steps">Next Steps</h2>
+<p>My immediate next steps are:</p>
+<ol type="1">
+<li>Generate 150 completions, one for each the 150 prompts, per TinyStories model (1M, 8M, 28M).</li>
+<li>Build an evaluation interface to help grade model responses using FastHTML.</li>
+<li>Score all completions using the 0/0.5/1.0 methodology.</li>
+<li>Compare results with the targets from the Tiny Stories paper.</li>
+<li>Refine scoring rubric if needed.</li>
+</ol>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="6.png" class="lightbox" title="Evaluation Interface Mockup" data-gallery="quarto-lightbox-gallery-6"><img src="https://vishalbakshi.github.io/blog/posts/2025-04-28-TSL-Curating-Eval-Prompts/6.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Evaluation Interface Mockup</figcaption><p></p>
+</figure>
+</div>
+<p>I expect this to take several days as generating completions, building the interface, and evaluating 450 prompts (150 for each of three models) is no small task! Thankfully, it’s terribly large either.</p>
+</section>
+<section id="conclusion" class="level2">
+<h2 class="anchored" data-anchor-id="conclusion">Conclusion</h2>
+<p>The journey from a simple plan to use 44 prompts to a comprehensive evaluation approach with 150 category-specific prompts shows how even “squishy” concepts like language can be systematically evaluated with the right structure.</p>
+<p>By distinguishing between capabilities that need to be isolated (factual knowledge, reasoning, context-tracking) and those that need opportunities to be exhibited (creativity and plot), I’ve created what I believe is a robust evaluation methodology. Obviously, time, very quickly and definitely, will tell.</p>
+<p>I’m excited to see if this approach gives me scores comparable to those in the Tiny Stories paper. Stay tuned for the results!</p>
+
+
+</section>
+
+ ]]></description>
+  <category>LLM</category>
+  <category>deep learning</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-04-28-TSL-Curating-Eval-Prompts/index.html</guid>
+  <pubDate>Mon, 28 Apr 2025 07:00:00 GMT</pubDate>
+  <media:content url="https://vishalbakshi.github.io/blog/posts/2025-04-28-TSL-Curating-Eval-Prompts/1.png" medium="image" type="image/png" height="46" width="144"/>
+</item>
 <item>
   <title>TinyScale Lab Update: Training Cost Analysis and Evaluation Infrastructure Plans</title>
   <dc:creator>Vishal Bakshi</dc:creator>
@@ -14996,561 +15339,6 @@ Retrieval complete.</code></pre>
   <guid>https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/index.html</guid>
   <pubDate>Wed, 20 Nov 2024 08:00:00 GMT</pubDate>
   <media:content url="https://vishalbakshi.github.io/blog/posts/2024-11-20-negative-prompting/t_factor_18.gif" medium="image" type="image/gif"/>
-</item>
-<item>
-  <title>Exploring Cosine Similarity in Stable Diffusion’s Latent Space</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2024-11-19-diffusion-cosine-similarity/index.html</link>
-  <description><![CDATA[ 
-
-
-
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:12:32.655053Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:12:32.654499Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:13:33.272143Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:13:33.271300Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:12:32.654986Z&quot;}">
-<details>
-<summary>Show setup code</summary>
-<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="op" style="color: #5E5E5E;">!</span>pip install <span class="op" style="color: #5E5E5E;">-</span>qq diffusers transformers<span class="op" style="color: #5E5E5E;">==</span><span class="fl" style="color: #AD0000;">4.46.2</span></span>
-<span id="cb1-2"><span class="op" style="color: #5E5E5E;">!</span>pip install <span class="op" style="color: #5E5E5E;">-</span>qq pillow<span class="op" style="color: #5E5E5E;">==</span><span class="fl" style="color: #AD0000;">11.0.0</span></span>
-<span id="cb1-3"></span>
-<span id="cb1-4"><span class="im" style="color: #00769E;">from</span> diffusers <span class="im" style="color: #00769E;">import</span> LMSDiscreteScheduler, AutoencoderKL, UNet2DConditionModel, StableDiffusionPipeline</span>
-<span id="cb1-5"><span class="im" style="color: #00769E;">from</span> transformers <span class="im" style="color: #00769E;">import</span> CLIPTextModel, CLIPTokenizer</span>
-<span id="cb1-6"><span class="im" style="color: #00769E;">from</span> PIL <span class="im" style="color: #00769E;">import</span> Image</span>
-<span id="cb1-7"><span class="im" style="color: #00769E;">from</span> tqdm.auto <span class="im" style="color: #00769E;">import</span> tqdm</span>
-<span id="cb1-8"><span class="im" style="color: #00769E;">from</span> IPython.display <span class="im" style="color: #00769E;">import</span> display</span>
-<span id="cb1-9"><span class="im" style="color: #00769E;">import</span> matplotlib.pyplot <span class="im" style="color: #00769E;">as</span> plt</span>
-<span id="cb1-10"><span class="im" style="color: #00769E;">import</span> pandas <span class="im" style="color: #00769E;">as</span> pd</span>
-<span id="cb1-11"><span class="im" style="color: #00769E;">import</span> torch, math</span>
-<span id="cb1-12"></span>
-<span id="cb1-13">tokenizer <span class="op" style="color: #5E5E5E;">=</span> CLIPTokenizer.from_pretrained(<span class="st" style="color: #20794D;">"openai/clip-vit-large-patch14"</span>, torch_dtype<span class="op" style="color: #5E5E5E;">=</span>torch.float16)</span>
-<span id="cb1-14">text_encoder <span class="op" style="color: #5E5E5E;">=</span> CLIPTextModel.from_pretrained(<span class="st" style="color: #20794D;">"openai/clip-vit-large-patch14"</span>, torch_dtype<span class="op" style="color: #5E5E5E;">=</span>torch.float16).to(<span class="st" style="color: #20794D;">"cuda"</span>)</span>
-<span id="cb1-15">vae <span class="op" style="color: #5E5E5E;">=</span> AutoencoderKL.from_pretrained(<span class="st" style="color: #20794D;">"stabilityai/sd-vae-ft-ema"</span>, torch_dtype<span class="op" style="color: #5E5E5E;">=</span>torch.float16).to(<span class="st" style="color: #20794D;">"cuda"</span>)</span>
-<span id="cb1-16">unet <span class="op" style="color: #5E5E5E;">=</span> UNet2DConditionModel.from_pretrained(<span class="st" style="color: #20794D;">"CompVis/stable-diffusion-v1-4"</span>, subfolder<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"unet"</span>, torch_dtype<span class="op" style="color: #5E5E5E;">=</span>torch.float16).to(<span class="st" style="color: #20794D;">"cuda"</span>)</span>
-<span id="cb1-17"></span>
-<span id="cb1-18">beta_start,beta_end <span class="op" style="color: #5E5E5E;">=</span> <span class="fl" style="color: #AD0000;">0.00085</span>,<span class="fl" style="color: #AD0000;">0.012</span></span>
-<span id="cb1-19">scheduler <span class="op" style="color: #5E5E5E;">=</span> LMSDiscreteScheduler(beta_start<span class="op" style="color: #5E5E5E;">=</span>beta_start, beta_end<span class="op" style="color: #5E5E5E;">=</span>beta_end, beta_schedule<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"scaled_linear"</span>, num_train_timesteps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1000</span>)</span>
-<span id="cb1-20"></span>
-<span id="cb1-21">height <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">512</span></span>
-<span id="cb1-22">width <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">512</span></span>
-<span id="cb1-23">num_inference_steps <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">70</span></span>
-<span id="cb1-24">guidance_scale <span class="op" style="color: #5E5E5E;">=</span> <span class="fl" style="color: #AD0000;">7.5</span></span>
-<span id="cb1-25">batch_size <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">1</span></span></code></pre></div>
-</details>
-</div>
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<p>In this notebook, I’ll explore the question: how different are UNet predictions (in latent space) for the conditioned and unconditioned (empty) prompts? The code used in this notebook comes from the <a href="https://github.com/fastai/diffusion-nbs/blob/master/stable_diffusion.ipynb">“Stable Diffusion with Diffusers”</a> from part 2 of the fastai course.</p>
-</section>
-<section id="generating-images" class="level2">
-<h2 class="anchored" data-anchor-id="generating-images">Generating Images</h2>
-<p>I’ll start by running the code below to generate an image using stable diffusion:</p>
-<ul>
-<li><code>text_enc</code> tokenizes the given prompt and converts it to text embeddings using the <code>text_encoder</code>(“openai/clip-vit-large-patch14”).</li>
-<li><code>mk_img</code> converts a Tensor to a PIL Image.</li>
-<li><code>mk_samples</code> takes the prompt, guidance scale, seed, and number of inference steps to run the diffusion loop and generate a image using the <code>scheduler</code> (<code>LMSDiscreteScheduler</code>), UNet (<code>"CompVis/stable-diffusion-v1-4"</code>) and VAE (<code>"stabilityai/sd-vae-ft-ema"</code>).</li>
-</ul>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:20:33.918929Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:20:33.918110Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:20:33.923266Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:20:33.922680Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:20:33.918904Z&quot;}" data-execution_count="2">
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="kw" style="color: #003B4F;">def</span> text_enc(prompts, maxlen<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">None</span>):</span>
-<span id="cb2-2">    <span class="cf" style="color: #003B4F;">if</span> maxlen <span class="kw" style="color: #003B4F;">is</span> <span class="va" style="color: #111111;">None</span>: maxlen <span class="op" style="color: #5E5E5E;">=</span> tokenizer.model_max_length</span>
-<span id="cb2-3">    inp <span class="op" style="color: #5E5E5E;">=</span> tokenizer(prompts, padding<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"max_length"</span>, max_length<span class="op" style="color: #5E5E5E;">=</span>maxlen, truncation<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>, return_tensors<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"pt"</span>)</span>
-<span id="cb2-4">    <span class="cf" style="color: #003B4F;">return</span> text_encoder(inp.input_ids.to(<span class="st" style="color: #20794D;">"cuda"</span>))[<span class="dv" style="color: #AD0000;">0</span>].half()</span>
-<span id="cb2-5"></span>
-<span id="cb2-6"><span class="kw" style="color: #003B4F;">def</span> mk_img(t):</span>
-<span id="cb2-7">    image <span class="op" style="color: #5E5E5E;">=</span> (t<span class="op" style="color: #5E5E5E;">/</span><span class="dv" style="color: #AD0000;">2</span><span class="op" style="color: #5E5E5E;">+</span><span class="fl" style="color: #AD0000;">0.5</span>).clamp(<span class="dv" style="color: #AD0000;">0</span>,<span class="dv" style="color: #AD0000;">1</span>).detach().cpu().permute(<span class="dv" style="color: #AD0000;">1</span>, <span class="dv" style="color: #AD0000;">2</span>, <span class="dv" style="color: #AD0000;">0</span>).numpy()</span>
-<span id="cb2-8">    <span class="cf" style="color: #003B4F;">return</span> Image.fromarray((image<span class="op" style="color: #5E5E5E;">*</span><span class="dv" style="color: #AD0000;">255</span>).<span class="bu" style="color: null;">round</span>().astype(<span class="st" style="color: #20794D;">"uint8"</span>))</span></code></pre></div>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:20:35.090161Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:20:35.089669Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:20:35.161702Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:20:35.161085Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:20:35.090140Z&quot;}" data-execution_count="3">
-<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="kw" style="color: #003B4F;">def</span> mk_samples(prompts, g<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">7.5</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">100</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>):</span>
-<span id="cb3-2">    bs <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(prompts)</span>
-<span id="cb3-3">    text <span class="op" style="color: #5E5E5E;">=</span> text_enc(prompts)</span>
-<span id="cb3-4">    uncond <span class="op" style="color: #5E5E5E;">=</span> text_enc([<span class="st" style="color: #20794D;">""</span>] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
-<span id="cb3-5">    emb <span class="op" style="color: #5E5E5E;">=</span> torch.cat([uncond, text])</span>
-<span id="cb3-6">    <span class="cf" style="color: #003B4F;">if</span> seed: torch.manual_seed(seed)</span>
-<span id="cb3-7"></span>
-<span id="cb3-8">    latents <span class="op" style="color: #5E5E5E;">=</span> torch.randn((bs, unet.in_channels, height<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>, width<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>))</span>
-<span id="cb3-9">    scheduler.set_timesteps(steps)</span>
-<span id="cb3-10">    latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(<span class="st" style="color: #20794D;">"cuda"</span>).half() <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">15</span></span>
-<span id="cb3-11"></span>
-<span id="cb3-12">    <span class="cf" style="color: #003B4F;">for</span> i,ts <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">enumerate</span>(tqdm(scheduler.timesteps)):</span>
-<span id="cb3-13">        inp <span class="op" style="color: #5E5E5E;">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">2</span>), ts)</span>
-<span id="cb3-14">        <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): u,t <span class="op" style="color: #5E5E5E;">=</span> unet(inp, ts, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>emb).sample.chunk(<span class="dv" style="color: #AD0000;">2</span>)</span>
-<span id="cb3-15">        pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u)</span>
-<span id="cb3-16">        latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
-<span id="cb3-17"></span>
-<span id="cb3-18">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): <span class="cf" style="color: #003B4F;">return</span> vae.decode(<span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="fl" style="color: #AD0000;">0.18215</span> <span class="op" style="color: #5E5E5E;">*</span> latents).sample</span></code></pre></div>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:21:14.748393Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:21:14.747871Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:21:31.511294Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:21:31.510669Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:21:14.748372Z&quot;}" data-execution_count="4">
-<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [</span>
-<span id="cb4-2">    <span class="st" style="color: #20794D;">'a photograph of an astronaut riding a horse'</span>,</span>
-<span id="cb4-3">    <span class="st" style="color: #20794D;">'an oil painting of an astronaut riding a horse in the style of grant wood'</span></span>
-<span id="cb4-4">]</span>
-<span id="cb4-5"></span>
-<span id="cb4-6">images <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts)</span>
-<span id="cb4-7"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>/tmp/ipykernel_34/2926544816.py:8: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
-  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"d2512caa5d4d487492325fd186bb4ee7","version_major":2,"version_minor":0}
-</script>
-</div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-5-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-19-diffusion-cosine-similarity/index_files/figure-html/cell-5-output-3.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-5-output-4.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-19-diffusion-cosine-similarity/index_files/figure-html/cell-5-output-4.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<p>The two images are generated as expected!</p>
-</section>
-<section id="classifier-free-guidance" class="level2">
-<h2 class="anchored" data-anchor-id="classifier-free-guidance">Classifier-Free Guidance</h2>
-<p>The lines of code I’m most interested in for this notebook are:</p>
-<div class="sourceCode" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): u,t <span class="op" style="color: #5E5E5E;">=</span> unet(inp, ts, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>emb).sample.chunk(<span class="dv" style="color: #AD0000;">2</span>)</span>
-<span id="cb6-2">pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u)</span></code></pre></div>
-<p>In the first line, the <code>unet</code> takes the noisy input latents <code>inp</code>, timestep <code>ts</code> and text embeddings <code>emb</code> to predict the noise in the noisy latent. In the second line, the “final” prediction is taken as <code>u + g*(t-u)</code> where <code>t</code> and <code>u</code> are both predictions form the same UNet:</p>
-<ul>
-<li><code>u</code> is the predicted noise corresponding to the unconditioned prompt (<code>""</code>).</li>
-<li><code>t</code> is the predicted noise corresponding to the conditioned prompt (e.g., <code>'a photograph of an astronaut riding a horse'</code>),</li>
-<li><code>g</code> is the <em>guidance scale</em> which is the amount we want to weight the prediction towards <code>t</code> and away from <code>u</code>.</li>
-</ul>
-<p>Expanding this equation we get: <code>pred = u + gt - gu = gt - (g-1)u</code>. We amplify <code>t</code> by <code>g</code> and then subtract <code>(g-1)</code> times <code>u</code>. Conceptually, we are moving away from the empty prompt and toward the desired prompt. My understanding of why we need <code>u</code> is that we need a baseline or reference point to which we compare <code>t</code> so that we can guide the generation process to learn specific features of <code>t</code> in comparison to general noisy features of of <code>u</code>. This “comparison” is done with the <code>t-u</code> term.</p>
-</section>
-<section id="cosine-similarity-between-u-and-t" class="level2">
-<h2 class="anchored" data-anchor-id="cosine-similarity-between-u-and-t">Cosine Similarity Between <code>u</code> and <code>t</code></h2>
-<p>I’m going to modify <code>mk_samples</code> so that at each timestep, it calculates and stores the cosine similarity betwern <code>t</code> and <code>u</code>:</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:35:41.642698Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:35:41.642141Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:35:41.648612Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:35:41.647843Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:35:41.642675Z&quot;}" data-execution_count="6">
-<details>
-<summary>Show modified <code>mk_samples</code> function</summary>
-<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><span class="kw" style="color: #003B4F;">def</span> mk_samples(prompts, g<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">7.5</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">100</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>):</span>
-<span id="cb7-2">    cs <span class="op" style="color: #5E5E5E;">=</span> []</span>
-<span id="cb7-3">    bs <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(prompts)</span>
-<span id="cb7-4">    text <span class="op" style="color: #5E5E5E;">=</span> text_enc(prompts)</span>
-<span id="cb7-5">    uncond <span class="op" style="color: #5E5E5E;">=</span> text_enc([<span class="st" style="color: #20794D;">""</span>] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
-<span id="cb7-6">    emb <span class="op" style="color: #5E5E5E;">=</span> torch.cat([uncond, text])</span>
-<span id="cb7-7">    <span class="cf" style="color: #003B4F;">if</span> seed: torch.manual_seed(seed)</span>
-<span id="cb7-8"></span>
-<span id="cb7-9">    latents <span class="op" style="color: #5E5E5E;">=</span> torch.randn((bs, unet.in_channels, height<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>, width<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>))</span>
-<span id="cb7-10">    scheduler.set_timesteps(steps)</span>
-<span id="cb7-11">    latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(<span class="st" style="color: #20794D;">"cuda"</span>).half() <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">15</span></span>
-<span id="cb7-12"></span>
-<span id="cb7-13">    <span class="cf" style="color: #003B4F;">for</span> i,ts <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">enumerate</span>(tqdm(scheduler.timesteps)):</span>
-<span id="cb7-14">        inp <span class="op" style="color: #5E5E5E;">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">2</span>), ts)</span>
-<span id="cb7-15">        <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): u,t <span class="op" style="color: #5E5E5E;">=</span> unet(inp, ts, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>emb).sample.chunk(<span class="dv" style="color: #AD0000;">2</span>)</span>
-<span id="cb7-16">       </span>
-<span id="cb7-17">        cs.append(torch.nn.functional.cosine_similarity(t, u).mean().item())</span>
-<span id="cb7-18">        </span>
-<span id="cb7-19">        pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u)</span>
-<span id="cb7-20">        latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
-<span id="cb7-21"></span>
-<span id="cb7-22">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): </span>
-<span id="cb7-23">        <span class="cf" style="color: #003B4F;">return</span> vae.decode(<span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="fl" style="color: #AD0000;">0.18215</span> <span class="op" style="color: #5E5E5E;">*</span> latents).sample, cs</span></code></pre></div>
-</details>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:36:05.207475Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:36:05.206940Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:36:12.111986Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:36:12.111308Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:36:05.207453Z&quot;}" data-execution_count="7">
-<div class="sourceCode cell-code" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [</span>
-<span id="cb8-2">    <span class="st" style="color: #20794D;">'a photograph of an astronaut riding a horse'</span></span>
-<span id="cb8-3">]</span>
-<span id="cb8-4"></span>
-<span id="cb8-5">images, cs <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts)</span>
-<span id="cb8-6"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>/tmp/ipykernel_34/1126956742.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
-  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"e500b98a0014449caa9ae37f28d0706b","version_major":2,"version_minor":0}
-</script>
-</div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-7-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-19-diffusion-cosine-similarity/index_files/figure-html/cell-7-output-3.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<p>I was shocked to find that the cosine similarity between the unconditioned and the conditioned UNet predictions is so high! Essentially 1.0!!</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:36:36.840095Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:36:36.839390Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:36:36.861610Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:36:36.860857Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:36:36.840066Z&quot;}" data-execution_count="8">
-<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1">pd.Series(cs).describe()</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="8">
-<pre><code>count    70.000000
-mean      0.999616
-std       0.000261
-min       0.998535
-25%       0.999512
-50%       0.999512
-75%       0.999878
-max       1.000000
-dtype: float64</code></pre>
-</div>
-</div>
-<p>The two predictions start out basically exactly the same (cosine similarity = 1) and diverge as the diffusion process goes on, reaching the lowest cosine similarity at the 70 inference steps.</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:37:53.376327Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:37:53.375586Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:37:53.483031Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:37:53.482459Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:37:53.376298Z&quot;}" data-execution_count="10">
-<div class="sourceCode cell-code" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1">plt.scatter(<span class="bu" style="color: null;">range</span>(<span class="bu" style="color: null;">len</span>(cs)),cs)<span class="op" style="color: #5E5E5E;">;</span></span></code></pre></div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-9-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-19-diffusion-cosine-similarity/index_files/figure-html/cell-9-output-1.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<p>This trend of high mean similarity between <code>t</code> and <code>u</code> overall and decreasing cosine similarity over time holds for other prompts as well:</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:40:26.602907Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:40:26.602237Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:40:33.501365Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:40:33.500908Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:40:26.602885Z&quot;}" data-execution_count="11">
-<div class="sourceCode cell-code" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [</span>
-<span id="cb13-2">    <span class="st" style="color: #20794D;">'a painting of a dog in the style of Picasso'</span></span>
-<span id="cb13-3">]</span>
-<span id="cb13-4"></span>
-<span id="cb13-5">images, cs <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts)</span>
-<span id="cb13-6"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>/tmp/ipykernel_34/1126956742.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
-  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"4143e33405e242c4b5f50b2d893176e9","version_major":2,"version_minor":0}
-</script>
-</div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-10-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-5"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-19-diffusion-cosine-similarity/index_files/figure-html/cell-10-output-3.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:40:39.007007Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:40:39.006346Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:40:39.013248Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:40:39.012819Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:40:39.006983Z&quot;}" data-execution_count="12">
-<div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1">pd.Series(cs).describe()</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="12">
-<pre><code>count    70.000000
-mean      0.999923
-std       0.000197
-min       0.999023
-25%       1.000000
-50%       1.000000
-75%       1.000000
-max       1.000000
-dtype: float64</code></pre>
-</div>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:40:41.651568Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:40:41.651118Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:40:41.723498Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:40:41.723084Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:40:41.651543Z&quot;}" data-execution_count="13">
-<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1">plt.scatter(<span class="bu" style="color: null;">range</span>(<span class="bu" style="color: null;">len</span>(cs)),cs)<span class="op" style="color: #5E5E5E;">;</span></span></code></pre></div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-12-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-6"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-19-diffusion-cosine-similarity/index_files/figure-html/cell-12-output-1.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:41:38.173642Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:41:38.172961Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:41:45.086500Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:41:45.085913Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:41:38.173618Z&quot;}" data-execution_count="14">
-<div class="sourceCode cell-code" id="cb18" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [</span>
-<span id="cb18-2">    <span class="st" style="color: #20794D;">'a drawing of a woman sitting on a park bench'</span></span>
-<span id="cb18-3">]</span>
-<span id="cb18-4"></span>
-<span id="cb18-5">images, cs <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts)</span>
-<span id="cb18-6"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>/tmp/ipykernel_34/1126956742.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
-  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"3f0969eaf26e484ca8635aa5d3ac201e","version_major":2,"version_minor":0}
-</script>
-</div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-13-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-7"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-19-diffusion-cosine-similarity/index_files/figure-html/cell-13-output-3.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:41:51.700463Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:41:51.700200Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:41:51.707822Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:41:51.706892Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:41:51.700444Z&quot;}" data-execution_count="15">
-<div class="sourceCode cell-code" id="cb20" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1">pd.Series(cs).describe()</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="15">
-<pre><code>count    70.000000
-mean      0.999679
-std       0.000233
-min       0.999512
-25%       0.999512
-50%       0.999512
-75%       1.000000
-max       1.000000
-dtype: float64</code></pre>
-</div>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T00:41:59.939540Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T00:41:59.939271Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T00:42:00.016233Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T00:42:00.015750Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T00:41:59.939522Z&quot;}" data-execution_count="16">
-<div class="sourceCode cell-code" id="cb22" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1">plt.scatter(<span class="bu" style="color: null;">range</span>(<span class="bu" style="color: null;">len</span>(cs)),cs)<span class="op" style="color: #5E5E5E;">;</span></span></code></pre></div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-15-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-8"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-19-diffusion-cosine-similarity/index_files/figure-html/cell-15-output-1.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-</section>
-<section id="perturbations-in-pred" class="level2">
-<h2 class="anchored" data-anchor-id="perturbations-in-pred">Perturbations in <code>pred</code></h2>
-<p>My takeaway from the high cosine similarity between conditioned and unconditioned predictions is that the diffusion process is sensitive to small perturbations. However, I found that this wasn’t <em>always</em> the case. To illustrate, I’ll first add a large amount of noise to <code>pred</code> at each timestep and see how that impacts the resulting image.</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:00:31.574085Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:00:31.573468Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:00:31.579689Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:00:31.579216Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:00:31.574062Z&quot;}" data-execution_count="63">
-<details>
-<summary>Show modified <code>mk_samples</code> function</summary>
-<div class="sourceCode cell-code" id="cb23" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><span class="kw" style="color: #003B4F;">def</span> mk_samples(prompts, g<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">7.5</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">100</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>):</span>
-<span id="cb23-2">    cs <span class="op" style="color: #5E5E5E;">=</span> []</span>
-<span id="cb23-3">    bs <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(prompts)</span>
-<span id="cb23-4">    text <span class="op" style="color: #5E5E5E;">=</span> text_enc(prompts)</span>
-<span id="cb23-5">    uncond <span class="op" style="color: #5E5E5E;">=</span> text_enc([<span class="st" style="color: #20794D;">""</span>] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
-<span id="cb23-6">    emb <span class="op" style="color: #5E5E5E;">=</span> torch.cat([uncond, text])</span>
-<span id="cb23-7">    <span class="cf" style="color: #003B4F;">if</span> seed: torch.manual_seed(seed)</span>
-<span id="cb23-8"></span>
-<span id="cb23-9">    latents <span class="op" style="color: #5E5E5E;">=</span> torch.randn((bs, unet.in_channels, height<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>, width<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>))</span>
-<span id="cb23-10">    scheduler.set_timesteps(steps)</span>
-<span id="cb23-11">    latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(<span class="st" style="color: #20794D;">"cuda"</span>).half() <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">15</span></span>
-<span id="cb23-12"></span>
-<span id="cb23-13">    <span class="cf" style="color: #003B4F;">for</span> i,ts <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">enumerate</span>(tqdm(scheduler.timesteps)):</span>
-<span id="cb23-14">        inp <span class="op" style="color: #5E5E5E;">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">2</span>), ts)</span>
-<span id="cb23-15">        <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): u,t <span class="op" style="color: #5E5E5E;">=</span> unet(inp, ts, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>emb).sample.chunk(<span class="dv" style="color: #AD0000;">2</span>)</span>
-<span id="cb23-16">       </span>
-<span id="cb23-17">        cs.append(torch.nn.functional.cosine_similarity(t, u).mean().item())</span>
-<span id="cb23-18">        </span>
-<span id="cb23-19">        r <span class="op" style="color: #5E5E5E;">=</span> <span class="fl" style="color: #AD0000;">0.1</span><span class="op" style="color: #5E5E5E;">*</span>torch.randn_like(t)</span>
-<span id="cb23-20">        orig_pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u)</span>
-<span id="cb23-21">        pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u) <span class="op" style="color: #5E5E5E;">+</span> r</span>
-<span id="cb23-22">        </span>
-<span id="cb23-23">        latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
-<span id="cb23-24"></span>
-<span id="cb23-25">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): </span>
-<span id="cb23-26">        <span class="cf" style="color: #003B4F;">return</span> vae.decode(<span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="fl" style="color: #AD0000;">0.18215</span> <span class="op" style="color: #5E5E5E;">*</span> latents).sample, cs, orig_pred, r</span></code></pre></div>
-</details>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:00:32.023341Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:00:32.022722Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:00:38.989202Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:00:38.988575Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:00:32.023319Z&quot;}" data-execution_count="64">
-<div class="sourceCode cell-code" id="cb24" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [</span>
-<span id="cb24-2">    <span class="st" style="color: #20794D;">'a photograph of an astronaut riding a horse'</span></span>
-<span id="cb24-3">]</span>
-<span id="cb24-4"></span>
-<span id="cb24-5">images, cs, orig_pred, r <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts)</span>
-<span id="cb24-6"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>/tmp/ipykernel_34/2326634756.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
-  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"a6f29010668b409ba26b9da46c9595f4","version_major":2,"version_minor":0}
-</script>
-</div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-17-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-9"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-19-diffusion-cosine-similarity/index_files/figure-html/cell-17-output-3.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:00:42.604558Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:00:42.604291Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:00:42.609986Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:00:42.609483Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:00:42.604540Z&quot;}" data-execution_count="65">
-<div class="sourceCode cell-code" id="cb26" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1">orig_pred.norm(), r.norm()</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="65">
-<pre><code>(tensor(27.3281, device='cuda:0', dtype=torch.float16),
- tensor(12.6328, device='cuda:0', dtype=torch.float16))</code></pre>
-</div>
-</div>
-<p>Adding a noise tensor with about half of the magnitude as the full noise prediction did not prevent the diffusion loop from generating a high quality image! At what point does random noise impact generation?</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:17:59.512567Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:17:59.512304Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:17:59.518575Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:17:59.518021Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:17:59.512548Z&quot;}" data-execution_count="81">
-<div class="sourceCode cell-code" id="cb28" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><span class="kw" style="color: #003B4F;">def</span> mk_samples(prompts, g<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">7.5</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">100</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>):</span>
-<span id="cb28-2">    cs <span class="op" style="color: #5E5E5E;">=</span> []</span>
-<span id="cb28-3">    bs <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(prompts)</span>
-<span id="cb28-4">    text <span class="op" style="color: #5E5E5E;">=</span> text_enc(prompts)</span>
-<span id="cb28-5">    uncond <span class="op" style="color: #5E5E5E;">=</span> text_enc([<span class="st" style="color: #20794D;">""</span>] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
-<span id="cb28-6">    emb <span class="op" style="color: #5E5E5E;">=</span> torch.cat([uncond, text])</span>
-<span id="cb28-7">    <span class="cf" style="color: #003B4F;">if</span> seed: torch.manual_seed(seed)</span>
-<span id="cb28-8"></span>
-<span id="cb28-9">    latents <span class="op" style="color: #5E5E5E;">=</span> torch.randn((bs, unet.in_channels, height<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>, width<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>))</span>
-<span id="cb28-10">    scheduler.set_timesteps(steps)</span>
-<span id="cb28-11">    latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(<span class="st" style="color: #20794D;">"cuda"</span>).half() <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">15</span></span>
-<span id="cb28-12"></span>
-<span id="cb28-13">    <span class="cf" style="color: #003B4F;">for</span> i,ts <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">enumerate</span>(tqdm(scheduler.timesteps)):</span>
-<span id="cb28-14">        inp <span class="op" style="color: #5E5E5E;">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">2</span>), ts)</span>
-<span id="cb28-15">        <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): u,t <span class="op" style="color: #5E5E5E;">=</span> unet(inp, ts, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>emb).sample.chunk(<span class="dv" style="color: #AD0000;">2</span>)</span>
-<span id="cb28-16">       </span>
-<span id="cb28-17">        cs.append(torch.nn.functional.cosine_similarity(t, u).mean().item())</span>
-<span id="cb28-18">        </span>
-<span id="cb28-19">        r <span class="op" style="color: #5E5E5E;">=</span> <span class="fl" style="color: #AD0000;">0.2</span><span class="op" style="color: #5E5E5E;">*</span>torch.randn_like(t)</span>
-<span id="cb28-20">        orig_pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u)</span>
-<span id="cb28-21">        pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u) <span class="op" style="color: #5E5E5E;">+</span> r</span>
-<span id="cb28-22">        </span>
-<span id="cb28-23">        latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
-<span id="cb28-24"></span>
-<span id="cb28-25">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): </span>
-<span id="cb28-26">        <span class="cf" style="color: #003B4F;">return</span> vae.decode(<span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="fl" style="color: #AD0000;">0.18215</span> <span class="op" style="color: #5E5E5E;">*</span> latents).sample, cs, orig_pred, r</span></code></pre></div>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:18:00.929515Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:18:00.928822Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:18:07.809671Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:18:07.809194Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:18:00.929490Z&quot;}" data-execution_count="82">
-<div class="sourceCode cell-code" id="cb29" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [</span>
-<span id="cb29-2">    <span class="st" style="color: #20794D;">'a photograph of an astronaut riding a horse'</span></span>
-<span id="cb29-3">]</span>
-<span id="cb29-4"></span>
-<span id="cb29-5">images, cs, orig_pred, r <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts)</span>
-<span id="cb29-6"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>/tmp/ipykernel_34/2882368180.py:9: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
-  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"a149fb4c97b84b9aa738bb080babf4a2","version_major":2,"version_minor":0}
-</script>
-</div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-20-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-10"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-19-diffusion-cosine-similarity/index_files/figure-html/cell-20-output-3.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:18:10.238779Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:18:10.238107Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:18:10.243530Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:18:10.243177Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:18:10.238730Z&quot;}" data-execution_count="83">
-<div class="sourceCode cell-code" id="cb31" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1">orig_pred.norm(), r.norm()</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="83">
-<pre><code>(tensor(26.2188, device='cuda:0', dtype=torch.float16),
- tensor(25.2656, device='cuda:0', dtype=torch.float16))</code></pre>
-</div>
-</div>
-<p>Adding random noise equal in magnitude to the guided prediction does visibly affect the quality of the generated image, though it still maintains its main structural components (earth, astronaut, horse).</p>
-<p>What happens if instead of random noise, I add a UNet prediction based on some other unrelated prompt?</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:06:40.034353Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:06:40.033717Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:06:40.039798Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:06:40.039293Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:06:40.034330Z&quot;}" data-execution_count="73">
-<details>
-<summary>Show modified <code>mk_samples</code> function</summary>
-<div class="sourceCode cell-code" id="cb33" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><span class="kw" style="color: #003B4F;">def</span> mk_samples(prompts, g<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">7.5</span>, seed<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">100</span>, steps<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">70</span>):</span>
-<span id="cb33-2">    cs <span class="op" style="color: #5E5E5E;">=</span> []</span>
-<span id="cb33-3">    bs <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">len</span>(prompts)</span>
-<span id="cb33-4">    text <span class="op" style="color: #5E5E5E;">=</span> text_enc(prompts)</span>
-<span id="cb33-5">    uncond <span class="op" style="color: #5E5E5E;">=</span> text_enc([<span class="st" style="color: #20794D;">""</span>] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
-<span id="cb33-6">    other <span class="op" style="color: #5E5E5E;">=</span> text_enc([<span class="st" style="color: #20794D;">"a toad riding a bicycle"</span>] <span class="op" style="color: #5E5E5E;">*</span> bs, text.shape[<span class="dv" style="color: #AD0000;">1</span>])</span>
-<span id="cb33-7">    </span>
-<span id="cb33-8">    emb <span class="op" style="color: #5E5E5E;">=</span> torch.cat([uncond, text, other])</span>
-<span id="cb33-9">    <span class="cf" style="color: #003B4F;">if</span> seed: torch.manual_seed(seed)</span>
-<span id="cb33-10"></span>
-<span id="cb33-11">    latents <span class="op" style="color: #5E5E5E;">=</span> torch.randn((bs, unet.in_channels, height<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>, width<span class="op" style="color: #5E5E5E;">//</span><span class="dv" style="color: #AD0000;">8</span>))</span>
-<span id="cb33-12">    scheduler.set_timesteps(steps)</span>
-<span id="cb33-13">    latents <span class="op" style="color: #5E5E5E;">=</span> latents.to(<span class="st" style="color: #20794D;">"cuda"</span>).half() <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">15</span></span>
-<span id="cb33-14"></span>
-<span id="cb33-15">    <span class="cf" style="color: #003B4F;">for</span> i,ts <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">enumerate</span>(tqdm(scheduler.timesteps)):</span>
-<span id="cb33-16">        inp <span class="op" style="color: #5E5E5E;">=</span> scheduler.scale_model_input(torch.cat([latents] <span class="op" style="color: #5E5E5E;">*</span> <span class="dv" style="color: #AD0000;">3</span>), ts)</span>
-<span id="cb33-17">        <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): u,t,o<span class="op" style="color: #5E5E5E;">=</span> unet(inp, ts, encoder_hidden_states<span class="op" style="color: #5E5E5E;">=</span>emb).sample.chunk(<span class="dv" style="color: #AD0000;">3</span>)</span>
-<span id="cb33-18">       </span>
-<span id="cb33-19">        cs.append(torch.nn.functional.cosine_similarity(t, u).mean().item())</span>
-<span id="cb33-20">        </span>
-<span id="cb33-21">        orig_pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u)</span>
-<span id="cb33-22">        pred <span class="op" style="color: #5E5E5E;">=</span> u <span class="op" style="color: #5E5E5E;">+</span> g<span class="op" style="color: #5E5E5E;">*</span>(t<span class="op" style="color: #5E5E5E;">-</span>u) <span class="op" style="color: #5E5E5E;">+</span> <span class="fl" style="color: #AD0000;">0.2</span><span class="op" style="color: #5E5E5E;">*</span>o</span>
-<span id="cb33-23">        </span>
-<span id="cb33-24">        latents <span class="op" style="color: #5E5E5E;">=</span> scheduler.step(pred, ts, latents).prev_sample</span>
-<span id="cb33-25"></span>
-<span id="cb33-26">    <span class="cf" style="color: #003B4F;">with</span> torch.no_grad(): </span>
-<span id="cb33-27">        <span class="cf" style="color: #003B4F;">return</span> vae.decode(<span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="fl" style="color: #AD0000;">0.18215</span> <span class="op" style="color: #5E5E5E;">*</span> latents).sample, cs, orig_pred, o</span></code></pre></div>
-</details>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:06:40.697288Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:06:40.696550Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:06:50.405769Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:06:50.405209Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:06:40.697264Z&quot;}" data-execution_count="74">
-<div class="sourceCode cell-code" id="cb34" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [</span>
-<span id="cb34-2">    <span class="st" style="color: #20794D;">'a photograph of an astronaut riding a horse'</span></span>
-<span id="cb34-3">]</span>
-<span id="cb34-4"></span>
-<span id="cb34-5">images, cs, orig_pred, o <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts)</span>
-<span id="cb34-6"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>/tmp/ipykernel_34/70226676.py:11: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
-  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"b5ea457b2b5e4de1b0920c602d2c1f0c","version_major":2,"version_minor":0}
-</script>
-</div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-23-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-11"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-19-diffusion-cosine-similarity/index_files/figure-html/cell-23-output-3.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:09:38.686134Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:09:38.685604Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:09:38.697326Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:09:38.696874Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:09:38.686112Z&quot;}" data-execution_count="77">
-<div class="sourceCode cell-code" id="cb36" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1">orig_pred.norm(), (<span class="fl" style="color: #AD0000;">0.2</span><span class="op" style="color: #5E5E5E;">*</span>o).norm()</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="77">
-<pre><code>(tensor(98.5625, device='cuda:0', dtype=torch.float16),
- tensor(19.9688, device='cuda:0', dtype=torch.float16))</code></pre>
-</div>
-</div>
-<p>Now that I’ve introduced text embeddings related to a real prompt with a similar magnitude as the random noise, it’s significantly impacting the image generation result! Which by the way looks super cool.</p>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:11:32.752244Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:11:32.751970Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:11:42.393102Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:11:42.392538Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:11:32.752224Z&quot;}" data-execution_count="78">
-<div class="sourceCode cell-code" id="cb38" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1">prompts <span class="op" style="color: #5E5E5E;">=</span> [</span>
-<span id="cb38-2">    <span class="st" style="color: #20794D;">'a drawing of a woman sitting on a park bench'</span></span>
-<span id="cb38-3">]</span>
-<span id="cb38-4"></span>
-<span id="cb38-5">images, cs, orig_pred, o <span class="op" style="color: #5E5E5E;">=</span> mk_samples(prompts)</span>
-<span id="cb38-6"><span class="cf" style="color: #003B4F;">for</span> img <span class="kw" style="color: #003B4F;">in</span> images: display(mk_img(img))</span></code></pre></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>/tmp/ipykernel_34/70226676.py:11: FutureWarning: Accessing config attribute `in_channels` directly via 'UNet2DConditionModel' object attribute is deprecated. Please access 'in_channels' over 'UNet2DConditionModel's config object instead, e.g. 'unet.config.in_channels'.
-  latents = torch.randn((bs, unet.in_channels, height//8, width//8))</code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"21adc3fa9c3945539e06f12484ec10c4","version_major":2,"version_minor":0}
-</script>
-</div>
-<div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-25-output-3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-12"><img src="https://vishalbakshi.github.io/blog/posts/2024-11-19-diffusion-cosine-similarity/index_files/figure-html/cell-25-output-3.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<div class="cell" data-execution="{&quot;iopub.execute_input&quot;:&quot;2024-11-20T01:11:42.396726Z&quot;,&quot;iopub.status.busy&quot;:&quot;2024-11-20T01:11:42.396427Z&quot;,&quot;iopub.status.idle&quot;:&quot;2024-11-20T01:11:42.403700Z&quot;,&quot;shell.execute_reply&quot;:&quot;2024-11-20T01:11:42.402900Z&quot;,&quot;shell.execute_reply.started&quot;:&quot;2024-11-20T01:11:42.396701Z&quot;}" data-execution_count="79">
-<div class="sourceCode cell-code" id="cb40" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1">orig_pred.norm(), (<span class="fl" style="color: #AD0000;">0.2</span><span class="op" style="color: #5E5E5E;">*</span>o).norm()</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="79">
-<pre><code>(tensor(110.1250, device='cuda:0', dtype=torch.float16),
- tensor(22.0625, device='cuda:0', dtype=torch.float16))</code></pre>
-</div>
-</div>
-<p>I get a similar result using a different prompt.</p>
-</section>
-<section id="final-thoughts" class="level2">
-<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
-<p>I hesitate to make any strong conclusions about the diffusion process as I’ve spent only a couple dozen hours experimenting with stable diffusion, but do want to summarize my observations from these experiments:</p>
-<ul>
-<li><strong>Unconditioned and conditioned prompt UNet predictions are similar</strong>: this was seen by the (very) high cosine similarity between the two at each time step, with cosine similarity decreasing as the time step increased.</li>
-<li><strong>Small amounts of random noise doesn’t impact image generation</strong>: while the term “small” is relative, adding random noise that was 50% of the original guided prediction’s norm did not visibly alter the image. Even after adding random noise with the same magnitude as the original guided prediction, the generated image still maintained its core composition and structure.</li>
-<li><strong>Adding another prompt’s UNet predictions drastically changes the generated image</strong>: while random noise of the same magnitude did not impact the output image, adding UNet predictions for an unrelated prompt completely changes the color, features and structure of the image (while still maintaining some thematic elements).</li>
-</ul>
-<p>These observations make me wonder the following questions, that I’ll keep in mind throughout part 2 of the fastai course:</p>
-<ul>
-<li>Is the small difference in direction between <code>t</code> and <code>u</code> the reason we need relatively large guidance scale values? Is it also the reason why if the guidance scale is too large, we start losing structural features of the desired prompt/image?</li>
-<li>Does the fact that structured UNet predictions (as opposed to random noise) impact image generation significantly mean that UNet’s are not sensitive to random noise but are generally susceptible to structured data in the latent space? Why is that?</li>
-</ul>
-<p>I hope you enjoyed this blog post!</p>
-
-
-</section>
-
- ]]></description>
-  <category>stable diffusion</category>
-  <category>generative AI</category>
-  <category>python</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2024-11-19-diffusion-cosine-similarity/index.html</guid>
-  <pubDate>Tue, 19 Nov 2024 08:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
