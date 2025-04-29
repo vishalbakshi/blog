@@ -9,6 +9,7 @@ lightbox: auto
 categories:
     - LLM
     - deep learning
+    - TinyScaleLab
 ---
 
 ## Recap and Initial Approach
