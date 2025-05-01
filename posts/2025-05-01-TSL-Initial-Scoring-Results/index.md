@@ -27,15 +27,18 @@ The raw scores analyzed in this blog post can be found in [my TinyScaleLab repo]
 I have six scoring categories that I'm evaluating my models on:
 
 ### Foundational language capabilities
+
 - Grammar
 - Context-Tracking (Consistency)
 
 ### Emergent capabilities
+
 - Factual Knowledge
 - Reasoning
 - Creativity
 
 ### Story-related capabilities
+
 - Plot
 
 My goal was to generate prompts that either isolate (Factual Knowledge, Reasoning, Context-Tracking) or elicit opportunities to exhibit (Plot, Creativity) scoring categories. I wanted to make the job easier first for myself, and then use that as a proxy of making the job of the LLM judge easier to evaluate scoring categories in a focused way.
@@ -179,11 +182,13 @@ I'm going to revisit the targets that I established from Figure 4 of the TinySto
 ### Creativity
 
 The TinyStories paper reported:
+
 - 1M: 0.47
 - 8M: 0.65
 - 28M: 0.69
 
 My scores:
+
 - 1M: 0.12
 - 8M: 0.16
 - 28M: 0.32
@@ -193,11 +198,13 @@ This was really interesting - I was expecting my assessment to be maybe a little
 ### Grammar
 
 TinyStories:
+
 - 1M: 0.61
 - 8M: 0.77
 - 28M: 0.83
 
 My scores:
+
 - 1M: 0.59
 - 8M: 0.82
 - 28M: 0.86
@@ -207,11 +214,13 @@ This matched out pretty well! 61%/59%, 77%/82%, and 83%/86%. The most common bas
 ### Context-Tracking (Consistency)
 
 TinyStories:
+
 - 1M: 0.45
 - 8M: 0.80
 - 28M: 0.90
 
 My scores:
+
 - 1M: 0.14
 - 8M: 0.51
 - 28M: 0.63
