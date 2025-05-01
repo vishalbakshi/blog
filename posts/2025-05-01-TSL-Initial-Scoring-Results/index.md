@@ -20,6 +20,8 @@ In this post, I'm going to analyze the initial manual scoring results for my bas
 - Curated a set of eval prompts based on each scoring category
 - Created a fast HTML app where I can perform my scoring activities
 
+The raw scores analyzed in this blog post can be found in [my TinyScaleLab repo](https://github.com/vishalbakshi/TinyScaleLab).
+
 ## Evaluation Categories
 
 I have six scoring categories that I'm evaluating my models on:
