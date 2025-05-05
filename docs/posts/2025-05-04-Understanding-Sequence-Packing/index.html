@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2025-05-04">
+<meta name="description" content="A hands-on investigation into how sequence packing interacts with Flash Attention in HuggingFace Transformers. Through print statements and code exploration, I discovered that position_ids are crucial for sequence packing to work correctly—without them, the wrong Flash Attention function gets called, leading to incorrect outputs and loss values. This post walks through the debugging process, comparing packed sequences with padded batches, and reveals the critical requirement for properly constructed position_ids in sequence-packed training.">
+
+<title>Vishal Bakshi’s Blog - Understanding Sequence Packing - Initial Musings</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Vishal Bakshi’s Blog</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#setup" id="toc-setup" class="nav-link active" data-scroll-target="#setup">Setup</a></li>
+  <li><a href="#background" id="toc-background" class="nav-link" data-scroll-target="#background">Background</a></li>
+  <li><a href="#initial-example-passing-in-input_ids-cu_seqlens-and-max_seqlen-to-the-smollm2-135m-forward-pass" id="toc-initial-example-passing-in-input_ids-cu_seqlens-and-max_seqlen-to-the-smollm2-135m-forward-pass" class="nav-link" data-scroll-target="#initial-example-passing-in-input_ids-cu_seqlens-and-max_seqlen-to-the-smollm2-135m-forward-pass">Initial Example: Passing in <code>input_ids</code>, <code>cu_seqlens</code> and <code>max_seqlen</code> to the SmolLM2-135M Forward Pass</a></li>
+  <li><a href="#second-attempt-passing-in-position_ids-to-the-forward-pass-as-well" id="toc-second-attempt-passing-in-position_ids-to-the-forward-pass-as-well" class="nav-link" data-scroll-target="#second-attempt-passing-in-position_ids-to-the-forward-pass-as-well">Second Attempt: Passing in <code>position_ids</code> to the Forward Pass as Well</a></li>
+  <li><a href="#packed-sequence-loss" id="toc-packed-sequence-loss" class="nav-link" data-scroll-target="#packed-sequence-loss">Packed Sequence Loss</a></li>
+  <li><a href="#padded-batch-loss" id="toc-padded-batch-loss" class="nav-link" data-scroll-target="#padded-batch-loss">Padded Batch Loss</a></li>
+  <li><a href="#not-passing-in-position_ids-with-packed-sequence" id="toc-not-passing-in-position_ids-with-packed-sequence" class="nav-link" data-scroll-target="#not-passing-in-position_ids-with-packed-sequence">Not Passing in <code>position_ids</code> With Packed Sequence</a></li>
+  <li><a href="#closing-thoughts" id="toc-closing-thoughts" class="nav-link" data-scroll-target="#closing-thoughts">Closing Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Understanding Sequence Packing - Initial Musings</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">python</div>
+    <div class="quarto-category">deep learning</div>
+    <div class="quarto-category">LLM</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    A hands-on investigation into how sequence packing interacts with Flash Attention in HuggingFace Transformers. Through print statements and code exploration, I discovered that position_ids are crucial for sequence packing to work correctly—without them, the wrong Flash Attention function gets called, leading to incorrect outputs and loss values. This post walks through the debugging process, comparing packed sequences with padded batches, and reveals the critical requirement for properly constructed position_ids in sequence-packed training.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">May 4, 2025</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="setup" class="level2">
+<h2 class="anchored" data-anchor-id="setup">Setup</h2>
+<div class="cell">
+<details>
+<summary>Show pip installs and imports</summary>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>pip install <span class="op">-</span>qq <span class="op">-</span>U flash<span class="op">-</span>attn <span class="op">--</span>no<span class="op">-</span>build<span class="op">-</span>isolation</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>pip uninstall transformers <span class="op">-</span>y</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>pip install git<span class="op">+</span>https:<span class="op">//</span>github.com<span class="op">/</span>vishalbakshi<span class="op">/</span>transformers.git <span class="op">-</span>qq</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers <span class="im">import</span> AutoModelForCausalLM, AutoTokenizer</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> inspect</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch.nn.functional <span class="im">as</span> F</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>model_name <span class="op">=</span> <span class="st">"HuggingFaceTB/SmolLM2-135M"</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> AutoModelForCausalLM.from_pretrained(</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    model_name,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    attn_implementation<span class="op">=</span><span class="st">"flash_attention_2"</span>,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    torch_dtype<span class="op">=</span>torch.bfloat16,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    device_map<span class="op">=</span><span class="st">"auto"</span>)</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>tokenizer <span class="op">=</span> AutoTokenizer.from_pretrained(model_name)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+</section>
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In this blog post, I’m walking through <code>transformers</code> code to start exploring functionality between sequence packing and Flash Attention. I’m new to both concepts, so this is purely an exploratory exercise.</p>
+<p>To assist my exploration, I’ve forked the Transformers library and added print statements at key junctures related to sequence packing and FA2. Referencing the original repo here’s where I’ve inserted print statements:</p>
+<ul>
+<li>Right after the function signature for <code>flash_attention_forward</code> in <a href="https://github.com/huggingface/transformers/blob/2932f318a20d9e54cc7aea052e040164d85de7d6/src/transformers/integrations/flash_attention.py#L22">src/transformers/integrations/flash_attention.py</a> (which is called from inside <code>model.model.layers[0].self_attn.forward</code>).</li>
+</ul>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"</span><span class="ch">\n</span><span class="st">=== FLASH_ATTENTION_FORWARD ENTRY ==="</span>)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"kwargs received: </span><span class="sc">{</span><span class="bu">list</span>(kwargs.keys())<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<ul>
+<li>Right after the function signature/docstring for <code>_flash_attention_forward</code> in <a href="https://github.com/huggingface/transformers/blob/2932f318a20d9e54cc7aea052e040164d85de7d6/src/transformers/modeling_flash_attention_utils.py#L324">src/transformers/modeling_flash_attention_utils.py</a>:</li>
+</ul>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"</span><span class="ch">\n</span><span class="st">=== _FLASH_ATTENTION_FORWARD ENTRY ==="</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"kwargs received: </span><span class="sc">{</span><span class="bu">list</span>(kwargs.keys())<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"</span><span class="ch">\n</span><span class="st"> attention_mask"</span>)</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(attention_mask)</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"</span><span class="ch">\n</span><span class="st"> position_ids"</span>)</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(position_ids)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>In the same file, later on:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Contains at least one padding token in the sequence</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> attention_mask <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"attention_mask is not None"</span>)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    ...</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>and later on further in the <code>_flash_attention_forward</code> function definition:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">elif</span> position_ids <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">and</span> (</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    max_length_q <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">or</span> (query_length <span class="op">!=</span> <span class="dv">1</span> <span class="kw">and</span> <span class="kw">not</span> (torch.diff(position_ids, dim<span class="op">=-</span><span class="dv">1</span>) <span class="op">&gt;=</span> <span class="dv">0</span>).<span class="bu">all</span>())</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>):</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"position_ids is not None and max_length_q check"</span>)</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    batch_size <span class="op">=</span> query_states.size(<span class="dv">0</span>)</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> cu_seq_lens_q <span class="kw">is</span> <span class="va">None</span> <span class="kw">or</span> cu_seq_lens_k <span class="kw">is</span> <span class="va">None</span>:</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"cu_seq_lens_q is None: </span><span class="sc">{</span>cu_seq_lens_q <span class="kw">is</span> <span class="va">None</span><span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"cu_seq_lens_k is None: </span><span class="sc">{</span>cu_seq_lens_q <span class="kw">is</span> <span class="va">None</span><span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>        query_states, key_states, value_states, indices_q, cu_seq_lens, max_seq_lens <span class="op">=</span> (</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>            prepare_fa2_from_position_ids(query_states, key_states, value_states, position_ids)</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"</span><span class="ch">\n</span><span class="st"> cu_seq_lens"</span>)</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(cu_seq_lens)</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>        cu_seq_lens_q, cu_seq_lens_k <span class="op">=</span> cu_seq_lens</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>        max_length_q, max_length_k <span class="op">=</span> max_seq_lens</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>        ...</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>I originally identified these functions by using the <code>inspect</code> library, e.g.:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(inspect.getsource(model.model.layers[<span class="dv">0</span>].self_attn.forward))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The goal of these print functions initially was to understand how <code>cu_seqlens</code> is utilized (if at all) and then after realizing it wasn’t being used, my goal became to understand which function form <code>flash_attn</code> is being used: <code>flash_attn_func</code> or <code>flash_attn_varlen_func</code>?</p>
+</section>
+<section id="initial-example-passing-in-input_ids-cu_seqlens-and-max_seqlen-to-the-smollm2-135m-forward-pass" class="level2">
+<h2 class="anchored" data-anchor-id="initial-example-passing-in-input_ids-cu_seqlens-and-max_seqlen-to-the-smollm2-135m-forward-pass">Initial Example: Passing in <code>input_ids</code>, <code>cu_seqlens</code> and <code>max_seqlen</code> to the SmolLM2-135M Forward Pass</h2>
+<p>At first, based on a Claude-generated example, I passed in the following fake input data.</p>
+<div class="cell" data-outputid="6bc4c7d5-d953-4f4b-911c-b1b2936fbb5c" data-execution_count="5">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>torch.manual_seed(<span class="dv">42</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>test_params <span class="op">=</span> {</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">'input_ids'</span>: torch.randint(<span class="dv">1</span>, <span class="dv">10</span>, size<span class="op">=</span>(<span class="dv">1</span>,<span class="dv">10</span>)).to(<span class="st">"cuda"</span>),</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">'cu_seqlens'</span>: [torch.tensor([<span class="dv">0</span>, <span class="dv">3</span>, <span class="dv">10</span>], dtype<span class="op">=</span>torch.int32).to(<span class="st">"cuda"</span>)],</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">'max_seqlen'</span>: [<span class="dv">10</span>]</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>test_params</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<pre><code>{'input_ids': tensor([[7, 6, 8, 5, 1, 3, 8, 6, 5, 3]], device='cuda:0'),
+ 'cu_seqlens': [tensor([ 0,  3, 10], device='cuda:0', dtype=torch.int32)],
+ 'max_seqlen': [10]}</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>model.<span class="bu">eval</span>()</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> torch.no_grad(): output <span class="op">=</span> model(<span class="op">**</span>test_params)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The following was printed out for each attention mechanism call in each of the model’s 30 layers:</p>
+<pre><code>=== FLASH_ATTENTION_FORWARD ENTRY ===
+kwargs received: ['position_ids', 'output_attentions', 'use_cache', 'cu_seqlens', 'max_seqlen']
+
+=== _FLASH_ATTENTION_FORWARD ENTRY ===
+kwargs received: ['output_attentions', 'use_cache', 'cu_seqlens', 'max_seqlen']
+
+ attention_mask
+None
+
+ position_ids
+tensor([[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]], device='cuda:0')
+flash_attn_func is called
+flash_kwargs received: ['deterministic']</code></pre>
+<p>I was surprised to see that <code>flash_attn_func</code> was called, because IIUC that doesn’t handle sequence packed inputs. Looking at <a href="https://github.com/Dao-AILab/flash-attention/blob/fd2fc9d85c8e54e5c20436465bca709bc1a6c5a1/hopper/flash_attn_interface.py#L501">its function signature</a>, there’s no <code>cu_seqlens</code> or similar parameter:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> flash_attn_func(</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    q,</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    k,</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    v,</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    softmax_scale<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>    causal<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>    qv<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>    q_descale<span class="op">=</span><span class="va">None</span>, k_descale<span class="op">=</span><span class="va">None</span>, v_descale<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>    window_size<span class="op">=</span>(<span class="op">-</span><span class="dv">1</span>, <span class="op">-</span><span class="dv">1</span>),</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>    attention_chunk<span class="op">=</span><span class="dv">0</span>,</span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>    softcap<span class="op">=</span><span class="fl">0.0</span>,</span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>    num_splits<span class="op">=</span><span class="dv">1</span>,</span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>    pack_gqa<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>    deterministic<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a>    sm_margin<span class="op">=</span><span class="dv">0</span>,</span>
+<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Additionally, <code>position_ids</code> is defined even though I didn’t pass it in. IIUC, that’s done in the model’s forward pass with the line:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> position_ids <span class="kw">is</span> <span class="va">None</span>:</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    position_ids <span class="op">=</span> cache_position.unsqueeze(<span class="dv">0</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Where <code>cache_position</code> is defined earlier in that forward pass. This can be observed by running:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>forward_method <span class="op">=</span> inspect.getsource(model.model.forward)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(forward_method)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="second-attempt-passing-in-position_ids-to-the-forward-pass-as-well" class="level2">
+<h2 class="anchored" data-anchor-id="second-attempt-passing-in-position_ids-to-the-forward-pass-as-well">Second Attempt: Passing in <code>position_ids</code> to the Forward Pass as Well</h2>
+<p>Claude helped me understand that what triggers the function call of <code>flash_attn_varlen_func</code> is the following conditional in <a href="https://github.com/huggingface/transformers/blob/2932f318a20d9e54cc7aea052e040164d85de7d6/src/transformers/modeling_flash_attention_utils.py#L378"><code>_flash_attention_forward</code></a>:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="cf">elif</span> position_ids <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">and</span> (</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>        max_length_q <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">or</span> (query_length <span class="op">!=</span> <span class="dv">1</span> <span class="kw">and</span> <span class="kw">not</span> (torch.diff(position_ids, dim<span class="op">=-</span><span class="dv">1</span>) <span class="op">&gt;=</span> <span class="dv">0</span>).<span class="bu">all</span>())</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>In particular, this line was of interest: <code>torch.diff(position_ids, dim=-1) &gt;= 0</code></p>
+<p>In the following contrived example, <code>position_ids</code> is not a list of consecutive numbers (which seems to be the default value constructed is no <code>position_ids</code> value is passed to the model’s forward pass).</p>
+<div class="cell" data-execution_count="42">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>input_ids <span class="op">=</span> torch.tensor([[<span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">10</span>, <span class="dv">11</span>, <span class="dv">12</span>, <span class="dv">13</span>, <span class="dv">14</span>, <span class="dv">15</span>, <span class="dv">16</span>]]).to(<span class="st">"cuda"</span>)</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>position_ids <span class="op">=</span> torch.tensor([[<span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>, <span class="dv">4</span>, <span class="dv">5</span>, <span class="dv">6</span>]]).to(<span class="st">"cuda"</span>)</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>cu_seqlens <span class="op">=</span> [torch.tensor([<span class="dv">0</span>, <span class="dv">3</span>, <span class="dv">10</span>], dtype<span class="op">=</span>torch.int32).to(<span class="st">"cuda"</span>)]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="46c76718-2cd2-411b-eb4e-5822cb0d73d7" data-execution_count="12">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>(torch.diff(position_ids, dim<span class="op">=-</span><span class="dv">1</span>) <span class="op">&gt;=</span> <span class="dv">0</span>).<span class="bu">all</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<pre><code>tensor(False, device='cuda:0')</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="5bed5591-9d67-4d15-cb42-8b1ab15f3089" data-execution_count="13">
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>torch.diff(position_ids, dim<span class="op">=-</span><span class="dv">1</span>) <span class="op">&gt;=</span> <span class="dv">0</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<pre><code>tensor([[ True,  True, False,  True,  True,  True,  True,  True,  True]],
+       device='cuda:0')</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="d15b4b7a-5cee-4651-e5b3-861f7c4d03b6" data-execution_count="15">
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>torch.diff(position_ids, dim<span class="op">=-</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<pre><code>tensor([[ 1,  1, -2,  1,  1,  1,  1,  1,  1]], device='cuda:0')</code></pre>
+</div>
+</div>
+<p>Some diffs between consecutive elements in <code>position_ids</code> are negative (because we are defining two sequences’ position ids).</p>
+<p>I would now expect <code>flash_attn_varlen_func</code> to be called.</p>
+<div class="cell" data-outputid="bbd565ce-415c-4756-98f0-364a438ed5ed" data-execution_count="43">
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>torch.manual_seed(<span class="dv">42</span>)</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>test_params <span class="op">=</span> {</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">'input_ids'</span>: torch.randint(<span class="dv">1</span>, <span class="dv">10</span>, size<span class="op">=</span>(<span class="dv">1</span>,<span class="dv">10</span>)).to(<span class="st">"cuda"</span>),</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">'position_ids'</span>: torch.tensor([[<span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>, <span class="dv">4</span>, <span class="dv">5</span>, <span class="dv">6</span>]]).to(<span class="st">"cuda"</span>),</span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">'cu_seqlens'</span>: [torch.tensor([<span class="dv">0</span>, <span class="dv">3</span>, <span class="dv">10</span>], dtype<span class="op">=</span>torch.int32).to(<span class="st">"cuda"</span>)],</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">'max_seqlen'</span>: [<span class="dv">7</span>]</span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>test_params</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="43">
+<pre><code>{'input_ids': tensor([[7, 6, 8, 5, 1, 3, 8, 6, 5, 3]], device='cuda:0'),
+ 'position_ids': tensor([[0, 1, 2, 0, 1, 2, 3, 4, 5, 6]], device='cuda:0'),
+ 'cu_seqlens': [tensor([ 0,  3, 10], device='cuda:0', dtype=torch.int32)],
+ 'max_seqlen': [7]}</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>model.<span class="bu">eval</span>()</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> torch.no_grad(): output <span class="op">=</span> model(<span class="op">**</span>test_params)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Passing <code>test_params</code> through the model’s forward pass yields:</p>
+<pre><code>=== FLASH_ATTENTION_FORWARD ENTRY ===
+kwargs received: ['position_ids', 'output_attentions', 'use_cache', 'cu_seqlens', 'max_seqlen']
+
+=== _FLASH_ATTENTION_FORWARD ENTRY ===
+kwargs received: ['output_attentions', 'use_cache', 'cu_seqlens', 'max_seqlen']
+
+ attention_mask
+None
+
+ position_ids
+tensor([[0, 1, 2, 0, 1, 2, 3, 4, 5, 6]], device='cuda:0')
+position_ids is not None and max_length_q check
+cu_seq_lens_q is None: True
+cu_seq_lens_k is None: True
+
+ cu_seq_lens
+(tensor([ 0,  3, 10], device='cuda:0', dtype=torch.int32), tensor([ 0,  3, 10], device='cuda:0', dtype=torch.int32))</code></pre>
+<p>The <code>position_ids</code> are as passed in. However, it does not use <code>cu_seqlens</code> directly from <code>kwargs</code>. Instead it builds it <a href="https://github.com/huggingface/transformers/blob/2932f318a20d9e54cc7aea052e040164d85de7d6/src/transformers/modeling_flash_attention_utils.py#L383">in the following line</a>:</p>
+<div class="sourceCode" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>query_states, key_states, value_states, indices_q, cu_seq_lens, max_seq_lens <span class="op">=</span> (</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>    prepare_fa2_from_position_ids(query_states, key_states, value_states, position_ids)</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The value of <code>cu_seqlens</code> is the tuple:</p>
+<div class="sourceCode" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>(tensor([ <span class="dv">0</span>,  <span class="dv">3</span>, <span class="dv">10</span>], device<span class="op">=</span><span class="st">'cuda:0'</span>, dtype<span class="op">=</span>torch.int32), tensor([ <span class="dv">0</span>,  <span class="dv">3</span>, <span class="dv">10</span>], device<span class="op">=</span><span class="st">'cuda:0'</span>, dtype<span class="op">=</span>torch.int32))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Which is deconstructed into <code>cu_seq_lens_q</code> and <code>cu_seql_lens_k</code> which are then passed as arguments to <code>flash_attn_varlen_func</code>.</p>
+<p>The main takeaway from this: Flash Attention will not handle sequence packing correctly unless you pass in <code>position_ids</code>.</p>
+</section>
+<section id="packed-sequence-loss" class="level2">
+<h2 class="anchored" data-anchor-id="packed-sequence-loss">Packed Sequence Loss</h2>
+<p>In the remaining sections of this blog post, I’ll explore how to correctly handle calculating loss for a packed sequence.</p>
+<div class="cell" data-outputid="05592fff-ecf2-4adf-e347-a4526778898f" data-execution_count="18">
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>output.logits.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="18">
+<pre><code>torch.Size([1, 10, 49152])</code></pre>
+</div>
+</div>
+<p>Following how labels are constructed in HuggingFace’s <a href="https://github.com/RhuiDih/transformers/blob/90305596c1f14376bb2049f408a4c53e024b2450/src/transformers/data/data_collator.py#L1643"><code>DataCollatorWithFlattening</code></a>, the first token in each sequence is replaced with <code>-100</code>. This is because the HuggingFace CausalLM loss function handles the shifting of labels to allow next-token prediction.</p>
+<div class="cell" data-outputid="0df22f75-897e-4207-8285-5b4edffc30c7" data-execution_count="19">
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>labels <span class="op">=</span> torch.tensor([<span class="op">-</span><span class="dv">100</span>, <span class="dv">6</span>, <span class="dv">8</span>, <span class="op">-</span><span class="dv">100</span>, <span class="dv">1</span>, <span class="dv">3</span>, <span class="dv">8</span>, <span class="dv">6</span>, <span class="dv">5</span>, <span class="dv">3</span>]).to(<span class="st">"cuda"</span>)</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>labels</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="19">
+<pre><code>tensor([-100,    6,    8, -100,    1,    3,    8,    6,    5,    3],
+       device='cuda:0')</code></pre>
+</div>
+</div>
+<p>The following two lines are taken from the model’s loss function which can be inspected with <code>print(inspect.getsource(model.loss_function))</code>:</p>
+<div class="cell" data-outputid="19309094-2315-487f-badc-574c5b8fab60" data-execution_count="20">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>_labels <span class="op">=</span> torch.nn.functional.pad(labels, (<span class="dv">0</span>, <span class="dv">1</span>), value<span class="op">=-</span><span class="dv">100</span>)</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>shift_labels <span class="op">=</span> _labels[..., <span class="dv">1</span>:].contiguous()</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>shift_labels</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="20">
+<pre><code>tensor([   6,    8, -100,    1,    3,    8,    6,    5,    3, -100],
+       device='cuda:0')</code></pre>
+</div>
+</div>
+<p>We can see that the labels have been shifted to the left by 1 element, and a <code>-100</code> ignore index has been added to the right, which is needed because the last token in the input doesn’t predict anything.</p>
+<p>Calculating the loss using <code>F.cross_entropy</code> directly and the model’s <code>loss_function</code> (providing it unshifted <code>labels</code>):</p>
+<div class="cell" data-outputid="d77b6fcb-8635-4fc2-dc2b-e767fd428d7c" data-execution_count="21">
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>loss <span class="op">=</span> F.cross_entropy(</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>    output.logits.reshape(<span class="op">-</span><span class="dv">1</span>, output.logits.size(<span class="op">-</span><span class="dv">1</span>)).<span class="bu">float</span>(),</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>    shift_labels.reshape(<span class="op">-</span><span class="dv">1</span>)</span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>loss</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="21">
+<pre><code>tensor(20.2832, device='cuda:0')</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="91c2e8da-2901-44a0-e234-5dbe77787361" data-execution_count="22">
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>model.loss_function(output.logits, labels, <span class="dv">49152</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="22">
+<pre><code>tensor(20.2832, device='cuda:0')</code></pre>
+</div>
+</div>
+</section>
+<section id="padded-batch-loss" class="level2">
+<h2 class="anchored" data-anchor-id="padded-batch-loss">Padded Batch Loss</h2>
+<p>Sequence packing shouldn’t change the loss value of a given input batch. To test this, I’ll construct a padded batch from our fake data and calculate its outputs, labels and loss.</p>
+<div class="cell" data-outputid="e7066f5a-18f6-43b6-a247-bf162df07b79" data-execution_count="23">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>input_ids <span class="op">=</span> test_params[<span class="st">'input_ids'</span>][<span class="dv">0</span>]</span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>input_ids</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="23">
+<pre><code>tensor([7, 6, 8, 5, 1, 3, 8, 6, 5, 3], device='cuda:0')</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="8c2cc60a-1319-480c-e975-b60ea1e94a7a" data-execution_count="24">
+<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>cu_seqlens <span class="op">=</span> test_params[<span class="st">'cu_seqlens'</span>][<span class="dv">0</span>]</span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>cu_seqlens</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="24">
+<pre><code>tensor([ 0,  3, 10], device='cuda:0', dtype=torch.int32)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="bbb44c85-d6d9-4d4a-d91d-7ced9a893f42" data-execution_count="25">
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>seq_boundaries <span class="op">=</span> <span class="bu">list</span>(<span class="bu">zip</span>(cu_seqlens[:<span class="op">-</span><span class="dv">1</span>], cu_seqlens[<span class="dv">1</span>:]))</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>seq_boundaries</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="25">
+<pre><code>[(tensor(0, device='cuda:0', dtype=torch.int32),
+  tensor(3, device='cuda:0', dtype=torch.int32)),
+ (tensor(3, device='cuda:0', dtype=torch.int32),
+  tensor(10, device='cuda:0', dtype=torch.int32))]</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="eca4d729-ec35-4d60-b6d3-0504fd4cda7a" data-execution_count="26">
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>seq1 <span class="op">=</span> input_ids[seq_boundaries[<span class="dv">0</span>][<span class="dv">0</span>]: seq_boundaries[<span class="dv">0</span>][<span class="dv">1</span>]]</span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>seq2 <span class="op">=</span> input_ids[seq_boundaries[<span class="dv">1</span>][<span class="dv">0</span>]: seq_boundaries[<span class="dv">1</span>][<span class="dv">1</span>]]</span>
+<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>seq1, seq2</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="26">
+<pre><code>(tensor([7, 6, 8], device='cuda:0'),
+ tensor([5, 1, 3, 8, 6, 5, 3], device='cuda:0'))</code></pre>
+</div>
+</div>
+<p>The first item in the batch has 3 elements, and the second item in the batch has 7 elements. We need to pad the first item so it’s 7 elements long.</p>
+<div class="cell" data-outputid="2260cb77-daca-41dc-9d40-5fce0bf2d638" data-execution_count="27">
+<div class="sourceCode cell-code" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a>seq1 <span class="op">=</span> torch.cat([seq1, torch.tensor([<span class="dv">0</span>, <span class="dv">0</span>, <span class="dv">0</span>, <span class="dv">0</span>]).to(<span class="st">"cuda"</span>)])</span>
+<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a>seq1</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="27">
+<pre><code>tensor([7, 6, 8, 0, 0, 0, 0], device='cuda:0')</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="99b50860-f6ea-472e-b244-0424fa99d756" data-execution_count="28">
+<div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a>padded_batch <span class="op">=</span> torch.stack([seq1, seq2], dim<span class="op">=</span><span class="dv">0</span>)</span>
+<span id="cb48-2"><a href="#cb48-2" aria-hidden="true" tabindex="-1"></a>padded_batch, padded_batch.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="28">
+<pre><code>(tensor([[7, 6, 8, 0, 0, 0, 0],
+         [5, 1, 3, 8, 6, 5, 3]], device='cuda:0'),
+ torch.Size([2, 7]))</code></pre>
+</div>
+</div>
+<p>Similarly, we need to construct <code>labels</code> such that the last four elements in the first batch item are ignored.</p>
+<div class="cell" data-outputid="79c4035c-71f7-4d78-f722-05623c1f5c7f" data-execution_count="29">
+<div class="sourceCode cell-code" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a>seq1 <span class="op">=</span> input_ids[seq_boundaries[<span class="dv">0</span>][<span class="dv">0</span>]: seq_boundaries[<span class="dv">0</span>][<span class="dv">1</span>]]</span>
+<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a>seq2 <span class="op">=</span> input_ids[seq_boundaries[<span class="dv">1</span>][<span class="dv">0</span>]: seq_boundaries[<span class="dv">1</span>][<span class="dv">1</span>]]</span>
+<span id="cb50-3"><a href="#cb50-3" aria-hidden="true" tabindex="-1"></a>seq1, seq2</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="29">
+<pre><code>(tensor([7, 6, 8], device='cuda:0'),
+ tensor([5, 1, 3, 8, 6, 5, 3], device='cuda:0'))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="ea05103b-0a1e-4a5d-89ca-a7e243c5f66a" data-execution_count="30">
+<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a>seq1 <span class="op">=</span> torch.cat([seq1, torch.tensor([<span class="op">-</span><span class="dv">100</span>, <span class="op">-</span><span class="dv">100</span>, <span class="op">-</span><span class="dv">100</span>, <span class="op">-</span><span class="dv">100</span>]).to(<span class="st">"cuda"</span>)])</span>
+<span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a>seq1</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="30">
+<pre><code>tensor([   7,    6,    8, -100, -100, -100, -100], device='cuda:0')</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="bf8a766d-0c21-4ce8-c288-7d654906f228" data-execution_count="31">
+<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a>padded_labels <span class="op">=</span> torch.stack([seq1, seq2], dim<span class="op">=</span><span class="dv">0</span>)</span>
+<span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a>padded_labels</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="31">
+<pre><code>tensor([[   7,    6,    8, -100, -100, -100, -100],
+        [   5,    1,    3,    8,    6,    5,    3]], device='cuda:0')</code></pre>
+</div>
+</div>
+<p>Calculating the logits:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a>model.<span class="bu">eval</span>()</span>
+<span id="cb56-2"><a href="#cb56-2" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> torch.no_grad(): padded_output <span class="op">=</span> model(input_ids<span class="op">=</span>padded_batch)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Noting that I haven’t pass any <code>position_ids</code> and the printed output shows us that <code>flash_attn_func</code> is indeed the “vanilla” implementation of Flash Attention for padded batches:</p>
+<pre><code>=== FLASH_ATTENTION_FORWARD ENTRY ===
+kwargs received: ['position_ids', 'output_attentions', 'use_cache']
+
+=== _FLASH_ATTENTION_FORWARD ENTRY ===
+kwargs received: ['output_attentions', 'use_cache']
+
+ attention_mask
+None
+
+ position_ids
+tensor([[0, 1, 2, 3, 4, 5, 6]], device='cuda:0')
+flash_attn_func is called
+flash_kwargs received: ['deterministic']</code></pre>
+<p>Comparing the packed output logits with the padded output logits. The shapes are different but the values are the same.</p>
+<div class="cell" data-outputid="3aadf767-b684-4d5a-b77d-c61d133baa74" data-execution_count="33">
+<div class="sourceCode cell-code" id="cb58"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb58-1"><a href="#cb58-1" aria-hidden="true" tabindex="-1"></a>output.logits.shape, padded_output.logits.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="33">
+<pre><code>(torch.Size([1, 10, 49152]), torch.Size([2, 7, 49152]))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="070e6ffd-013f-4ecd-befc-9ac8dae7cc91" data-execution_count="34">
+<div class="sourceCode cell-code" id="cb60"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb60-1"><a href="#cb60-1" aria-hidden="true" tabindex="-1"></a>(output.logits[<span class="dv">0</span>, <span class="dv">0</span>:<span class="dv">3</span>, :] <span class="op">==</span> padded_output.logits[<span class="dv">0</span>, <span class="dv">0</span>:<span class="dv">3</span>, :]).<span class="bu">float</span>().mean()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="34">
+<pre><code>tensor(1., device='cuda:0')</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="8598f24d-6e50-4bc8-ce46-e04918d5afc2" data-execution_count="35">
+<div class="sourceCode cell-code" id="cb62"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1" aria-hidden="true" tabindex="-1"></a>(output.logits[<span class="dv">0</span>, <span class="dv">3</span>:, :] <span class="op">==</span> padded_output.logits[<span class="dv">1</span>, :, :]).<span class="bu">float</span>().mean()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="35">
+<pre><code>tensor(1., device='cuda:0')</code></pre>
+</div>
+</div>
+<p>Finally, calculating the padded batch’s loss gives us the same value as the sequence packed loss:</p>
+<div class="cell" data-outputid="d4daac3a-2429-438a-deb4-c09d5bca924c" data-execution_count="36">
+<div class="sourceCode cell-code" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a>padded_loss <span class="op">=</span> model.loss_function(padded_output.logits, padded_labels, vocab_size<span class="op">=</span><span class="dv">49152</span>)</span>
+<span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a>padded_loss</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="36">
+<pre><code>tensor(20.2832, device='cuda:0')</code></pre>
+</div>
+</div>
+</section>
+<section id="not-passing-in-position_ids-with-packed-sequence" class="level2">
+<h2 class="anchored" data-anchor-id="not-passing-in-position_ids-with-packed-sequence">Not Passing in <code>position_ids</code> With Packed Sequence</h2>
+<p>To confirm that not passing in position_ids does in indeed make HuggingFace use the wrong Flash Attention implementation for a packed sequence, I’ll compare the logits and loss:</p>
+<div class="cell" data-outputid="990a6acb-870f-46fd-e6e1-8e9c49adde95" data-execution_count="50">
+<div class="sourceCode cell-code" id="cb66"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb66-1"><a href="#cb66-1" aria-hidden="true" tabindex="-1"></a>torch.manual_seed(<span class="dv">42</span>)</span>
+<span id="cb66-2"><a href="#cb66-2" aria-hidden="true" tabindex="-1"></a>test_params <span class="op">=</span> {</span>
+<span id="cb66-3"><a href="#cb66-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">'input_ids'</span>: torch.randint(<span class="dv">1</span>, <span class="dv">10</span>, size<span class="op">=</span>(<span class="dv">1</span>,<span class="dv">10</span>)).to(<span class="st">"cuda"</span>),</span>
+<span id="cb66-4"><a href="#cb66-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">'cu_seqlens'</span>: [torch.tensor([<span class="dv">0</span>, <span class="dv">3</span>, <span class="dv">10</span>], dtype<span class="op">=</span>torch.int32).to(<span class="st">"cuda"</span>)],</span>
+<span id="cb66-5"><a href="#cb66-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">'max_seqlen'</span>: [<span class="dv">10</span>]</span>
+<span id="cb66-6"><a href="#cb66-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb66-7"><a href="#cb66-7" aria-hidden="true" tabindex="-1"></a>test_params</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="50">
+<pre><code>{'input_ids': tensor([[7, 6, 8, 5, 1, 3, 8, 6, 5, 3]], device='cuda:0'),
+ 'cu_seqlens': [tensor([ 0,  3, 10], device='cuda:0', dtype=torch.int32)],
+ 'max_seqlen': [10]}</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb68"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb68-1"><a href="#cb68-1" aria-hidden="true" tabindex="-1"></a>model.<span class="bu">eval</span>()</span>
+<span id="cb68-2"><a href="#cb68-2" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> torch.no_grad(): output2 <span class="op">=</span> model(<span class="op">**</span>test_params)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The logits are not the same as when <code>flash_attn_varlen_func</code> is used.</p>
+<div class="cell" data-outputid="91d780a7-01bb-4650-e622-6901fc72cc7b" data-execution_count="52">
+<div class="sourceCode cell-code" id="cb69"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb69-1"><a href="#cb69-1" aria-hidden="true" tabindex="-1"></a>(output.logits <span class="op">==</span> output2.logits).<span class="bu">float</span>().mean()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="52">
+<pre><code>tensor(0.3012, device='cuda:0')</code></pre>
+</div>
+</div>
+<p>It follows that the loss value is not the same either.</p>
+<div class="cell" data-outputid="6ec37ab6-7dac-4d44-f171-901f927ad8b0" data-execution_count="40">
+<div class="sourceCode cell-code" id="cb71"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb71-1"><a href="#cb71-1" aria-hidden="true" tabindex="-1"></a>labels <span class="op">=</span> torch.tensor([<span class="op">-</span><span class="dv">100</span>, <span class="dv">6</span>, <span class="dv">8</span>, <span class="op">-</span><span class="dv">100</span>, <span class="dv">1</span>, <span class="dv">3</span>, <span class="dv">8</span>, <span class="dv">6</span>, <span class="dv">5</span>, <span class="dv">3</span>]).to(<span class="st">"cuda"</span>)</span>
+<span id="cb71-2"><a href="#cb71-2" aria-hidden="true" tabindex="-1"></a>model.loss_function(output.logits, labels, <span class="dv">49152</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="40">
+<pre><code>tensor(17.4632, device='cuda:0')</code></pre>
+</div>
+</div>
+</section>
+<section id="closing-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="closing-thoughts">Closing Thoughts</h2>
+<p>I’ll reiterate that I’m not familiar with how sequence packing is implemented (in HuggingFace or ModernBERT) and even less familiar with how Flash Attention is implemented. That being said, this cursory investigation allowed me to understand high-level concepts of how these two interact. My key takeaway is that the correct <code>position_ids</code> need to be passed to the model otherwise HuggingFace will not use the correct <code>flash_attn_varlen_func</code> for sequence packed inputs and that will result in incorrect logits and loss values.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>
