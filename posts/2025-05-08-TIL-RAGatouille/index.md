@@ -1,6 +1,6 @@
 ---
 title: TIL&#58; Resolving RAGaoutille OOM Error and `faiss-gpu` Warning
-date: "2025-05-01"
+date: "2025-05-08"
 author: Vishal Bakshi
 description: A couple of fixes as I work on indexing large document collections (6M+) using RAGatouille.
 filters:
