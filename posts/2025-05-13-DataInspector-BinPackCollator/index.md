@@ -1,6 +1,6 @@
 ---
 title: DataInspector with `BinPackCollator`&#58; Inspecting Packed Dataloader Items
-date: "2025-05-08"
+date: "2025-05-13"
 author: Vishal Bakshi
 description: I learn about LLM-Foundry's `BinPackCollator` and write a custom Composer callback to inspect the data and confirm that multiple sequences are packed in each batch item, leading to using 95% loss-generating tokens instead of 5%!
 filters:

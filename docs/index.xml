@@ -10,7 +10,139 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.2.335</generator>
-<lastBuildDate>Sat, 10 May 2025 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Tue, 13 May 2025 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>DataInspector with BinPackCollator: Inspecting Packed Dataloader Items</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<iframe width="560" height="315" src="https://www.youtube.com/embed/DUwJ9o-Ut5g?si=G8QiwIx_Y7W_LRZF" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+<p>I recently learned (via a desperation google search “llm foundry sequence packing”) that LLM-Foundry has a built-in sequence packer called <a href="https://github.com/mosaicml/llm-foundry/blob/dedcfe3b760b847091642526e9fb303f39742a51/llmfoundry/data/packing.py#L24"><code>BinPackCollator</code></a>. To use it, you simply set two values in the training YAML: <code>train_loader.name=finetuning</code> and <code>train_loader.dataset.packing_ratio</code> to <code>auto</code> or a number greater than <code>1.0</code>. I haven’t fully/thoroughly understood/traced how <code>BinPackCollator</code> is activated, but here’s what I have found:</p>
+<ul>
+<li><a href="https://github.com/mosaicml/llm-foundry/blob/7993aebe3207aae60aed0aab2a107e0114410e83/llmfoundry/data/finetuning/dataloader.py#L668"><code>build_collate_fn</code></a> uses the <code>packing_ratio</code> config value. If <code>packing_ratio</code> is <code>1.0</code> it returns the <code>Seq2SeqFinetuningCollator</code>. If it’s <code>auto</code>, it calls the function <a href="https://github.com/mosaicml/llm-foundry/blob/dedcfe3b760b847091642526e9fb303f39742a51/llmfoundry/data/packing.py#L364"><code>auto_packing_ratio</code></a> which profiles the dataset to determine the optimal <code>packing_ratio</code> (a <code>packing_ratio</code> with zero waste). If <code>packing_ratio</code> is greater than <code>1.0</code>, it then <a href="https://github.com/mosaicml/llm-foundry/blob/7993aebe3207aae60aed0aab2a107e0114410e83/llmfoundry/data/finetuning/dataloader.py#L705">instantiates <code>BinPackCollator</code></a> as the <code>collate_fn</code>.</li>
+<li><a href="https://github.com/mosaicml/llm-foundry/blob/7993aebe3207aae60aed0aab2a107e0114410e83/llmfoundry/data/finetuning/dataloader.py#L235"><code>build_finetuning_dataloader</code></a> constructs the <code>collate_fn</code> from <code>registry.collators</code> (tbh, I haven’t yet grasped the concept of registry and how it works in LLM-Foundry, on my to-do list).</li>
+<li>The main training script, command_utils/train.py <a href="https://github.com/mosaicml/llm-foundry/blob/7993aebe3207aae60aed0aab2a107e0114410e83/llmfoundry/command_utils/train.py#L461">uses <code>build_dataloader</code></a> which takes the training loader config and uses <a href="https://github.com/mosaicml/llm-foundry/blob/7993aebe3207aae60aed0aab2a107e0114410e83/llmfoundry/data/dataloader.py#L32">the <code>name</code> attribute in the config (which is <code>finetuning</code> in our case)</a> to <code>construct_from_registry</code> which I do not understand how it works yet.</li>
+</ul>
+<p>Here’s an example YAML snippet which shows the necessary attributes (<code>name</code> and <code>packing_ratio</code>) to utilize <code>BinPackCollator</code>:</p>
+<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode yaml code-with-copy"><code class="sourceCode yaml"><span id="cb1-1"><span class="fu" style="color: #4758AB;">train_loader</span><span class="kw" style="color: #003B4F;">:</span></span>
+<span id="cb1-2"><span class="at" style="color: #657422;">  </span><span class="fu" style="color: #4758AB;">name</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> finetuning</span></span>
+<span id="cb1-3"><span class="at" style="color: #657422;">  </span><span class="fu" style="color: #4758AB;">dataset</span><span class="kw" style="color: #003B4F;">:</span></span>
+<span id="cb1-4"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">streams</span><span class="kw" style="color: #003B4F;">:</span></span>
+<span id="cb1-5"><span class="at" style="color: #657422;">      </span><span class="fu" style="color: #4758AB;">my_data</span><span class="kw" style="color: #003B4F;">:</span></span>
+<span id="cb1-6"><span class="at" style="color: #657422;">        </span><span class="fu" style="color: #4758AB;">local</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> ${variables.data_local}</span></span>
+<span id="cb1-7"><span class="at" style="color: #657422;">        </span><span class="fu" style="color: #4758AB;">remote</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> ${variables.data_remote}</span></span>
+<span id="cb1-8"><span class="at" style="color: #657422;">        </span><span class="fu" style="color: #4758AB;">split</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> train</span></span>
+<span id="cb1-9"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">shuffle</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> </span><span class="ch" style="color: #20794D;">true</span></span>
+<span id="cb1-10"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">max_seq_len</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> ${variables.max_seq_len}</span></span>
+<span id="cb1-11"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">shuffle_seed</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> ${variables.global_seed}</span></span>
+<span id="cb1-12"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">decoder_only_format</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> </span><span class="ch" style="color: #20794D;">true</span></span>
+<span id="cb1-13"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">packing_ratio</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> </span><span class="fl" style="color: #AD0000;">5.0</span></span></code></pre></div>
+<p>In this blog post, I’m going to share a custom Composer callback I wrote to inspect data during training and ensure that sequences are being packed!</p>
+</section>
+<section id="datainspector" class="level2">
+<h2 class="anchored" data-anchor-id="datainspector"><code>DataInspector</code></h2>
+<p>I’ll start by sharing the full code for my callback:</p>
+<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="kw" style="color: #003B4F;">class</span> DataInspector(Callback):</span>
+<span id="cb2-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, save_path<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"/model-checkpoints/binpackcollator"</span>):</span>
+<span id="cb2-3">        <span class="va" style="color: #111111;">self</span>.save_path <span class="op" style="color: #5E5E5E;">=</span> Path(save_path)</span>
+<span id="cb2-4">        <span class="va" style="color: #111111;">self</span>.log <span class="op" style="color: #5E5E5E;">=</span> {<span class="st" style="color: #20794D;">'log'</span>: {}}</span>
+<span id="cb2-5"></span>
+<span id="cb2-6">    <span class="kw" style="color: #003B4F;">def</span> after_dataloader(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb2-7">        <span class="va" style="color: #111111;">self</span>._log(</span>
+<span id="cb2-8">            state, </span>
+<span id="cb2-9">            <span class="st" style="color: #20794D;">"after_dataloader"</span>, </span>
+<span id="cb2-10">            <span class="bu" style="color: null;">str</span>(state.timestamp.batch.value), </span>
+<span id="cb2-11">            [</span>
+<span id="cb2-12">                (<span class="st" style="color: #20794D;">'collate_fn'</span>, <span class="bu" style="color: null;">str</span>(state.dataloader.collate_fn.base_collator)),</span>
+<span id="cb2-13">                (<span class="st" style="color: #20794D;">'input_ids_shape'</span>, <span class="bu" style="color: null;">str</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>].shape)), </span>
+<span id="cb2-14">                (<span class="st" style="color: #20794D;">'total_tokens'</span>, <span class="bu" style="color: null;">str</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>].shape[<span class="dv" style="color: #AD0000;">1</span>])),</span>
+<span id="cb2-15">                (<span class="st" style="color: #20794D;">'decoded_tokens'</span>, <span class="bu" style="color: null;">str</span>(state.model.tokenizer.decode(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>][<span class="dv" style="color: #AD0000;">0</span>]))),</span>
+<span id="cb2-16">                (<span class="st" style="color: #20794D;">'padding_tokens'</span>, <span class="bu" style="color: null;">str</span>(<span class="bu" style="color: null;">len</span>([o <span class="cf" style="color: #003B4F;">for</span> o <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">list</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>][<span class="dv" style="color: #AD0000;">0</span>]) <span class="cf" style="color: #003B4F;">if</span> o.item() <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">0</span>]))),</span>
+<span id="cb2-17">                (<span class="st" style="color: #20794D;">'non_padding_tokens'</span>, <span class="bu" style="color: null;">str</span>(<span class="bu" style="color: null;">len</span>([o <span class="cf" style="color: #003B4F;">for</span> o <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">list</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>][<span class="dv" style="color: #AD0000;">0</span>]) <span class="cf" style="color: #003B4F;">if</span> o.item() <span class="op" style="color: #5E5E5E;">!=</span> <span class="dv" style="color: #AD0000;">0</span>]))),</span>
+<span id="cb2-18">                (<span class="st" style="color: #20794D;">'input_ids[0]'</span>, <span class="bu" style="color: null;">str</span>(<span class="bu" style="color: null;">list</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>][<span class="dv" style="color: #AD0000;">0</span>]))),</span>
+<span id="cb2-19">                </span>
+<span id="cb2-20">            ])</span>
+<span id="cb2-21"></span>
+<span id="cb2-22">    <span class="kw" style="color: #003B4F;">def</span> _log(<span class="va" style="color: #111111;">self</span>, state: State, event_name: <span class="bu" style="color: null;">str</span>, batch_num: <span class="bu" style="color: null;">str</span>, values: <span class="bu" style="color: null;">list</span>[<span class="bu" style="color: null;">str</span>]) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb2-23">        <span class="cf" style="color: #003B4F;">for</span> label, value <span class="kw" style="color: #003B4F;">in</span> values: <span class="va" style="color: #111111;">self</span>.log[<span class="st" style="color: #20794D;">"log"</span>][<span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>event_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_</span><span class="sc" style="color: #5E5E5E;">{</span>batch_num<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_</span><span class="sc" style="color: #5E5E5E;">{</span>label<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>] <span class="op" style="color: #5E5E5E;">=</span> value</span>
+<span id="cb2-24">        <span class="va" style="color: #111111;">self</span>._save()</span>
+<span id="cb2-25"></span>
+<span id="cb2-26">    <span class="kw" style="color: #003B4F;">def</span> _save(<span class="va" style="color: #111111;">self</span>) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb2-27">        os.makedirs(<span class="va" style="color: #111111;">self</span>.save_path, exist_ok<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>)</span>
+<span id="cb2-28">        log_file <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.save_path <span class="op" style="color: #5E5E5E;">/</span> <span class="st" style="color: #20794D;">"datainspector_logs.json"</span></span>
+<span id="cb2-29">        <span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(log_file, <span class="st" style="color: #20794D;">'w'</span>) <span class="im" style="color: #00769E;">as</span> f:</span>
+<span id="cb2-30">            json.dump(<span class="va" style="color: #111111;">self</span>.log, f, indent<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>)</span></code></pre></div>
+<p>I started testing the callback by writing a very basic version first:</p>
+<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="kw" style="color: #003B4F;">class</span> DataInspector(Callback):</span>
+<span id="cb3-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, save_path<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"/model-checkpoints/binpackcollator"</span>):</span>
+<span id="cb3-3">        <span class="va" style="color: #111111;">self</span>.save_path <span class="op" style="color: #5E5E5E;">=</span> Path(save_path)</span>
+<span id="cb3-4">        <span class="va" style="color: #111111;">self</span>.log <span class="op" style="color: #5E5E5E;">=</span> {<span class="st" style="color: #20794D;">'log'</span>: {}}</span>
+<span id="cb3-5"></span>
+<span id="cb3-6">    <span class="kw" style="color: #003B4F;">def</span> after_dataloader(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb3-7">        <span class="va" style="color: #111111;">self</span>._log(state, <span class="st" style="color: #20794D;">"after_dataloader"</span>, <span class="st" style="color: #20794D;">"some value"</span>)</span>
+<span id="cb3-8"></span>
+<span id="cb3-9">    <span class="kw" style="color: #003B4F;">def</span> _log(<span class="va" style="color: #111111;">self</span>, state: State, event_name: <span class="bu" style="color: null;">str</span>, value: <span class="bu" style="color: null;">str</span>) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb3-10">        <span class="va" style="color: #111111;">self</span>.log[<span class="st" style="color: #20794D;">"log"</span>][<span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>event_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>] <span class="op" style="color: #5E5E5E;">=</span> value</span>
+<span id="cb3-11">        <span class="va" style="color: #111111;">self</span>._save()</span>
+<span id="cb3-12"></span>
+<span id="cb3-13">    <span class="kw" style="color: #003B4F;">def</span> _save(<span class="va" style="color: #111111;">self</span>) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb3-14">        os.makedirs(<span class="va" style="color: #111111;">self</span>.save_path, exist_ok<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>)</span>
+<span id="cb3-15">        log_file <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.save_path <span class="op" style="color: #5E5E5E;">/</span> <span class="st" style="color: #20794D;">"datainspector_logs.json"</span></span>
+<span id="cb3-16">        <span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(log_file, <span class="st" style="color: #20794D;">'w'</span>) <span class="im" style="color: #00769E;">as</span> f:</span>
+<span id="cb3-17">            json.dump(<span class="va" style="color: #111111;">self</span>.log, f, indent<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>)</span></code></pre></div>
+<p>The <code>__init__</code> and <code>_save</code> methods are pretty straigtforward, as they instantiate the <code>save_path</code> and <code>log</code> and then save to the <code>log</code> at that <code>save_path</code>. I could have chosen any number of events to trigger logging, but I chose <code>after_loader</code> since I wanted to inspect the data after the dataloader was constructed. The <code>_log</code> basically takes in as input the strings you want to save in the <code>self.log</code> dictionary. Once this initial functionality was working, I added different items for logging one at a time, starting with <code>input_ids</code>, <code>non_padding_tokens</code> and <code>padding_tokens</code> (which are counts of tokens), inspecting the logs visually before I moved on to the next item. Along the way I learned that the dataloader’s <code>collate_fn</code> was <code>LossGeneratingTokensCollatorWrapper</code> and that its <code>base_collator</code> function was <code>BinPackCollator</code>.</p>
+<p>Here’s a snippet of the log:</p>
+<div class="sourceCode" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb4-1"><span class="er" style="color: #AD0000;">"log":</span> <span class="fu" style="color: #4758AB;">{</span></span>
+<span id="cb4-2">    <span class="dt" style="color: #AD0000;">"after_dataloader_0_collate_fn"</span><span class="fu" style="color: #4758AB;">:</span> <span class="st" style="color: #20794D;">"&lt;llmfoundry.data.packing.BinPackCollator object at 0x2ad36237cc20&gt;"</span><span class="fu" style="color: #4758AB;">,</span></span>
+<span id="cb4-3">    <span class="dt" style="color: #AD0000;">"after_dataloader_0_input_ids_shape"</span><span class="fu" style="color: #4758AB;">:</span> <span class="st" style="color: #20794D;">"torch.Size([4, 2048])"</span><span class="fu" style="color: #4758AB;">,</span></span>
+<span id="cb4-4">    <span class="dt" style="color: #AD0000;">"after_dataloader_0_total_tokens"</span><span class="fu" style="color: #4758AB;">:</span> <span class="st" style="color: #20794D;">"2048"</span><span class="fu" style="color: #4758AB;">,</span></span>
+<span id="cb4-5">    <span class="dt" style="color: #AD0000;">"after_dataloader_0_padding_tokens"</span><span class="fu" style="color: #4758AB;">:</span> <span class="st" style="color: #20794D;">"102"</span><span class="fu" style="color: #4758AB;">,</span></span>
+<span id="cb4-6">    <span class="dt" style="color: #AD0000;">"after_dataloader_0_non_padding_tokens"</span><span class="fu" style="color: #4758AB;">:</span> <span class="st" style="color: #20794D;">"1946"</span><span class="fu" style="color: #4758AB;">,</span></span>
+<span id="cb4-7">    <span class="er" style="color: #AD0000;">...</span></span></code></pre></div>
+<p>Here are screenshots of the actual log, first <strong>without</strong> using <code>BinPackCollator</code>:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="1.png" class="lightbox" title="log without using BinPackCollator. Note that the number of padding tokens represent ~90% of the max sequence length of 2048" data-gallery="quarto-lightbox-gallery-1"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/1.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">log without using <code>BinPackCollator</code>. Note that the number of padding tokens represent ~90% of the max sequence length of 2048</figcaption><p></p>
+</figure>
+</div>
+<p>And with using <code>BinPackCollator</code>:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="2.png" class="lightbox" title="log when using BinPackCollator. Now the non-padding token represent 90% of the sequence length" data-gallery="quarto-lightbox-gallery-2"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/2.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">log when using <code>BinPackCollator</code>. Now the non-padding token represent 90% of the sequence length</figcaption><p></p>
+</figure>
+</div>
+<p>Using <code>BinPackCollator</code>, we are now using more than 90% of the maximum sequence length with loss generating tokens!</p>
+</section>
+<section id="closing-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="closing-thoughts">Closing Thoughts</h2>
+<p>This is the fourth or fifth custom Composer callback I’ve written and I am really enjoyin writing and using them! The callback system makes it so easy to “look at your data”, and visually inspect and confirm that the model and/or data artifacts are correct. Expect more blog posts around Composer callbacks.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="ChatGPT generated graphic for `DataInspector`.png" class="lightbox" title="3.png" data-gallery="quarto-lightbox-gallery-3"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/ChatGPT generated graphic for `DataInspector`.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">3.png</figcaption><p></p>
+</figure>
+</div>
+
+
+</section>
+
+ ]]></description>
+  <category>LLM</category>
+  <category>deep learning</category>
+  <category>LLM-Foundry</category>
+  <category>Custom Composer Callback</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/index.html</guid>
+  <pubDate>Tue, 13 May 2025 07:00:00 GMT</pubDate>
+  <media:content url="https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/1.png" medium="image" type="image/png" height="85" width="144"/>
+</item>
 <item>
   <title>Comparing RAGatouille and ColBERT Indexes and Search Resultss</title>
   <dc:creator>Vishal Bakshi</dc:creator>
@@ -1285,138 +1417,6 @@ ________________________________________________________________________________
   <category>deep learning</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2025-05-08-DataInspector/index.html</guid>
   <pubDate>Thu, 08 May 2025 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>DataInspector with BinPackCollator: Inspecting Packed Dataloader Items</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/index.html</link>
-  <description><![CDATA[ 
-
-
-
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<iframe width="560" height="315" src="https://www.youtube.com/embed/DUwJ9o-Ut5g?si=G8QiwIx_Y7W_LRZF" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
-</iframe>
-<p>I recently learned (via a desperation google search “llm foundry sequence packing”) that LLM-Foundry has a built-in sequence packer called <a href="https://github.com/mosaicml/llm-foundry/blob/dedcfe3b760b847091642526e9fb303f39742a51/llmfoundry/data/packing.py#L24"><code>BinPackCollator</code></a>. To use it, you simply set two values in the training YAML: <code>train_loader.name=finetuning</code> and <code>train_loader.dataset.packing_ratio</code> to <code>auto</code> or a number greater than <code>1.0</code>. I haven’t fully/thoroughly understood/traced how <code>BinPackCollator</code> is activated, but here’s what I have found:</p>
-<ul>
-<li><a href="https://github.com/mosaicml/llm-foundry/blob/7993aebe3207aae60aed0aab2a107e0114410e83/llmfoundry/data/finetuning/dataloader.py#L668"><code>build_collate_fn</code></a> uses the <code>packing_ratio</code> config value. If <code>packing_ratio</code> is <code>1.0</code> it returns the <code>Seq2SeqFinetuningCollator</code>. If it’s <code>auto</code>, it calls the function <a href="https://github.com/mosaicml/llm-foundry/blob/dedcfe3b760b847091642526e9fb303f39742a51/llmfoundry/data/packing.py#L364"><code>auto_packing_ratio</code></a> which profiles the dataset to determine the optimal <code>packing_ratio</code> (a <code>packing_ratio</code> with zero waste). If <code>packing_ratio</code> is greater than <code>1.0</code>, it then <a href="https://github.com/mosaicml/llm-foundry/blob/7993aebe3207aae60aed0aab2a107e0114410e83/llmfoundry/data/finetuning/dataloader.py#L705">instantiates <code>BinPackCollator</code></a> as the <code>collate_fn</code>.</li>
-<li><a href="https://github.com/mosaicml/llm-foundry/blob/7993aebe3207aae60aed0aab2a107e0114410e83/llmfoundry/data/finetuning/dataloader.py#L235"><code>build_finetuning_dataloader</code></a> constructs the <code>collate_fn</code> from <code>registry.collators</code> (tbh, I haven’t yet grasped the concept of registry and how it works in LLM-Foundry, on my to-do list).</li>
-<li>The main training script, command_utils/train.py <a href="https://github.com/mosaicml/llm-foundry/blob/7993aebe3207aae60aed0aab2a107e0114410e83/llmfoundry/command_utils/train.py#L461">uses <code>build_dataloader</code></a> which takes the training loader config and uses <a href="https://github.com/mosaicml/llm-foundry/blob/7993aebe3207aae60aed0aab2a107e0114410e83/llmfoundry/data/dataloader.py#L32">the <code>name</code> attribute in the config (which is <code>finetuning</code> in our case)</a> to <code>construct_from_registry</code> which I do not understand how it works yet.</li>
-</ul>
-<p>Here’s an example YAML snippet which shows the necessary attributes (<code>name</code> and <code>packing_ratio</code>) to utilize <code>BinPackCollator</code>:</p>
-<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode yaml code-with-copy"><code class="sourceCode yaml"><span id="cb1-1"><span class="fu" style="color: #4758AB;">train_loader</span><span class="kw" style="color: #003B4F;">:</span></span>
-<span id="cb1-2"><span class="at" style="color: #657422;">  </span><span class="fu" style="color: #4758AB;">name</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> finetuning</span></span>
-<span id="cb1-3"><span class="at" style="color: #657422;">  </span><span class="fu" style="color: #4758AB;">dataset</span><span class="kw" style="color: #003B4F;">:</span></span>
-<span id="cb1-4"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">streams</span><span class="kw" style="color: #003B4F;">:</span></span>
-<span id="cb1-5"><span class="at" style="color: #657422;">      </span><span class="fu" style="color: #4758AB;">my_data</span><span class="kw" style="color: #003B4F;">:</span></span>
-<span id="cb1-6"><span class="at" style="color: #657422;">        </span><span class="fu" style="color: #4758AB;">local</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> ${variables.data_local}</span></span>
-<span id="cb1-7"><span class="at" style="color: #657422;">        </span><span class="fu" style="color: #4758AB;">remote</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> ${variables.data_remote}</span></span>
-<span id="cb1-8"><span class="at" style="color: #657422;">        </span><span class="fu" style="color: #4758AB;">split</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> train</span></span>
-<span id="cb1-9"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">shuffle</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> </span><span class="ch" style="color: #20794D;">true</span></span>
-<span id="cb1-10"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">max_seq_len</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> ${variables.max_seq_len}</span></span>
-<span id="cb1-11"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">shuffle_seed</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> ${variables.global_seed}</span></span>
-<span id="cb1-12"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">decoder_only_format</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> </span><span class="ch" style="color: #20794D;">true</span></span>
-<span id="cb1-13"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">packing_ratio</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> </span><span class="fl" style="color: #AD0000;">5.0</span></span></code></pre></div>
-<p>In this blog post, I’m going to share a custom Composer callback I wrote to inspect data during training and ensure that sequences are being packed!</p>
-</section>
-<section id="datainspector" class="level2">
-<h2 class="anchored" data-anchor-id="datainspector"><code>DataInspector</code></h2>
-<p>I’ll start by sharing the full code for my callback:</p>
-<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="kw" style="color: #003B4F;">class</span> DataInspector(Callback):</span>
-<span id="cb2-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, save_path<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"/model-checkpoints/binpackcollator"</span>):</span>
-<span id="cb2-3">        <span class="va" style="color: #111111;">self</span>.save_path <span class="op" style="color: #5E5E5E;">=</span> Path(save_path)</span>
-<span id="cb2-4">        <span class="va" style="color: #111111;">self</span>.log <span class="op" style="color: #5E5E5E;">=</span> {<span class="st" style="color: #20794D;">'log'</span>: {}}</span>
-<span id="cb2-5"></span>
-<span id="cb2-6">    <span class="kw" style="color: #003B4F;">def</span> after_dataloader(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
-<span id="cb2-7">        <span class="va" style="color: #111111;">self</span>._log(</span>
-<span id="cb2-8">            state, </span>
-<span id="cb2-9">            <span class="st" style="color: #20794D;">"after_dataloader"</span>, </span>
-<span id="cb2-10">            <span class="bu" style="color: null;">str</span>(state.timestamp.batch.value), </span>
-<span id="cb2-11">            [</span>
-<span id="cb2-12">                (<span class="st" style="color: #20794D;">'collate_fn'</span>, <span class="bu" style="color: null;">str</span>(state.dataloader.collate_fn.base_collator)),</span>
-<span id="cb2-13">                (<span class="st" style="color: #20794D;">'input_ids_shape'</span>, <span class="bu" style="color: null;">str</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>].shape)), </span>
-<span id="cb2-14">                (<span class="st" style="color: #20794D;">'total_tokens'</span>, <span class="bu" style="color: null;">str</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>].shape[<span class="dv" style="color: #AD0000;">1</span>])),</span>
-<span id="cb2-15">                (<span class="st" style="color: #20794D;">'decoded_tokens'</span>, <span class="bu" style="color: null;">str</span>(state.model.tokenizer.decode(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>][<span class="dv" style="color: #AD0000;">0</span>]))),</span>
-<span id="cb2-16">                (<span class="st" style="color: #20794D;">'padding_tokens'</span>, <span class="bu" style="color: null;">str</span>(<span class="bu" style="color: null;">len</span>([o <span class="cf" style="color: #003B4F;">for</span> o <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">list</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>][<span class="dv" style="color: #AD0000;">0</span>]) <span class="cf" style="color: #003B4F;">if</span> o.item() <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">0</span>]))),</span>
-<span id="cb2-17">                (<span class="st" style="color: #20794D;">'non_padding_tokens'</span>, <span class="bu" style="color: null;">str</span>(<span class="bu" style="color: null;">len</span>([o <span class="cf" style="color: #003B4F;">for</span> o <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">list</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>][<span class="dv" style="color: #AD0000;">0</span>]) <span class="cf" style="color: #003B4F;">if</span> o.item() <span class="op" style="color: #5E5E5E;">!=</span> <span class="dv" style="color: #AD0000;">0</span>]))),</span>
-<span id="cb2-18">                (<span class="st" style="color: #20794D;">'input_ids[0]'</span>, <span class="bu" style="color: null;">str</span>(<span class="bu" style="color: null;">list</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>][<span class="dv" style="color: #AD0000;">0</span>]))),</span>
-<span id="cb2-19">                </span>
-<span id="cb2-20">            ])</span>
-<span id="cb2-21"></span>
-<span id="cb2-22">    <span class="kw" style="color: #003B4F;">def</span> _log(<span class="va" style="color: #111111;">self</span>, state: State, event_name: <span class="bu" style="color: null;">str</span>, batch_num: <span class="bu" style="color: null;">str</span>, values: <span class="bu" style="color: null;">list</span>[<span class="bu" style="color: null;">str</span>]) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
-<span id="cb2-23">        <span class="cf" style="color: #003B4F;">for</span> label, value <span class="kw" style="color: #003B4F;">in</span> values: <span class="va" style="color: #111111;">self</span>.log[<span class="st" style="color: #20794D;">"log"</span>][<span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>event_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_</span><span class="sc" style="color: #5E5E5E;">{</span>batch_num<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_</span><span class="sc" style="color: #5E5E5E;">{</span>label<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>] <span class="op" style="color: #5E5E5E;">=</span> value</span>
-<span id="cb2-24">        <span class="va" style="color: #111111;">self</span>._save()</span>
-<span id="cb2-25"></span>
-<span id="cb2-26">    <span class="kw" style="color: #003B4F;">def</span> _save(<span class="va" style="color: #111111;">self</span>) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
-<span id="cb2-27">        os.makedirs(<span class="va" style="color: #111111;">self</span>.save_path, exist_ok<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>)</span>
-<span id="cb2-28">        log_file <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.save_path <span class="op" style="color: #5E5E5E;">/</span> <span class="st" style="color: #20794D;">"datainspector_logs.json"</span></span>
-<span id="cb2-29">        <span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(log_file, <span class="st" style="color: #20794D;">'w'</span>) <span class="im" style="color: #00769E;">as</span> f:</span>
-<span id="cb2-30">            json.dump(<span class="va" style="color: #111111;">self</span>.log, f, indent<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>)</span></code></pre></div>
-<p>I started testing the callback by writing a very basic version first:</p>
-<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="kw" style="color: #003B4F;">class</span> DataInspector(Callback):</span>
-<span id="cb3-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, save_path<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"/model-checkpoints/binpackcollator"</span>):</span>
-<span id="cb3-3">        <span class="va" style="color: #111111;">self</span>.save_path <span class="op" style="color: #5E5E5E;">=</span> Path(save_path)</span>
-<span id="cb3-4">        <span class="va" style="color: #111111;">self</span>.log <span class="op" style="color: #5E5E5E;">=</span> {<span class="st" style="color: #20794D;">'log'</span>: {}}</span>
-<span id="cb3-5"></span>
-<span id="cb3-6">    <span class="kw" style="color: #003B4F;">def</span> after_dataloader(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
-<span id="cb3-7">        <span class="va" style="color: #111111;">self</span>._log(state, <span class="st" style="color: #20794D;">"after_dataloader"</span>, <span class="st" style="color: #20794D;">"some value"</span>)</span>
-<span id="cb3-8"></span>
-<span id="cb3-9">    <span class="kw" style="color: #003B4F;">def</span> _log(<span class="va" style="color: #111111;">self</span>, state: State, event_name: <span class="bu" style="color: null;">str</span>, value: <span class="bu" style="color: null;">str</span>) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
-<span id="cb3-10">        <span class="va" style="color: #111111;">self</span>.log[<span class="st" style="color: #20794D;">"log"</span>][<span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>event_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>] <span class="op" style="color: #5E5E5E;">=</span> value</span>
-<span id="cb3-11">        <span class="va" style="color: #111111;">self</span>._save()</span>
-<span id="cb3-12"></span>
-<span id="cb3-13">    <span class="kw" style="color: #003B4F;">def</span> _save(<span class="va" style="color: #111111;">self</span>) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
-<span id="cb3-14">        os.makedirs(<span class="va" style="color: #111111;">self</span>.save_path, exist_ok<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>)</span>
-<span id="cb3-15">        log_file <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.save_path <span class="op" style="color: #5E5E5E;">/</span> <span class="st" style="color: #20794D;">"datainspector_logs.json"</span></span>
-<span id="cb3-16">        <span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(log_file, <span class="st" style="color: #20794D;">'w'</span>) <span class="im" style="color: #00769E;">as</span> f:</span>
-<span id="cb3-17">            json.dump(<span class="va" style="color: #111111;">self</span>.log, f, indent<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>)</span></code></pre></div>
-<p>The <code>__init__</code> and <code>_save</code> methods are pretty straigtforward, as they instantiate the <code>save_path</code> and <code>log</code> and then save to the <code>log</code> at that <code>save_path</code>. I could have chosen any number of events to trigger logging, but I chose <code>after_loader</code> since I wanted to inspect the data after the dataloader was constructed. The <code>_log</code> basically takes in as input the strings you want to save in the <code>self.log</code> dictionary. Once this initial functionality was working, I added different items for logging one at a time, starting with <code>input_ids</code>, <code>non_padding_tokens</code> and <code>padding_tokens</code> (which are counts of tokens), inspecting the logs visually before I moved on to the next item. Along the way I learned that the dataloader’s <code>collate_fn</code> was <code>LossGeneratingTokensCollatorWrapper</code> and that its <code>base_collator</code> function was <code>BinPackCollator</code>.</p>
-<p>Here’s a snippet of the log:</p>
-<div class="sourceCode" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb4-1"><span class="er" style="color: #AD0000;">"log":</span> <span class="fu" style="color: #4758AB;">{</span></span>
-<span id="cb4-2">    <span class="dt" style="color: #AD0000;">"after_dataloader_0_collate_fn"</span><span class="fu" style="color: #4758AB;">:</span> <span class="st" style="color: #20794D;">"&lt;llmfoundry.data.packing.BinPackCollator object at 0x2ad36237cc20&gt;"</span><span class="fu" style="color: #4758AB;">,</span></span>
-<span id="cb4-3">    <span class="dt" style="color: #AD0000;">"after_dataloader_0_input_ids_shape"</span><span class="fu" style="color: #4758AB;">:</span> <span class="st" style="color: #20794D;">"torch.Size([4, 2048])"</span><span class="fu" style="color: #4758AB;">,</span></span>
-<span id="cb4-4">    <span class="dt" style="color: #AD0000;">"after_dataloader_0_total_tokens"</span><span class="fu" style="color: #4758AB;">:</span> <span class="st" style="color: #20794D;">"2048"</span><span class="fu" style="color: #4758AB;">,</span></span>
-<span id="cb4-5">    <span class="dt" style="color: #AD0000;">"after_dataloader_0_padding_tokens"</span><span class="fu" style="color: #4758AB;">:</span> <span class="st" style="color: #20794D;">"102"</span><span class="fu" style="color: #4758AB;">,</span></span>
-<span id="cb4-6">    <span class="dt" style="color: #AD0000;">"after_dataloader_0_non_padding_tokens"</span><span class="fu" style="color: #4758AB;">:</span> <span class="st" style="color: #20794D;">"1946"</span><span class="fu" style="color: #4758AB;">,</span></span>
-<span id="cb4-7">    <span class="er" style="color: #AD0000;">...</span></span></code></pre></div>
-<p>Here are screenshots of the actual log, first <strong>without</strong> using <code>BinPackCollator</code>:</p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="log without using BinPackCollator. Note that the number of padding tokens represent ~90% of the max sequence length of 2048"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/1.png" class="img-fluid figure-img"></a></p>
-<p></p><figcaption class="figure-caption">log without using <code>BinPackCollator</code>. Note that the number of padding tokens represent ~90% of the max sequence length of 2048</figcaption><p></p>
-</figure>
-</div>
-<p>And with using <code>BinPackCollator</code>:</p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2" title="log when using BinPackCollator. Now the non-padding token represent 90% of the sequence length"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/2.png" class="img-fluid figure-img"></a></p>
-<p></p><figcaption class="figure-caption">log when using <code>BinPackCollator</code>. Now the non-padding token represent 90% of the sequence length</figcaption><p></p>
-</figure>
-</div>
-<p>Using <code>BinPackCollator</code>, we are now using more than 90% of the maximum sequence length with loss generating tokens!</p>
-</section>
-<section id="closing-thoughts" class="level2">
-<h2 class="anchored" data-anchor-id="closing-thoughts">Closing Thoughts</h2>
-<p>This is the fourth or fifth custom Composer callback I’ve written and I am really enjoyin writing and using them! The callback system makes it so easy to “look at your data”, and visually inspect and confirm that the model and/or data artifacts are correct. Expect more blog posts around Composer callbacks.</p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="ChatGPT generated graphic for `DataInspector`.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3" title="3.png"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/ChatGPT generated graphic for `DataInspector`.png" class="img-fluid figure-img"></a></p>
-<p></p><figcaption class="figure-caption">3.png</figcaption><p></p>
-</figure>
-</div>
-
-
-</section>
-
- ]]></description>
-  <category>LLM</category>
-  <category>deep learning</category>
-  <category>LLM-Foundry</category>
-  <category>Custom Composer Callback</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/index.html</guid>
-  <pubDate>Thu, 08 May 2025 07:00:00 GMT</pubDate>
-  <media:content url="https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/1.png" medium="image" type="image/png" height="85" width="144"/>
 </item>
 <item>
   <title>Understanding Sequence Packing - Initial Musings</title>
