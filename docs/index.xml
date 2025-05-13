@@ -1287,6 +1287,138 @@ ________________________________________________________________________________
   <pubDate>Thu, 08 May 2025 07:00:00 GMT</pubDate>
 </item>
 <item>
+  <title>DataInspector with BinPackCollator: Inspecting Packed Dataloader Items</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<iframe width="560" height="315" src="https://www.youtube.com/embed/DUwJ9o-Ut5g?si=G8QiwIx_Y7W_LRZF" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+<p>I recently learned (via a desperation google search “llm foundry sequence packing”) that LLM-Foundry has a built-in sequence packer called <a href="https://github.com/mosaicml/llm-foundry/blob/dedcfe3b760b847091642526e9fb303f39742a51/llmfoundry/data/packing.py#L24"><code>BinPackCollator</code></a>. To use it, you simply set two values in the training YAML: <code>train_loader.name=finetuning</code> and <code>train_loader.dataset.packing_ratio</code> to <code>auto</code> or a number greater than <code>1.0</code>. I haven’t fully/thoroughly understood/traced how <code>BinPackCollator</code> is activated, but here’s what I have found:</p>
+<ul>
+<li><a href="https://github.com/mosaicml/llm-foundry/blob/7993aebe3207aae60aed0aab2a107e0114410e83/llmfoundry/data/finetuning/dataloader.py#L668"><code>build_collate_fn</code></a> uses the <code>packing_ratio</code> config value. If <code>packing_ratio</code> is <code>1.0</code> it returns the <code>Seq2SeqFinetuningCollator</code>. If it’s <code>auto</code>, it calls the function <a href="https://github.com/mosaicml/llm-foundry/blob/dedcfe3b760b847091642526e9fb303f39742a51/llmfoundry/data/packing.py#L364"><code>auto_packing_ratio</code></a> which profiles the dataset to determine the optimal <code>packing_ratio</code> (a <code>packing_ratio</code> with zero waste). If <code>packing_ratio</code> is greater than <code>1.0</code>, it then <a href="https://github.com/mosaicml/llm-foundry/blob/7993aebe3207aae60aed0aab2a107e0114410e83/llmfoundry/data/finetuning/dataloader.py#L705">instantiates <code>BinPackCollator</code></a> as the <code>collate_fn</code>.</li>
+<li><a href="https://github.com/mosaicml/llm-foundry/blob/7993aebe3207aae60aed0aab2a107e0114410e83/llmfoundry/data/finetuning/dataloader.py#L235"><code>build_finetuning_dataloader</code></a> constructs the <code>collate_fn</code> from <code>registry.collators</code> (tbh, I haven’t yet grasped the concept of registry and how it works in LLM-Foundry, on my to-do list).</li>
+<li>The main training script, command_utils/train.py <a href="https://github.com/mosaicml/llm-foundry/blob/7993aebe3207aae60aed0aab2a107e0114410e83/llmfoundry/command_utils/train.py#L461">uses <code>build_dataloader</code></a> which takes the training loader config and uses <a href="https://github.com/mosaicml/llm-foundry/blob/7993aebe3207aae60aed0aab2a107e0114410e83/llmfoundry/data/dataloader.py#L32">the <code>name</code> attribute in the config (which is <code>finetuning</code> in our case)</a> to <code>construct_from_registry</code> which I do not understand how it works yet.</li>
+</ul>
+<p>Here’s an example YAML snippet which shows the necessary attributes (<code>name</code> and <code>packing_ratio</code>) to utilize <code>BinPackCollator</code>:</p>
+<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode yaml code-with-copy"><code class="sourceCode yaml"><span id="cb1-1"><span class="fu" style="color: #4758AB;">train_loader</span><span class="kw" style="color: #003B4F;">:</span></span>
+<span id="cb1-2"><span class="at" style="color: #657422;">  </span><span class="fu" style="color: #4758AB;">name</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> finetuning</span></span>
+<span id="cb1-3"><span class="at" style="color: #657422;">  </span><span class="fu" style="color: #4758AB;">dataset</span><span class="kw" style="color: #003B4F;">:</span></span>
+<span id="cb1-4"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">streams</span><span class="kw" style="color: #003B4F;">:</span></span>
+<span id="cb1-5"><span class="at" style="color: #657422;">      </span><span class="fu" style="color: #4758AB;">my_data</span><span class="kw" style="color: #003B4F;">:</span></span>
+<span id="cb1-6"><span class="at" style="color: #657422;">        </span><span class="fu" style="color: #4758AB;">local</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> ${variables.data_local}</span></span>
+<span id="cb1-7"><span class="at" style="color: #657422;">        </span><span class="fu" style="color: #4758AB;">remote</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> ${variables.data_remote}</span></span>
+<span id="cb1-8"><span class="at" style="color: #657422;">        </span><span class="fu" style="color: #4758AB;">split</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> train</span></span>
+<span id="cb1-9"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">shuffle</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> </span><span class="ch" style="color: #20794D;">true</span></span>
+<span id="cb1-10"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">max_seq_len</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> ${variables.max_seq_len}</span></span>
+<span id="cb1-11"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">shuffle_seed</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> ${variables.global_seed}</span></span>
+<span id="cb1-12"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">decoder_only_format</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> </span><span class="ch" style="color: #20794D;">true</span></span>
+<span id="cb1-13"><span class="at" style="color: #657422;">    </span><span class="fu" style="color: #4758AB;">packing_ratio</span><span class="kw" style="color: #003B4F;">:</span><span class="at" style="color: #657422;"> </span><span class="fl" style="color: #AD0000;">5.0</span></span></code></pre></div>
+<p>In this blog post, I’m going to share a custom Composer callback I wrote to inspect data during training and ensure that sequences are being packed!</p>
+</section>
+<section id="datainspector" class="level2">
+<h2 class="anchored" data-anchor-id="datainspector"><code>DataInspector</code></h2>
+<p>I’ll start by sharing the full code for my callback:</p>
+<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="kw" style="color: #003B4F;">class</span> DataInspector(Callback):</span>
+<span id="cb2-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, save_path<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"/model-checkpoints/binpackcollator"</span>):</span>
+<span id="cb2-3">        <span class="va" style="color: #111111;">self</span>.save_path <span class="op" style="color: #5E5E5E;">=</span> Path(save_path)</span>
+<span id="cb2-4">        <span class="va" style="color: #111111;">self</span>.log <span class="op" style="color: #5E5E5E;">=</span> {<span class="st" style="color: #20794D;">'log'</span>: {}}</span>
+<span id="cb2-5"></span>
+<span id="cb2-6">    <span class="kw" style="color: #003B4F;">def</span> after_dataloader(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb2-7">        <span class="va" style="color: #111111;">self</span>._log(</span>
+<span id="cb2-8">            state, </span>
+<span id="cb2-9">            <span class="st" style="color: #20794D;">"after_dataloader"</span>, </span>
+<span id="cb2-10">            <span class="bu" style="color: null;">str</span>(state.timestamp.batch.value), </span>
+<span id="cb2-11">            [</span>
+<span id="cb2-12">                (<span class="st" style="color: #20794D;">'collate_fn'</span>, <span class="bu" style="color: null;">str</span>(state.dataloader.collate_fn.base_collator)),</span>
+<span id="cb2-13">                (<span class="st" style="color: #20794D;">'input_ids_shape'</span>, <span class="bu" style="color: null;">str</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>].shape)), </span>
+<span id="cb2-14">                (<span class="st" style="color: #20794D;">'total_tokens'</span>, <span class="bu" style="color: null;">str</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>].shape[<span class="dv" style="color: #AD0000;">1</span>])),</span>
+<span id="cb2-15">                (<span class="st" style="color: #20794D;">'decoded_tokens'</span>, <span class="bu" style="color: null;">str</span>(state.model.tokenizer.decode(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>][<span class="dv" style="color: #AD0000;">0</span>]))),</span>
+<span id="cb2-16">                (<span class="st" style="color: #20794D;">'padding_tokens'</span>, <span class="bu" style="color: null;">str</span>(<span class="bu" style="color: null;">len</span>([o <span class="cf" style="color: #003B4F;">for</span> o <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">list</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>][<span class="dv" style="color: #AD0000;">0</span>]) <span class="cf" style="color: #003B4F;">if</span> o.item() <span class="op" style="color: #5E5E5E;">==</span> <span class="dv" style="color: #AD0000;">0</span>]))),</span>
+<span id="cb2-17">                (<span class="st" style="color: #20794D;">'non_padding_tokens'</span>, <span class="bu" style="color: null;">str</span>(<span class="bu" style="color: null;">len</span>([o <span class="cf" style="color: #003B4F;">for</span> o <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">list</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>][<span class="dv" style="color: #AD0000;">0</span>]) <span class="cf" style="color: #003B4F;">if</span> o.item() <span class="op" style="color: #5E5E5E;">!=</span> <span class="dv" style="color: #AD0000;">0</span>]))),</span>
+<span id="cb2-18">                (<span class="st" style="color: #20794D;">'input_ids[0]'</span>, <span class="bu" style="color: null;">str</span>(<span class="bu" style="color: null;">list</span>(state.batch[<span class="st" style="color: #20794D;">'input_ids'</span>][<span class="dv" style="color: #AD0000;">0</span>]))),</span>
+<span id="cb2-19">                </span>
+<span id="cb2-20">            ])</span>
+<span id="cb2-21"></span>
+<span id="cb2-22">    <span class="kw" style="color: #003B4F;">def</span> _log(<span class="va" style="color: #111111;">self</span>, state: State, event_name: <span class="bu" style="color: null;">str</span>, batch_num: <span class="bu" style="color: null;">str</span>, values: <span class="bu" style="color: null;">list</span>[<span class="bu" style="color: null;">str</span>]) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb2-23">        <span class="cf" style="color: #003B4F;">for</span> label, value <span class="kw" style="color: #003B4F;">in</span> values: <span class="va" style="color: #111111;">self</span>.log[<span class="st" style="color: #20794D;">"log"</span>][<span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>event_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_</span><span class="sc" style="color: #5E5E5E;">{</span>batch_num<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_</span><span class="sc" style="color: #5E5E5E;">{</span>label<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>] <span class="op" style="color: #5E5E5E;">=</span> value</span>
+<span id="cb2-24">        <span class="va" style="color: #111111;">self</span>._save()</span>
+<span id="cb2-25"></span>
+<span id="cb2-26">    <span class="kw" style="color: #003B4F;">def</span> _save(<span class="va" style="color: #111111;">self</span>) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb2-27">        os.makedirs(<span class="va" style="color: #111111;">self</span>.save_path, exist_ok<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>)</span>
+<span id="cb2-28">        log_file <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.save_path <span class="op" style="color: #5E5E5E;">/</span> <span class="st" style="color: #20794D;">"datainspector_logs.json"</span></span>
+<span id="cb2-29">        <span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(log_file, <span class="st" style="color: #20794D;">'w'</span>) <span class="im" style="color: #00769E;">as</span> f:</span>
+<span id="cb2-30">            json.dump(<span class="va" style="color: #111111;">self</span>.log, f, indent<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>)</span></code></pre></div>
+<p>I started testing the callback by writing a very basic version first:</p>
+<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="kw" style="color: #003B4F;">class</span> DataInspector(Callback):</span>
+<span id="cb3-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, save_path<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"/model-checkpoints/binpackcollator"</span>):</span>
+<span id="cb3-3">        <span class="va" style="color: #111111;">self</span>.save_path <span class="op" style="color: #5E5E5E;">=</span> Path(save_path)</span>
+<span id="cb3-4">        <span class="va" style="color: #111111;">self</span>.log <span class="op" style="color: #5E5E5E;">=</span> {<span class="st" style="color: #20794D;">'log'</span>: {}}</span>
+<span id="cb3-5"></span>
+<span id="cb3-6">    <span class="kw" style="color: #003B4F;">def</span> after_dataloader(<span class="va" style="color: #111111;">self</span>, state: State, logger: Logger) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb3-7">        <span class="va" style="color: #111111;">self</span>._log(state, <span class="st" style="color: #20794D;">"after_dataloader"</span>, <span class="st" style="color: #20794D;">"some value"</span>)</span>
+<span id="cb3-8"></span>
+<span id="cb3-9">    <span class="kw" style="color: #003B4F;">def</span> _log(<span class="va" style="color: #111111;">self</span>, state: State, event_name: <span class="bu" style="color: null;">str</span>, value: <span class="bu" style="color: null;">str</span>) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb3-10">        <span class="va" style="color: #111111;">self</span>.log[<span class="st" style="color: #20794D;">"log"</span>][<span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>event_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>] <span class="op" style="color: #5E5E5E;">=</span> value</span>
+<span id="cb3-11">        <span class="va" style="color: #111111;">self</span>._save()</span>
+<span id="cb3-12"></span>
+<span id="cb3-13">    <span class="kw" style="color: #003B4F;">def</span> _save(<span class="va" style="color: #111111;">self</span>) <span class="op" style="color: #5E5E5E;">-&gt;</span> <span class="va" style="color: #111111;">None</span>:</span>
+<span id="cb3-14">        os.makedirs(<span class="va" style="color: #111111;">self</span>.save_path, exist_ok<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>)</span>
+<span id="cb3-15">        log_file <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.save_path <span class="op" style="color: #5E5E5E;">/</span> <span class="st" style="color: #20794D;">"datainspector_logs.json"</span></span>
+<span id="cb3-16">        <span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(log_file, <span class="st" style="color: #20794D;">'w'</span>) <span class="im" style="color: #00769E;">as</span> f:</span>
+<span id="cb3-17">            json.dump(<span class="va" style="color: #111111;">self</span>.log, f, indent<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>)</span></code></pre></div>
+<p>The <code>__init__</code> and <code>_save</code> methods are pretty straigtforward, as they instantiate the <code>save_path</code> and <code>log</code> and then save to the <code>log</code> at that <code>save_path</code>. I could have chosen any number of events to trigger logging, but I chose <code>after_loader</code> since I wanted to inspect the data after the dataloader was constructed. The <code>_log</code> basically takes in as input the strings you want to save in the <code>self.log</code> dictionary. Once this initial functionality was working, I added different items for logging one at a time, starting with <code>input_ids</code>, <code>non_padding_tokens</code> and <code>padding_tokens</code> (which are counts of tokens), inspecting the logs visually before I moved on to the next item. Along the way I learned that the dataloader’s <code>collate_fn</code> was <code>LossGeneratingTokensCollatorWrapper</code> and that its <code>base_collator</code> function was <code>BinPackCollator</code>.</p>
+<p>Here’s a snippet of the log:</p>
+<div class="sourceCode" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb4-1"><span class="er" style="color: #AD0000;">"log":</span> <span class="fu" style="color: #4758AB;">{</span></span>
+<span id="cb4-2">    <span class="dt" style="color: #AD0000;">"after_dataloader_0_collate_fn"</span><span class="fu" style="color: #4758AB;">:</span> <span class="st" style="color: #20794D;">"&lt;llmfoundry.data.packing.BinPackCollator object at 0x2ad36237cc20&gt;"</span><span class="fu" style="color: #4758AB;">,</span></span>
+<span id="cb4-3">    <span class="dt" style="color: #AD0000;">"after_dataloader_0_input_ids_shape"</span><span class="fu" style="color: #4758AB;">:</span> <span class="st" style="color: #20794D;">"torch.Size([4, 2048])"</span><span class="fu" style="color: #4758AB;">,</span></span>
+<span id="cb4-4">    <span class="dt" style="color: #AD0000;">"after_dataloader_0_total_tokens"</span><span class="fu" style="color: #4758AB;">:</span> <span class="st" style="color: #20794D;">"2048"</span><span class="fu" style="color: #4758AB;">,</span></span>
+<span id="cb4-5">    <span class="dt" style="color: #AD0000;">"after_dataloader_0_padding_tokens"</span><span class="fu" style="color: #4758AB;">:</span> <span class="st" style="color: #20794D;">"102"</span><span class="fu" style="color: #4758AB;">,</span></span>
+<span id="cb4-6">    <span class="dt" style="color: #AD0000;">"after_dataloader_0_non_padding_tokens"</span><span class="fu" style="color: #4758AB;">:</span> <span class="st" style="color: #20794D;">"1946"</span><span class="fu" style="color: #4758AB;">,</span></span>
+<span id="cb4-7">    <span class="er" style="color: #AD0000;">...</span></span></code></pre></div>
+<p>Here are screenshots of the actual log, first <strong>without</strong> using <code>BinPackCollator</code>:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="log without using BinPackCollator. Note that the number of padding tokens represent ~90% of the max sequence length of 2048"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/1.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">log without using <code>BinPackCollator</code>. Note that the number of padding tokens represent ~90% of the max sequence length of 2048</figcaption><p></p>
+</figure>
+</div>
+<p>And with using <code>BinPackCollator</code>:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2" title="log when using BinPackCollator. Now the non-padding token represent 90% of the sequence length"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/2.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">log when using <code>BinPackCollator</code>. Now the non-padding token represent 90% of the sequence length</figcaption><p></p>
+</figure>
+</div>
+<p>Using <code>BinPackCollator</code>, we are now using more than 90% of the maximum sequence length with loss generating tokens!</p>
+</section>
+<section id="closing-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="closing-thoughts">Closing Thoughts</h2>
+<p>This is the fourth or fifth custom Composer callback I’ve written and I am really enjoyin writing and using them! The callback system makes it so easy to “look at your data”, and visually inspect and confirm that the model and/or data artifacts are correct. Expect more blog posts around Composer callbacks.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="ChatGPT generated graphic for `DataInspector`.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3" title="3.png"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/ChatGPT generated graphic for `DataInspector`.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">3.png</figcaption><p></p>
+</figure>
+</div>
+
+
+</section>
+
+ ]]></description>
+  <category>LLM</category>
+  <category>deep learning</category>
+  <category>LLM-Foundry</category>
+  <category>Custom Composer Callback</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/index.html</guid>
+  <pubDate>Thu, 08 May 2025 07:00:00 GMT</pubDate>
+  <media:content url="https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/1.png" medium="image" type="image/png" height="85" width="144"/>
+</item>
+<item>
   <title>Understanding Sequence Packing - Initial Musings</title>
   <dc:creator>Vishal Bakshi</dc:creator>
   <link>https://vishalbakshi.github.io/blog/posts/2025-05-04-Understanding-Sequence-Packing/index.html</link>
@@ -11745,279 +11877,6 @@ Line #    Mem usage    Increment  Occurrences   Line Contents
   <category>deep learning</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2025-02-08-ConditionalQA-RAGatouille/index.html</guid>
   <pubDate>Sat, 08 Feb 2025 08:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>DoRA’s Magnitude Vector</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2025-02-01-DoRA-Magnitude-Vector/index.html</link>
-  <description><![CDATA[ 
-
-
-
-<section id="setup" class="level2">
-<h2 class="anchored" data-anchor-id="setup">Setup</h2>
-<div class="cell" data-execution_count="15">
-<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im" style="color: #00769E;">from</span> peft <span class="im" style="color: #00769E;">import</span> LoraConfig, get_peft_model</span>
-<span id="cb1-2"><span class="im" style="color: #00769E;">import</span> transformers</span>
-<span id="cb1-3"></span>
-<span id="cb1-4"><span class="co" style="color: #5E5E5E;"># the following imports are from dora.py</span></span>
-<span id="cb1-5"><span class="im" style="color: #00769E;">from</span> copy <span class="im" style="color: #00769E;">import</span> deepcopy</span>
-<span id="cb1-6"></span>
-<span id="cb1-7"><span class="im" style="color: #00769E;">import</span> torch</span>
-<span id="cb1-8"><span class="im" style="color: #00769E;">import</span> torch.nn.functional <span class="im" style="color: #00769E;">as</span> F</span>
-<span id="cb1-9"><span class="im" style="color: #00769E;">from</span> torch <span class="im" style="color: #00769E;">import</span> nn</span>
-<span id="cb1-10"></span>
-<span id="cb1-11"><span class="im" style="color: #00769E;">from</span> peft.utils.integrations <span class="im" style="color: #00769E;">import</span> dequantize_module_weight, gather_params_ctx</span>
-<span id="cb1-12"><span class="im" style="color: #00769E;">from</span> peft.utils.other <span class="im" style="color: #00769E;">import</span> transpose</span></code></pre></div>
-</div>
-</section>
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<p>I am currently re-reading the DoRA (Weight-Decomposed Low-Rank Adaptation) <a href="https://arxiv.org/abs/2402.09353">paper</a>. I took a bit of a detour and worked through the fantastic article <a href="https://magazine.sebastianraschka.com/p/lora-and-dora-from-scratch">Improving LoRA: Implementing Weight-Decomposed Low-Rank Adaptation (DoRA) from Scratch</a> by Sebastian Raschka (I am also reading his book <a href="https://www.manning.com/books/build-a-large-language-model-from-scratch">Building a Large Language Model (from scratch)</a> as part of a fastai study group). The article is full of helpful diagrams and breakdowns of concepts as well as easily digestible implementation in code. One particular breakthrough for me while reading the article was his demonstration of the distributive law of multiplication:</p>
-<blockquote class="blockquote">
-<p><strong>x.(W+ΔW) = x.W + x.ΔW</strong></p>
-<p>Similarly, we can write the following for LoRA:</p>
-<p><strong>x.(W+A.B) = x.W + x.A.B</strong></p>
-</blockquote>
-<p>Reading this made it click for me why and how LoRA adapters are such an efficient way of handling downstream tasks.</p>
-<p>I also took a deep dive into the peft library’s implementation of DoRA. I recently made <a href="https://youtu.be/GE6jRudHhzY">a video</a> of this deep dive.</p>
-<p>In this blog post I am going to compare Raschka’s article’s implementation with peft’s and highlight a key difference that I found between them in how they implement the decomposition of a weight matrix into its magnitude and directional components.</p>
-<p>I’ll start by reviewing both approaches.</p>
-</section>
-<section id="raschkas-implementation" class="level2">
-<h2 class="anchored" data-anchor-id="raschkas-implementation">Raschka’s Implementation</h2>
-<p>I want to add a caveat that this implementation I assume is by no means a “final” or “production” implementation, as I understand it to be more educational and illustrative.</p>
-<p>I’ll start by copy/pasting relevant code: <code>LoRALayer</code> (DoRA uses LoRA to fine-tune the directional component) and <code>LinearWithDoRAMerged</code>.</p>
-<div class="cell" data-execution_count="4">
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="kw" style="color: #003B4F;">class</span> LoRALayer(nn.Module):</span>
-<span id="cb2-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, in_dim, out_dim, rank, alpha):</span>
-<span id="cb2-3">        <span class="bu" style="color: null;">super</span>().<span class="fu" style="color: #4758AB;">__init__</span>()</span>
-<span id="cb2-4">        std_dev <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">1</span> <span class="op" style="color: #5E5E5E;">/</span> torch.sqrt(torch.tensor(rank).<span class="bu" style="color: null;">float</span>())</span>
-<span id="cb2-5">        <span class="va" style="color: #111111;">self</span>.A <span class="op" style="color: #5E5E5E;">=</span> nn.Parameter(torch.randn(in_dim, rank) <span class="op" style="color: #5E5E5E;">*</span> std_dev)</span>
-<span id="cb2-6">        <span class="va" style="color: #111111;">self</span>.B <span class="op" style="color: #5E5E5E;">=</span> nn.Parameter(torch.zeros(rank, out_dim))</span>
-<span id="cb2-7">        <span class="va" style="color: #111111;">self</span>.alpha <span class="op" style="color: #5E5E5E;">=</span> alpha</span>
-<span id="cb2-8"></span>
-<span id="cb2-9">    <span class="kw" style="color: #003B4F;">def</span> forward(<span class="va" style="color: #111111;">self</span>, x):</span>
-<span id="cb2-10">        x <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.alpha <span class="op" style="color: #5E5E5E;">*</span> (x <span class="op" style="color: #5E5E5E;">@</span> <span class="va" style="color: #111111;">self</span>.A <span class="op" style="color: #5E5E5E;">@</span> <span class="va" style="color: #111111;">self</span>.B)</span>
-<span id="cb2-11">        <span class="cf" style="color: #003B4F;">return</span> x</span></code></pre></div>
-</div>
-<div class="cell" data-execution_count="5">
-<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="kw" style="color: #003B4F;">class</span> LinearWithDoRAMerged(nn.Module):</span>
-<span id="cb3-2"></span>
-<span id="cb3-3">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, linear, rank, alpha):</span>
-<span id="cb3-4">        <span class="bu" style="color: null;">super</span>().<span class="fu" style="color: #4758AB;">__init__</span>()</span>
-<span id="cb3-5">        <span class="va" style="color: #111111;">self</span>.linear <span class="op" style="color: #5E5E5E;">=</span> linear</span>
-<span id="cb3-6">        <span class="va" style="color: #111111;">self</span>.lora <span class="op" style="color: #5E5E5E;">=</span> LoRALayer(</span>
-<span id="cb3-7">            linear.in_features, linear.out_features, rank, alpha</span>
-<span id="cb3-8">        )</span>
-<span id="cb3-9">        <span class="va" style="color: #111111;">self</span>.m <span class="op" style="color: #5E5E5E;">=</span> nn.Parameter(</span>
-<span id="cb3-10">            <span class="va" style="color: #111111;">self</span>.linear.weight.norm(p<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>, dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>, keepdim<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>))</span>
-<span id="cb3-11"></span>
-<span id="cb3-12"></span>
-<span id="cb3-13">  <span class="co" style="color: #5E5E5E;"># Code loosely inspired by</span></span>
-<span id="cb3-14">  <span class="co" style="color: #5E5E5E;"># https://github.com/catid/dora/blob/main/dora.py</span></span>
-<span id="cb3-15"></span>
-<span id="cb3-16">    <span class="kw" style="color: #003B4F;">def</span> forward(<span class="va" style="color: #111111;">self</span>, x):</span>
-<span id="cb3-17">        lora <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.lora.A <span class="op" style="color: #5E5E5E;">@</span> <span class="va" style="color: #111111;">self</span>.lora.B</span>
-<span id="cb3-18">        numerator <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.linear.weight <span class="op" style="color: #5E5E5E;">+</span> <span class="va" style="color: #111111;">self</span>.lora.alpha<span class="op" style="color: #5E5E5E;">*</span>lora.T</span>
-<span id="cb3-19">        denominator <span class="op" style="color: #5E5E5E;">=</span> numerator.norm(p<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>, dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>, keepdim<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>)</span>
-<span id="cb3-20">        directional_component <span class="op" style="color: #5E5E5E;">=</span> numerator <span class="op" style="color: #5E5E5E;">/</span> denominator</span>
-<span id="cb3-21">        new_weight <span class="op" style="color: #5E5E5E;">=</span> <span class="va" style="color: #111111;">self</span>.m <span class="op" style="color: #5E5E5E;">*</span> directional_component</span>
-<span id="cb3-22">        <span class="cf" style="color: #003B4F;">return</span> F.linear(x, new_weight, <span class="va" style="color: #111111;">self</span>.linear.bias)</span></code></pre></div>
-</div>
-<p>I’ll also create a regular linear layer using one of the in/out feature values in the Raschka article:</p>
-<div class="cell" data-outputid="5a631bc3-b6ef-49b4-c1df-1c32dab0254f" data-execution_count="6">
-<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1">linear <span class="op" style="color: #5E5E5E;">=</span> nn.Linear(in_features<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">784</span>, out_features<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">128</span>, bias<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>)</span>
-<span id="cb4-2">linear</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="6">
-<pre><code>Linear(in_features=784, out_features=128, bias=True)</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="f7d1e34c-c79b-4135-e904-3d1cfa69f834" data-execution_count="7">
-<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1">dora_layer <span class="op" style="color: #5E5E5E;">=</span> LinearWithDoRAMerged(linear, <span class="dv" style="color: #AD0000;">256</span>, <span class="dv" style="color: #AD0000;">512</span>)</span>
-<span id="cb6-2">dora_layer</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="7">
-<pre><code>LinearWithDoRAMerged(
-  (linear): Linear(in_features=784, out_features=128, bias=True)
-  (lora): LoRALayer()
-)</code></pre>
-</div>
-</div>
-<p>Here’s the key value: the shape of the magnitude vector. In Raschka’s code, it’s 1 x 784, where 784 is the number of linear <code>in_features</code>.</p>
-<div class="cell" data-outputid="6dd100d0-55e6-42bc-c49a-9d0eecf0d5a2" data-execution_count="11">
-<div class="sourceCode cell-code" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1">dora_layer.m.shape</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="11">
-<pre><code>torch.Size([1, 784])</code></pre>
-</div>
-</div>
-<p>Looking at <code>LinearWithDoRAMerged.__init__</code>:</p>
-<div class="sourceCode" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><span class="va" style="color: #111111;">self</span>.m <span class="op" style="color: #5E5E5E;">=</span> nn.Parameter(</span>
-<span id="cb10-2">            <span class="va" style="color: #111111;">self</span>.linear.weight.norm(p<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>, dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>, keepdim<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>))</span></code></pre></div>
-<p>The <code>norm</code> is taking over <code>dim=0</code>, which is the dimension of <code>out_features</code>:</p>
-<div class="cell" data-outputid="c9bf9bab-831b-4c3a-ea4a-f0c54642b4a0" data-execution_count="13">
-<div class="sourceCode cell-code" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1">linear.weight.shape</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="13">
-<pre><code>torch.Size([128, 784])</code></pre>
-</div>
-</div>
-<p>In other words, we end up with 1 magnitude value for each of the 784 input neurons.</p>
-</section>
-<section id="peft-implementation" class="level2">
-<h2 class="anchored" data-anchor-id="peft-implementation"><code>peft</code> Implementation</h2>
-<p>From <a href="https://github.com/huggingface/peft/blob/main/src/peft/tuners/lora/dora.py"><code>src/peft/tuners/lora/dora.py</code></a>:</p>
-<div class="sourceCode" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><span class="kw" style="color: #003B4F;">class</span> DoraLinearLayer(nn.Module):</span>
-<span id="cb13-2">    <span class="kw" style="color: #003B4F;">def</span> <span class="fu" style="color: #4758AB;">__init__</span>(<span class="va" style="color: #111111;">self</span>, fan_in_fan_out):</span>
-<span id="cb13-3">        <span class="bu" style="color: null;">super</span>().<span class="fu" style="color: #4758AB;">__init__</span>()</span>
-<span id="cb13-4">        <span class="va" style="color: #111111;">self</span>.fan_in_fan_out <span class="op" style="color: #5E5E5E;">=</span> fan_in_fan_out</span>
-<span id="cb13-5"></span>
-<span id="cb13-6">    <span class="kw" style="color: #003B4F;">def</span> get_weight_norm(<span class="va" style="color: #111111;">self</span>, weight, lora_weight, scaling) <span class="op" style="color: #5E5E5E;">-&gt;</span> torch.Tensor:</span>
-<span id="cb13-7">        <span class="co" style="color: #5E5E5E;"># calculate L2 norm of weight matrix, column-wise</span></span>
-<span id="cb13-8">        weight <span class="op" style="color: #5E5E5E;">=</span> transpose(weight, <span class="va" style="color: #111111;">self</span>.fan_in_fan_out)</span>
-<span id="cb13-9">        weight <span class="op" style="color: #5E5E5E;">=</span> weight <span class="op" style="color: #5E5E5E;">+</span> scaling <span class="op" style="color: #5E5E5E;">*</span> lora_weight</span>
-<span id="cb13-10">        weight_norm <span class="op" style="color: #5E5E5E;">=</span> torch.linalg.norm(weight, dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>).to(weight.dtype)</span>
-<span id="cb13-11">        <span class="cf" style="color: #003B4F;">return</span> weight_norm</span>
-<span id="cb13-12"></span>
-<span id="cb13-13">    ...</span></code></pre></div>
-<p>The very important attribute here is <code>fan_in_fan_out</code>. I found a few places in the peft codebase which documented it as follows:</p>
-<pre><code>Set this to True if the layer to replace stores weight like (fan_in, fan_out)</code></pre>
-<ul>
-<li><a href="https://github.com/huggingface/peft/blob/0facdebf6208139cbd8f3586875acb378813dd97/src/peft/tuners/ia3/config.py#L79">src/peft/tuners/ia3/config.py</a></li>
-<li><a href="https://github.com/huggingface/peft/blob/0facdebf6208139cbd8f3586875acb378813dd97/src/peft/tuners/vblora/layer.py#L122">src/peft/tuners/vblora/layer.py</a></li>
-<li><a href="https://github.com/huggingface/peft/blob/0facdebf6208139cbd8f3586875acb378813dd97/src/peft/tuners/vblora/layer.py#L122">src/peft/tuners/vblora/layer.py</a></li>
-</ul>
-<p>How I interpret this: if the weights are stored as (in, out), <code>fan_in_fan_out</code> is <code>True</code>, if stored as (out, in) <code>fan_in_fan_out</code> is <code>False</code>.</p>
-<p>Looking at an example, I’ll peft-ify SmolLM2-135M:</p>
-<div class="cell" data-outputid="f2fdc27d-3a29-4b72-9c84-ce1d79ea74d9" data-execution_count="14">
-<div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1">model_nm <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">'HuggingFaceTB/SmolLM2-135M'</span></span>
-<span id="cb15-2">model_nm</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="14">
-<pre><code>'HuggingFaceTB/SmolLM2-135M'</code></pre>
-</div>
-</div>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1">model <span class="op" style="color: #5E5E5E;">=</span> transformers.AutoModelForSequenceClassification.from_pretrained(model_nm, num_labels<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>)</span></code></pre></div>
-</div>
-<div class="cell" data-execution_count="17">
-<div class="sourceCode cell-code" id="cb18" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1">peft_config <span class="op" style="color: #5E5E5E;">=</span> LoraConfig(r<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">256</span>, use_rslora<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">False</span>, use_dora<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>, target_modules<span class="op" style="color: #5E5E5E;">=</span>[<span class="st" style="color: #20794D;">'down_proj'</span>, <span class="st" style="color: #20794D;">'gate_proj'</span>, <span class="st" style="color: #20794D;">'k_proj'</span>, <span class="st" style="color: #20794D;">'o_proj'</span>, <span class="st" style="color: #20794D;">'q_proj'</span>, <span class="st" style="color: #20794D;">'up_proj'</span>, <span class="st" style="color: #20794D;">'v_proj'</span>])</span></code></pre></div>
-</div>
-<div class="cell" data-outputid="4166bf0b-8ce5-44df-bc5f-43ac8a7e4bc2" data-execution_count="18">
-<div class="sourceCode cell-code" id="cb19" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1">model <span class="op" style="color: #5E5E5E;">=</span> get_peft_model(model, peft_config)</span>
-<span id="cb19-2">model.print_trainable_parameters()</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>trainable params: 78,307,200 || all params: 212,823,360 || trainable%: 36.7945</code></pre>
-</div>
-</div>
-<p>Looking at one of the layers which has a different number of input and output features, <code>k_proj</code>:</p>
-<div class="cell" data-outputid="c9b363b2-1042-4507-e625-7065bdaa5d89" data-execution_count="19">
-<div class="sourceCode cell-code" id="cb21" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1">k_proj <span class="op" style="color: #5E5E5E;">=</span> model.base_model.model.model.layers[<span class="dv" style="color: #AD0000;">0</span>].self_attn.k_proj</span>
-<span id="cb21-2">k_proj</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="19">
-<pre><code>lora.Linear(
-  (base_layer): Linear(in_features=576, out_features=192, bias=False)
-  (lora_dropout): ModuleDict(
-    (default): Identity()
-  )
-  (lora_A): ModuleDict(
-    (default): Linear(in_features=576, out_features=256, bias=False)
-  )
-  (lora_B): ModuleDict(
-    (default): Linear(in_features=256, out_features=192, bias=False)
-  )
-  (lora_embedding_A): ParameterDict()
-  (lora_embedding_B): ParameterDict()
-  (lora_magnitude_vector): ModuleDict(
-    (default): lora.dora.DoraLinearLayer()
-  )
-)</code></pre>
-</div>
-</div>
-<p>The base layer has 576 <code>in_features</code> and 192 <code>out_features</code>:</p>
-<div class="cell" data-outputid="937ded35-e1fd-4b5c-d98b-4a4781871a2d" data-execution_count="22">
-<div class="sourceCode cell-code" id="cb23" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1">k_proj.base_layer.weight.shape</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="22">
-<pre><code>torch.Size([192, 576])</code></pre>
-</div>
-</div>
-<p>The <code>fan_in_fan_out</code> attribute is <code>False</code> which checks out by looking at the shape above which is (out, in).</p>
-<div class="cell" data-outputid="a2b509cf-8cba-425d-95ae-d29baf2d806c" data-execution_count="24">
-<div class="sourceCode cell-code" id="cb25" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1">k_proj.fan_in_fan_out</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="24">
-<pre><code>False</code></pre>
-</div>
-</div>
-<p>Why is <code>fan_in_fan_out</code> such a big deal to me? Well, because look at how <code>get_weight_norm</code> is written:</p>
-<div class="sourceCode" id="cb27" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><span class="kw" style="color: #003B4F;">def</span> get_weight_norm(<span class="va" style="color: #111111;">self</span>, weight, lora_weight, scaling) <span class="op" style="color: #5E5E5E;">-&gt;</span> torch.Tensor:</span>
-<span id="cb27-2">    <span class="co" style="color: #5E5E5E;"># calculate L2 norm of weight matrix, column-wise</span></span>
-<span id="cb27-3">    weight <span class="op" style="color: #5E5E5E;">=</span> transpose(weight, <span class="va" style="color: #111111;">self</span>.fan_in_fan_out)</span>
-<span id="cb27-4">    weight <span class="op" style="color: #5E5E5E;">=</span> weight <span class="op" style="color: #5E5E5E;">+</span> scaling <span class="op" style="color: #5E5E5E;">*</span> lora_weight</span>
-<span id="cb27-5">    weight_norm <span class="op" style="color: #5E5E5E;">=</span> torch.linalg.norm(weight, dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>).to(weight.dtype)</span>
-<span id="cb27-6">    <span class="cf" style="color: #003B4F;">return</span> weight_norm</span></code></pre></div>
-<p>I’ll walk through each line, starting with the base layers weight matrix:</p>
-<div class="cell" data-outputid="b473b742-2715-4f33-d00b-259cf0805815" data-execution_count="25">
-<div class="sourceCode cell-code" id="cb28" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1">weight <span class="op" style="color: #5E5E5E;">=</span> k_proj.base_layer.weight</span>
-<span id="cb28-2">weight.shape</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="25">
-<pre><code>torch.Size([192, 576])</code></pre>
-</div>
-</div>
-<p>We then pass the weight and <code>fan_in_fan_out</code> to <code>transpose</code>:</p>
-<div class="cell" data-outputid="d762eab8-6ab5-4627-c458-26759b37999c" data-execution_count="26">
-<div class="sourceCode cell-code" id="cb30" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1">weight <span class="op" style="color: #5E5E5E;">=</span> transpose(weight, k_proj.fan_in_fan_out)</span>
-<span id="cb30-2">weight.shape</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="26">
-<pre><code>torch.Size([192, 576])</code></pre>
-</div>
-</div>
-<p>It doesn’t transpose it! That’s because <a href="https://github.com/huggingface/peft/blob/0facdebf6208139cbd8f3586875acb378813dd97/src/peft/utils/other.py#L559">in <code>tranpose</code></a> if <code>fan_in_fan_out</code> is <code>False</code> it returns the <code>weight</code> as is:</p>
-<div class="sourceCode" id="cb32" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><span class="kw" style="color: #003B4F;">def</span> transpose(weight, fan_in_fan_out):</span>
-<span id="cb32-2">    <span class="cf" style="color: #003B4F;">if</span> <span class="kw" style="color: #003B4F;">not</span> fan_in_fan_out:</span>
-<span id="cb32-3">        <span class="cf" style="color: #003B4F;">return</span> weight</span>
-<span id="cb32-4"></span>
-<span id="cb32-5">    <span class="cf" style="color: #003B4F;">if</span> <span class="bu" style="color: null;">isinstance</span>(weight, torch.nn.Parameter):</span>
-<span id="cb32-6">        <span class="cf" style="color: #003B4F;">return</span> torch.nn.Parameter(weight.T)</span>
-<span id="cb32-7">    <span class="cf" style="color: #003B4F;">return</span> weight.T</span></code></pre></div>
-<p>This is absolutely critical in determining the shape of the magnitude vector:</p>
-<div class="cell" data-outputid="769830c0-55ff-49cd-85bc-399aa864a4f9" data-execution_count="27">
-<div class="sourceCode cell-code" id="cb33" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1">weight_norm <span class="op" style="color: #5E5E5E;">=</span> torch.linalg.norm(weight, dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>).to(weight.dtype)</span>
-<span id="cb33-2">weight_norm.shape</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="27">
-<pre><code>torch.Size([192])</code></pre>
-</div>
-</div>
-<p>Note two things here: - they take the <code>norm</code> across <code>dim=1</code> (the number of <code>in_features</code>) - we end up with 1 magnitude value for each of the 192 <em>output</em> neurons. Contrast this with Raschka’s article where we had 1 magnitude value for each of the <em>input</em> neurons.</p>
-</section>
-<section id="aside-claude-conversation" class="level2">
-<h2 class="anchored" data-anchor-id="aside-claude-conversation">Aside: Claude Conversation</h2>
-<p>While I was re-reading the DoRA paper, I found the emphasis on <em>column-wise</em> vector norm interesting so I asked Claude about it:</p>
-<blockquote class="blockquote">
-<p><strong>Prompt</strong>: Why columns? What is special about doing this for columns and not rows. Is there something fundamental about columns in a matrix of pretrained weights?</p>
-</blockquote>
-<blockquote class="blockquote">
-<p><strong>Response</strong>: For neural networks, columns of weight matrices map features from one layer’s dimension to another’s. Each column represents all the connections to a single output neuron. So columns form natural functional units, making column-wise normalization more meaningful than row-wise for understanding and modifying the network’s learned transformations.</p>
-</blockquote>
-<blockquote class="blockquote">
-<p><strong>Prompt</strong>: So suppose we have an input vector <code>x</code> which contains values corresponding to each input variable, the pretrained weight matrix would is d x k so <code>x</code> would be 1 x d.&nbsp;Each row in pretrained weight matrix would represent one input variable. Multiplying 1 x d with d x k gives us 1 x k where k is the number of activations (i.e.&nbsp;the number of neurons).</p>
-</blockquote>
-<blockquote class="blockquote">
-<p><strong>Response</strong>: Yes, that’s correct. The output for a single neuron (one column of the weight matrix) is the dot product between the input vector and that column’s weights. So when we do column-wise normalization, we’re normalizing the set of weights that feed into each individual output neuron. This helps explain why column-wise normalization is natural - each column represents a complete “unit” in terms of how the network processes information to produce one output activation.</p>
-</blockquote>
-<p>So, it seems like decomposing the weight matrix into a magnitude vector and direction matrix <em>corresponding to output neurons</em> seems really important.</p>
-</section>
-<section id="final-thoughts" class="level2">
-<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
-<p>Explorations like this is why I’m grateful for open source code. The efforts of folks like HuggingFace and Raschka to democratize LLMs allows folks like me to curate insightful explorations for myself, and I’m obviously happy to share them out in this blog post. If you find something incorrect in my interpretation of Raschka’s or peft’s code, please at me on Twitter <span class="citation" data-cites="vishal_learner">@vishal_learner</span>.</p>
-<p>A future exercise that I want to do: train DoRA implementations with a column-wise norm and a row-wise norm and compare results. This would truly highlight whether it’s important to align the decomposition with the output neurons of the weight matrix.</p>
-
-
-</section>
-
- ]]></description>
-  <category>python</category>
-  <category>deep learning</category>
-  <category>machine learning</category>
-  <category>LLM</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2025-02-01-DoRA-Magnitude-Vector/index.html</guid>
-  <pubDate>Sat, 01 Feb 2025 08:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
