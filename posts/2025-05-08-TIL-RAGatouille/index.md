@@ -9,6 +9,7 @@ lightbox: auto
 categories:
     - information retrieval
     - deep learning
+    - RAGatouille
 ---
 
 I'm in the process of indexing the UKPLab/DAPR datasets, which span in size from ~70k to ~32M documents. Using a RTX3090, I ran into an OOM error (during search) and a warning stating that faiss-cpu was being used instead of faiss-gpu, causing the indexing process to take longer.
