@@ -10,7 +10,675 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.2.335</generator>
-<lastBuildDate>Tue, 13 May 2025 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Wed, 21 May 2025 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>The Evolution of Matrix Multiplication (fastai course Part 2 Lessons 11 and 12)</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-05-21-matmul-2/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<div class="cell" data-outputid="47621598-8fd6-4b6a-9893-4dc62cc9ee45" data-execution_count="2">
+<details>
+<summary>Show setup code</summary>
+<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="co" style="color: #5E5E5E;"># !conda install -y -c nvidia/label/cuda-12.8.0 cuda-toolkit</span></span>
+<span id="cb1-2"><span class="co" style="color: #5E5E5E;"># !pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128</span></span>
+<span id="cb1-3"><span class="co" style="color: #5E5E5E;"># !conda install -y numba</span></span>
+<span id="cb1-4"><span class="co" style="color: #5E5E5E;"># !conda install -y fastcore -c fastai</span></span>
+<span id="cb1-5"></span>
+<span id="cb1-6"><span class="im" style="color: #00769E;">from</span> pathlib <span class="im" style="color: #00769E;">import</span> Path</span>
+<span id="cb1-7"><span class="im" style="color: #00769E;">import</span> pickle, gzip, math, os, time, shutil</span>
+<span id="cb1-8"><span class="im" style="color: #00769E;">from</span> urllib.request <span class="im" style="color: #00769E;">import</span> urlretrieve</span>
+<span id="cb1-9"><span class="im" style="color: #00769E;">import</span> torch</span>
+<span id="cb1-10"><span class="im" style="color: #00769E;">from</span> torch <span class="im" style="color: #00769E;">import</span> tensor</span>
+<span id="cb1-11"><span class="im" style="color: #00769E;">import</span> numpy <span class="im" style="color: #00769E;">as</span> np</span>
+<span id="cb1-12"><span class="im" style="color: #00769E;">from</span> numba <span class="im" style="color: #00769E;">import</span> njit</span>
+<span id="cb1-13"><span class="im" style="color: #00769E;">from</span> numpy <span class="im" style="color: #00769E;">import</span> array</span>
+<span id="cb1-14"><span class="im" style="color: #00769E;">from</span> fastcore.test <span class="im" style="color: #00769E;">import</span> <span class="op" style="color: #5E5E5E;">*</span></span>
+<span id="cb1-15"></span>
+<span id="cb1-16"><span class="im" style="color: #00769E;">from</span> numba <span class="im" style="color: #00769E;">import</span> cuda</span>
+<span id="cb1-17"></span>
+<span id="cb1-18">torch.set_printoptions(precision<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>, linewidth<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">140</span>, sci_mode<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">False</span>)</span>
+<span id="cb1-19">np.set_printoptions(precision<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>, linewidth<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">140</span>)</span>
+<span id="cb1-20"></span>
+<span id="cb1-21">MNIST_URL<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'https://github.com/mnielsen/neural-networks-and-deep-learning/blob/master/data/mnist.pkl.gz?raw=true'</span></span>
+<span id="cb1-22">path_data <span class="op" style="color: #5E5E5E;">=</span> Path(<span class="st" style="color: #20794D;">'data'</span>)</span>
+<span id="cb1-23">path_data.mkdir(exist_ok<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>)</span>
+<span id="cb1-24">path_gz <span class="op" style="color: #5E5E5E;">=</span> path_data<span class="op" style="color: #5E5E5E;">/</span><span class="st" style="color: #20794D;">'mnist.pkl.gz'</span></span>
+<span id="cb1-25"></span>
+<span id="cb1-26"></span>
+<span id="cb1-27"><span class="cf" style="color: #003B4F;">if</span> <span class="kw" style="color: #003B4F;">not</span> path_gz.exists(): urlretrieve(MNIST_URL, path_gz)</span>
+<span id="cb1-28"></span>
+<span id="cb1-29"><span class="cf" style="color: #003B4F;">with</span> gzip.<span class="bu" style="color: null;">open</span>(path_gz, <span class="st" style="color: #20794D;">'rb'</span>) <span class="im" style="color: #00769E;">as</span> f: ((x_train, y_train), (x_valid, y_valid), _) <span class="op" style="color: #5E5E5E;">=</span> pickle.load(f, encoding<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'latin-1'</span>)</span>
+<span id="cb1-30"></span>
+<span id="cb1-31">x_train,y_train,x_valid,y_valid <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">map</span>(tensor, (x_train,y_train,x_valid,y_valid))</span>
+<span id="cb1-32">x_train.shape</span></code></pre></div>
+</details>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<pre><code>torch.Size([50000, 784])</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="a4f3c78a-4f61-4f8c-cf21-4c103270afd9" data-execution_count="3">
+<details>
+<summary>Show setup code</summary>
+<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1">torch.manual_seed(<span class="dv" style="color: #AD0000;">1</span>)</span>
+<span id="cb3-2">weights <span class="op" style="color: #5E5E5E;">=</span> torch.randn(<span class="dv" style="color: #AD0000;">784</span>,<span class="dv" style="color: #AD0000;">10</span>)</span>
+<span id="cb3-3">bias <span class="op" style="color: #5E5E5E;">=</span> torch.zeros(<span class="dv" style="color: #AD0000;">10</span>)</span>
+<span id="cb3-4"></span>
+<span id="cb3-5">m1 <span class="op" style="color: #5E5E5E;">=</span> x_valid[:<span class="dv" style="color: #AD0000;">5</span>]</span>
+<span id="cb3-6">m2 <span class="op" style="color: #5E5E5E;">=</span> weights</span>
+<span id="cb3-7"></span>
+<span id="cb3-8">m1.shape,m2.shape</span></code></pre></div>
+</details>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>(torch.Size([5, 784]), torch.Size([784, 10]))</code></pre>
+</div>
+</div>
+<iframe width="560" height="315" src="https://www.youtube.com/embed/iV63qy4ETJQ?si=RVTeCMWgSHf_IHq0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+<section id="results" class="level2">
+<h2 class="anchored" data-anchor-id="results">Results</h2>
+<section id="digit-subset" class="level3">
+<h3 class="anchored" data-anchor-id="digit-subset">5-digit Subset</h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Method</th>
+<th style="text-align: center;">Time</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">PyTorch <code>@</code> Op</td>
+<td style="text-align: center;">18.1 μs</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">Numba Broadcasting</td>
+<td style="text-align: center;">69.2 μs</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">Einstein Summation</td>
+<td style="text-align: center;">83.1 μs</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">PyTorch Cuda</td>
+<td style="text-align: center;">108 μs</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">Numba Cuda</td>
+<td style="text-align: center;">108 μs</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">PyTorch Broadcasting</td>
+<td style="text-align: center;">203 μs</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">Numba Dot Product</td>
+<td style="text-align: center;">542 μs</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>torch.dot</code></td>
+<td style="text-align: center;">1.19 ms</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">Element-wise PyTorch Ops</td>
+<td style="text-align: center;">1.49 ms</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">Nested for-loops</td>
+<td style="text-align: center;">604 ms</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="full-dataset" class="level3">
+<h3 class="anchored" data-anchor-id="full-dataset">Full Dataset</h3>
+</section>
+</section>
+<section id="version-0-nested-for-loops" class="level2">
+<h2 class="anchored" data-anchor-id="version-0-nested-for-loops">Version 0: Nested For-Loops</h2>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="Excalidraw diagram showing nested for-loop implementation of matrix multiplication"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-21-matmul-2/1.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Excalidraw diagram showing nested for-loop implementation of matrix multiplication</figcaption><p></p>
+</figure>
+</div>
+<div class="cell" data-outputid="f1b07e28-eb6a-42f0-9863-d962b0843dff" data-execution_count="70">
+<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1">ar,ac <span class="op" style="color: #5E5E5E;">=</span> m1.shape <span class="co" style="color: #5E5E5E;"># n_rows * n_cols</span></span>
+<span id="cb5-2">br,bc <span class="op" style="color: #5E5E5E;">=</span> m2.shape</span>
+<span id="cb5-3">(ar,ac),(br,bc)</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="70">
+<pre><code>((5, 784), (784, 10))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="50202d80-fbe0-4ea8-aa39-4fe0691cb4b0" data-execution_count="71">
+<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1">t1 <span class="op" style="color: #5E5E5E;">=</span> torch.zeros(ar, bc)</span>
+<span id="cb7-2">t1.shape</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="71">
+<pre><code>torch.Size([5, 10])</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="72">
+<div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(ar):         <span class="co" style="color: #5E5E5E;"># 5</span></span>
+<span id="cb9-2">    <span class="cf" style="color: #003B4F;">for</span> j <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(bc):     <span class="co" style="color: #5E5E5E;"># 10</span></span>
+<span id="cb9-3">        <span class="cf" style="color: #003B4F;">for</span> k <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(ac): <span class="co" style="color: #5E5E5E;"># 784</span></span>
+<span id="cb9-4">            t1[i,j] <span class="op" style="color: #5E5E5E;">+=</span> m1[i,k] <span class="op" style="color: #5E5E5E;">*</span> m2[k,j]</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="de65336e-e04e-4d55-81aa-228a6f7bf7bf" data-execution_count="73">
+<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1">t1.shape</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="73">
+<pre><code>torch.Size([5, 10])</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="a46dd7f0-06d7-4d86-aa3a-577743471963" data-execution_count="74">
+<div class="sourceCode cell-code" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1">t1</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="74">
+<pre><code>tensor([[-10.94,  -0.68,  -7.00,  -4.01,  -2.09,  -3.36,   3.91,  -3.44, -11.47,  -2.12],
+        [ 14.54,   6.00,   2.89,  -4.08,   6.59, -14.74,  -9.28,   2.16, -15.28,  -2.68],
+        [  2.22,  -3.22,  -4.80,  -6.05,  14.17,  -8.98,  -4.79,  -5.44, -20.68,  13.57],
+        [ -6.71,   8.90,  -7.46,  -7.90,   2.70,  -4.73, -11.03, -12.98,  -6.44,   3.64],
+        [ -2.44,  -6.40,  -2.40,  -9.04,  11.18,  -5.77,  -8.92,  -3.79,  -8.98,   5.28]])</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="75">
+<div class="sourceCode cell-code" id="cb14" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><span class="kw" style="color: #003B4F;">def</span> matmul(a,b):</span>
+<span id="cb14-2">    (ar,ac),(br,bc) <span class="op" style="color: #5E5E5E;">=</span> a.shape,b.shape</span>
+<span id="cb14-3">    c <span class="op" style="color: #5E5E5E;">=</span> torch.zeros(ar, bc)</span>
+<span id="cb14-4">    <span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(ar):</span>
+<span id="cb14-5">        <span class="cf" style="color: #003B4F;">for</span> j <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(bc):</span>
+<span id="cb14-6">            <span class="cf" style="color: #003B4F;">for</span> k <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(ac): c[i,j] <span class="op" style="color: #5E5E5E;">+=</span> a[i,k] <span class="op" style="color: #5E5E5E;">*</span> b[k,j]</span>
+<span id="cb14-7">    <span class="cf" style="color: #003B4F;">return</span> c</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="75bfe38a-2fc3-4f8d-8934-7fbd7c8036e4" data-execution_count="81">
+<div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><span class="op" style="color: #5E5E5E;">%</span>time _<span class="op" style="color: #5E5E5E;">=</span>matmul(m1, m2)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>CPU times: user 675 ms, sys: 0 ns, total: 675 ms
+Wall time: 674 ms</code></pre>
+</div>
+</div>
+</section>
+<section id="version-1-numba-dot-product" class="level2">
+<h2 class="anchored" data-anchor-id="version-1-numba-dot-product">Version 1: Numba Dot Product</h2>
+<p>Replacing the inner-most for-loop with a numba dot-product implementation.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2" title="Excalidraw diagram showing dot-product implementation of matrix multiplication"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-21-matmul-2/2.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Excalidraw diagram showing dot-product implementation of matrix multiplication</figcaption><p></p>
+</figure>
+</div>
+<div class="cell" data-execution_count="82">
+<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><span class="at" style="color: #657422;">@njit</span></span>
+<span id="cb17-2"><span class="kw" style="color: #003B4F;">def</span> dot(a,b):</span>
+<span id="cb17-3">    res <span class="op" style="color: #5E5E5E;">=</span> <span class="fl" style="color: #AD0000;">0.</span></span>
+<span id="cb17-4">    <span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(<span class="bu" style="color: null;">len</span>(a)): res<span class="op" style="color: #5E5E5E;">+=</span>a[i]<span class="op" style="color: #5E5E5E;">*</span>b[i]</span>
+<span id="cb17-5">    <span class="cf" style="color: #003B4F;">return</span> res</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="217464df-4573-40a9-f926-37186bb47d53" data-execution_count="83">
+<div class="sourceCode cell-code" id="cb18" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><span class="op" style="color: #5E5E5E;">%</span>time dot(array([<span class="fl" style="color: #AD0000;">1.</span>,<span class="dv" style="color: #AD0000;">2</span>,<span class="dv" style="color: #AD0000;">3</span>]),array([<span class="fl" style="color: #AD0000;">2.</span>,<span class="dv" style="color: #AD0000;">3</span>,<span class="dv" style="color: #AD0000;">4</span>]))</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>CPU times: user 124 ms, sys: 0 ns, total: 124 ms
+Wall time: 123 ms</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="83">
+<pre><code>20.0</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="64bc96a7-7cc1-404a-c47b-6b8a54d5c6b6" data-execution_count="84">
+<div class="sourceCode cell-code" id="cb21" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><span class="op" style="color: #5E5E5E;">%</span>time dot(array([<span class="fl" style="color: #AD0000;">1.</span>,<span class="dv" style="color: #AD0000;">2</span>,<span class="dv" style="color: #AD0000;">3</span>]),array([<span class="fl" style="color: #AD0000;">2.</span>,<span class="dv" style="color: #AD0000;">3</span>,<span class="dv" style="color: #AD0000;">4</span>]))</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>CPU times: user 26 μs, sys: 2 μs, total: 28 μs
+Wall time: 32.4 μs</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="84">
+<pre><code>20.0</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="85">
+<div class="sourceCode cell-code" id="cb24" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><span class="kw" style="color: #003B4F;">def</span> matmul(a,b):</span>
+<span id="cb24-2">    (ar,ac),(br,bc) <span class="op" style="color: #5E5E5E;">=</span> a.shape,b.shape</span>
+<span id="cb24-3">    c <span class="op" style="color: #5E5E5E;">=</span> torch.zeros(ar, bc)</span>
+<span id="cb24-4">    <span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(ar):</span>
+<span id="cb24-5">        <span class="cf" style="color: #003B4F;">for</span> j <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(bc): c[i,j] <span class="op" style="color: #5E5E5E;">=</span> dot(a[i,:], b[:,j])</span>
+<span id="cb24-6">    <span class="cf" style="color: #003B4F;">return</span> c</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="86">
+<div class="sourceCode cell-code" id="cb25" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1">m1a,m2a <span class="op" style="color: #5E5E5E;">=</span> m1.numpy(),m2.numpy()</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="87">
+<div class="sourceCode cell-code" id="cb26" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1">test_close(t1,matmul(m1a, m2a))</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="10968392-3789-4272-b708-9a99560bad48" data-execution_count="91">
+<div class="sourceCode cell-code" id="cb27" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><span class="op" style="color: #5E5E5E;">%</span>timeit <span class="op" style="color: #5E5E5E;">-</span>n <span class="dv" style="color: #AD0000;">50</span> matmul(m1a,m2a)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>495 μs ± 39.4 μs per loop (mean ± std. dev. of 7 runs, 50 loops each)</code></pre>
+</div>
+</div>
+</section>
+<section id="version-2-element-wise-operations" class="level2">
+<h2 class="anchored" data-anchor-id="version-2-element-wise-operations">Version 2: Element-wise Operations</h2>
+<div class="cell" data-execution_count="92">
+<div class="sourceCode cell-code" id="cb29" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><span class="kw" style="color: #003B4F;">def</span> matmul(a,b):</span>
+<span id="cb29-2">    (ar,ac),(br,bc) <span class="op" style="color: #5E5E5E;">=</span> a.shape,b.shape</span>
+<span id="cb29-3">    c <span class="op" style="color: #5E5E5E;">=</span> torch.zeros(ar, bc)</span>
+<span id="cb29-4">    <span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(ar):</span>
+<span id="cb29-5">        <span class="cf" style="color: #003B4F;">for</span> j <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(bc): c[i,j] <span class="op" style="color: #5E5E5E;">=</span> (a[i,:] <span class="op" style="color: #5E5E5E;">*</span> b[:,j]).<span class="bu" style="color: null;">sum</span>()</span>
+<span id="cb29-6">    <span class="cf" style="color: #003B4F;">return</span> c</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="93">
+<div class="sourceCode cell-code" id="cb30" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1">test_close(t1,matmul(m1, m2))</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="fc775c33-b82e-4076-ef1b-5eb260224b56" data-execution_count="94">
+<div class="sourceCode cell-code" id="cb31" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><span class="op" style="color: #5E5E5E;">%</span>timeit <span class="op" style="color: #5E5E5E;">-</span>n <span class="dv" style="color: #AD0000;">50</span> _<span class="op" style="color: #5E5E5E;">=</span>matmul(m1, m2)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>1.48 ms ± 354 μs per loop (mean ± std. dev. of 7 runs, 50 loops each)</code></pre>
+</div>
+</div>
+</section>
+<section id="version-3-torch.dot" class="level2">
+<h2 class="anchored" data-anchor-id="version-3-torch.dot">Version 3: <code>torch.dot</code></h2>
+<div class="cell" data-execution_count="95">
+<div class="sourceCode cell-code" id="cb33" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><span class="kw" style="color: #003B4F;">def</span> matmul(a,b):</span>
+<span id="cb33-2">    (ar,ac),(br,bc) <span class="op" style="color: #5E5E5E;">=</span> a.shape,b.shape</span>
+<span id="cb33-3">    c <span class="op" style="color: #5E5E5E;">=</span> torch.zeros(ar, bc)</span>
+<span id="cb33-4">    <span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(ar):</span>
+<span id="cb33-5">        <span class="cf" style="color: #003B4F;">for</span> j <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(bc): c[i,j] <span class="op" style="color: #5E5E5E;">=</span> torch.dot(a[i,:], b[:,j])</span>
+<span id="cb33-6">    <span class="cf" style="color: #003B4F;">return</span> c</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="96">
+<div class="sourceCode cell-code" id="cb34" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1">test_close(t1,matmul(m1, m2))</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="b97d9eea-9c0f-4ac5-9db1-c73b3661cfec" data-execution_count="97">
+<div class="sourceCode cell-code" id="cb35" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><span class="op" style="color: #5E5E5E;">%</span>timeit <span class="op" style="color: #5E5E5E;">-</span>n <span class="dv" style="color: #AD0000;">50</span> _<span class="op" style="color: #5E5E5E;">=</span>matmul(m1, m2)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>1.23 ms ± 380 μs per loop (mean ± std. dev. of 7 runs, 50 loops each)</code></pre>
+</div>
+</div>
+</section>
+<section id="version-4-pytorch-broadcasting" class="level2">
+<h2 class="anchored" data-anchor-id="version-4-pytorch-broadcasting">Version 4: PyTorch Broadcasting</h2>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3" title="Excalidraw diagram showing broadcasting implementation of matrix multiplication"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-21-matmul-2/3.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Excalidraw diagram showing broadcasting implementation of matrix multiplication</figcaption><p></p>
+</figure>
+</div>
+<div class="cell" data-execution_count="107">
+<div class="sourceCode cell-code" id="cb37" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><span class="kw" style="color: #003B4F;">def</span> matmul(a,b):</span>
+<span id="cb37-2">    (ar,ac),(br,bc) <span class="op" style="color: #5E5E5E;">=</span> a.shape,b.shape</span>
+<span id="cb37-3">    c <span class="op" style="color: #5E5E5E;">=</span> torch.zeros(ar, bc)</span>
+<span id="cb37-4">    <span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(ar): c[i] <span class="op" style="color: #5E5E5E;">=</span> (a[i,:,<span class="va" style="color: #111111;">None</span>] <span class="op" style="color: #5E5E5E;">*</span> b).<span class="bu" style="color: null;">sum</span>(dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>)</span>
+<span id="cb37-5">    <span class="cf" style="color: #003B4F;">return</span> c</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="108">
+<div class="sourceCode cell-code" id="cb38" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1">test_close(t1,matmul(m1, m2))</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="2acf0524-81f2-4fab-e67d-b2354bacbf36" data-execution_count="109">
+<div class="sourceCode cell-code" id="cb39" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><span class="op" style="color: #5E5E5E;">%</span>timeit <span class="op" style="color: #5E5E5E;">-</span>n <span class="dv" style="color: #AD0000;">50</span> _<span class="op" style="color: #5E5E5E;">=</span>matmul(m1, m2)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>314 μs ± 92.1 μs per loop (mean ± std. dev. of 7 runs, 50 loops each)</code></pre>
+</div>
+</div>
+</section>
+<section id="version-5-numba-broadcasting" class="level2">
+<h2 class="anchored" data-anchor-id="version-5-numba-broadcasting">Version 5: Numba Broadcasting</h2>
+<div class="cell" data-execution_count="119">
+<div class="sourceCode cell-code" id="cb41" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><span class="at" style="color: #657422;">@njit</span></span>
+<span id="cb41-2"><span class="kw" style="color: #003B4F;">def</span> matmul(a,b):</span>
+<span id="cb41-3">    (ar,ac),(br,bc) <span class="op" style="color: #5E5E5E;">=</span> a.shape,b.shape</span>
+<span id="cb41-4">    c <span class="op" style="color: #5E5E5E;">=</span> np.zeros((ar, bc))</span>
+<span id="cb41-5">    <span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(ar): c[i] <span class="op" style="color: #5E5E5E;">=</span> (a[i,:,<span class="va" style="color: #111111;">None</span>] <span class="op" style="color: #5E5E5E;">*</span> b).<span class="bu" style="color: null;">sum</span>(axis<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>)</span>
+<span id="cb41-6">    <span class="cf" style="color: #003B4F;">return</span> c</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="120">
+<div class="sourceCode cell-code" id="cb42" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1">test_close(t1,matmul(m1a, m2a))</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="1d46ad9d-a40d-4643-c1cf-f535fa528a2f" data-execution_count="121">
+<div class="sourceCode cell-code" id="cb43" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><span class="op" style="color: #5E5E5E;">%</span>timeit <span class="op" style="color: #5E5E5E;">-</span>n <span class="dv" style="color: #AD0000;">50</span> _<span class="op" style="color: #5E5E5E;">=</span>matmul(m1a, m2a)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>69 μs ± 1.96 μs per loop (mean ± std. dev. of 7 runs, 50 loops each)</code></pre>
+</div>
+</div>
+</section>
+<section id="version-6-einstein-summation" class="level2">
+<h2 class="anchored" data-anchor-id="version-6-einstein-summation">Version 6: Einstein Summation</h2>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="4.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4" title="Excalidraw diagram showing einsum implementation of matrix multiplication"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-21-matmul-2/4.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Excalidraw diagram showing einsum implementation of matrix multiplication</figcaption><p></p>
+</figure>
+</div>
+<div class="cell" data-execution_count="122">
+<div class="sourceCode cell-code" id="cb45" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><span class="kw" style="color: #003B4F;">def</span> matmul(a,b): <span class="cf" style="color: #003B4F;">return</span> torch.einsum(<span class="st" style="color: #20794D;">'ik,kj-&gt;ij'</span>, a, b)</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="123">
+<div class="sourceCode cell-code" id="cb46" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1">test_close(t1,matmul(m1, m2))</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="65bbe1b5-0ab3-4162-ef3f-bdeaeb96f800" data-execution_count="124">
+<div class="sourceCode cell-code" id="cb47" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><span class="op" style="color: #5E5E5E;">%</span>timeit <span class="op" style="color: #5E5E5E;">-</span>n <span class="dv" style="color: #AD0000;">50</span> _<span class="op" style="color: #5E5E5E;">=</span>matmul(m1, m2)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>80.8 μs ± 4.18 μs per loop (mean ± std. dev. of 7 runs, 50 loops each)</code></pre>
+</div>
+</div>
+</section>
+<section id="version-7-pytorch-operator" class="level2">
+<h2 class="anchored" data-anchor-id="version-7-pytorch-operator">Version 7: PyTorch <code>@</code> Operator</h2>
+<div class="cell" data-execution_count="125">
+<div class="sourceCode cell-code" id="cb49" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1">test_close(t1,m1<span class="op" style="color: #5E5E5E;">@</span>m2)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="0bdd14b8-2dbf-42d9-f565-0746be389f63" data-execution_count="126">
+<div class="sourceCode cell-code" id="cb50" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><span class="op" style="color: #5E5E5E;">%</span>timeit <span class="op" style="color: #5E5E5E;">-</span>n <span class="dv" style="color: #AD0000;">50</span> _<span class="op" style="color: #5E5E5E;">=</span>m1<span class="op" style="color: #5E5E5E;">@</span>m2</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>16.7 μs ± 1.96 μs per loop (mean ± std. dev. of 7 runs, 50 loops each)</code></pre>
+</div>
+</div>
+</section>
+<section id="version-8-numba-cuda" class="level2">
+<h2 class="anchored" data-anchor-id="version-8-numba-cuda">Version 8: Numba CUDA</h2>
+<div class="cell" data-execution_count="127">
+<div class="sourceCode cell-code" id="cb52" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><span class="at" style="color: #657422;">@cuda.jit</span></span>
+<span id="cb52-2"><span class="kw" style="color: #003B4F;">def</span> matmul(a,b,c):</span>
+<span id="cb52-3">    i, j <span class="op" style="color: #5E5E5E;">=</span> cuda.grid(<span class="dv" style="color: #AD0000;">2</span>)</span>
+<span id="cb52-4">    <span class="cf" style="color: #003B4F;">if</span> i <span class="op" style="color: #5E5E5E;">&lt;</span> c.shape[<span class="dv" style="color: #AD0000;">0</span>] <span class="kw" style="color: #003B4F;">and</span> j <span class="op" style="color: #5E5E5E;">&lt;</span> c.shape[<span class="dv" style="color: #AD0000;">1</span>]:</span>
+<span id="cb52-5">        tmp <span class="op" style="color: #5E5E5E;">=</span> <span class="fl" style="color: #AD0000;">0.</span></span>
+<span id="cb52-6">        <span class="cf" style="color: #003B4F;">for</span> k <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(a.shape[<span class="dv" style="color: #AD0000;">1</span>]): tmp <span class="op" style="color: #5E5E5E;">+=</span> a[i, k] <span class="op" style="color: #5E5E5E;">*</span> b[k, j]</span>
+<span id="cb52-7">        c[i,j] <span class="op" style="color: #5E5E5E;">=</span> tmp</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="128">
+<div class="sourceCode cell-code" id="cb53" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><span class="kw" style="color: #003B4F;">def</span> launch_kernel(kernel, grid_x, grid_y, <span class="op" style="color: #5E5E5E;">*</span>args, <span class="op" style="color: #5E5E5E;">**</span>kwargs):</span>
+<span id="cb53-2">    <span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(grid_x):</span>
+<span id="cb53-3">        <span class="cf" style="color: #003B4F;">for</span> j <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(grid_y): kernel((i,j), <span class="op" style="color: #5E5E5E;">*</span>args, <span class="op" style="color: #5E5E5E;">**</span>kwargs)</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="129">
+<div class="sourceCode cell-code" id="cb54" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1">r <span class="op" style="color: #5E5E5E;">=</span> np.zeros(t1.shape)</span>
+<span id="cb54-2">m1g,m2g,rg <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">map</span>(cuda.to_device, (m1,m2,r))</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="2852ccb1-8bed-450f-8864-1928e10117f2" data-execution_count="130">
+<div class="sourceCode cell-code" id="cb55" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1">m1g.shape, m2g.shape, rg.shape</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="130">
+<pre><code>((5, 784), (784, 10), (5, 10))</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="d4e0a549-a04f-43db-9d1f-c96e9a6026e7" data-execution_count="131">
+<div class="sourceCode cell-code" id="cb57" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1">TPB <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">16</span></span>
+<span id="cb57-2">rr,rc <span class="op" style="color: #5E5E5E;">=</span> r.shape</span>
+<span id="cb57-3">blockspergrid <span class="op" style="color: #5E5E5E;">=</span> (math.ceil(rr <span class="op" style="color: #5E5E5E;">/</span> TPB), math.ceil(rc <span class="op" style="color: #5E5E5E;">/</span> TPB))</span>
+<span id="cb57-4">blockspergrid</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="131">
+<pre><code>(1, 1)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="bf632387-a756-4efb-ec6a-ce589b1c023a" data-execution_count="132">
+<div class="sourceCode cell-code" id="cb59" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1">matmul[blockspergrid, (TPB,TPB)](m1g,m2g,rg)</span>
+<span id="cb59-2">r <span class="op" style="color: #5E5E5E;">=</span> rg.copy_to_host()</span>
+<span id="cb59-3">test_close(t1, r, eps<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">1e-3</span>)</span></code></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>/mnt/my4tb/vishal_data/miniconda3/envs/course-numba/lib/python3.10/site-packages/numba/cuda/dispatcher.py:536: NumbaPerformanceWarning: Grid size 1 will likely result in GPU under-utilization due to low occupancy.
+  warn(NumbaPerformanceWarning(msg))</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="133">
+<div class="sourceCode cell-code" id="cb61" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb61-1"><span class="op" style="color: #5E5E5E;">%%</span>timeit <span class="op" style="color: #5E5E5E;">-</span>n <span class="dv" style="color: #AD0000;">10</span></span>
+<span id="cb61-2">matmul[blockspergrid, (TPB,TPB)](m1g,m2g,rg)</span>
+<span id="cb61-3">r <span class="op" style="color: #5E5E5E;">=</span> rg.copy_to_host()</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>245 μs ± 47.4 μs per loop (mean ± std. dev. of 7 runs, 10 loops each)</code></pre>
+</div>
+</div>
+</section>
+<section id="version-9-pytorch-.cuda" class="level2">
+<h2 class="anchored" data-anchor-id="version-9-pytorch-.cuda">Version 9: PyTorch <code>.cuda</code></h2>
+<div class="cell" data-execution_count="134">
+<div class="sourceCode cell-code" id="cb63" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1">m1c,m2c <span class="op" style="color: #5E5E5E;">=</span> m1.cuda(),m2.cuda()</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="135">
+<div class="sourceCode cell-code" id="cb64" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1">r<span class="op" style="color: #5E5E5E;">=</span>(m1c<span class="op" style="color: #5E5E5E;">@</span>m2c).cpu()</span>
+<span id="cb64-2">test_close(t1, r)</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="136">
+<div class="sourceCode cell-code" id="cb65" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><span class="op" style="color: #5E5E5E;">%</span>timeit <span class="op" style="color: #5E5E5E;">-</span>n <span class="dv" style="color: #AD0000;">10</span> r<span class="op" style="color: #5E5E5E;">=</span>(m1c<span class="op" style="color: #5E5E5E;">@</span>m2c).cpu()</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>113 μs ± 26.4 μs per loop (mean ± std. dev. of 7 runs, 10 loops each)</code></pre>
+</div>
+</div>
+</section>
+<section id="comparing-fastest-versions-on-full-dataset" class="level2">
+<h2 class="anchored" data-anchor-id="comparing-fastest-versions-on-full-dataset">Comparing Fastest Versions on Full Dataset</h2>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Method</th>
+<th style="text-align: center;">Time</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">PyTorch <code>cuda</code></td>
+<td style="text-align: center;">541 μs</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">Numba Cuda</td>
+<td style="text-align: center;">3.91 ms</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">PyTorch <code>@</code> Op</td>
+<td style="text-align: center;">5.8 ms</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">Einstein Summation</td>
+<td style="text-align: center;">5.87 ms</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">Numba Broadcasting</td>
+<td style="text-align: center;">663 ms</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">PyTorch Broadcasting</td>
+<td style="text-align: center;">1.26 s</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">Numba Dot Product</td>
+<td style="text-align: center;">3.71 s</td>
+</tr>
+</tbody>
+</table>
+<section id="numba-dot-product" class="level3">
+<h3 class="anchored" data-anchor-id="numba-dot-product">Numba Dot Product</h3>
+<div class="cell" data-execution_count="137">
+<div class="sourceCode cell-code" id="cb67" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb67-1"><span class="kw" style="color: #003B4F;">def</span> matmul(a,b):</span>
+<span id="cb67-2">    (ar,ac),(br,bc) <span class="op" style="color: #5E5E5E;">=</span> a.shape,b.shape</span>
+<span id="cb67-3">    c <span class="op" style="color: #5E5E5E;">=</span> torch.zeros(ar, bc)</span>
+<span id="cb67-4">    <span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(ar):</span>
+<span id="cb67-5">        <span class="cf" style="color: #003B4F;">for</span> j <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(bc): c[i,j] <span class="op" style="color: #5E5E5E;">=</span> dot(a[i,:], b[:,j])</span>
+<span id="cb67-6">    <span class="cf" style="color: #003B4F;">return</span> c</span>
+<span id="cb67-7"></span>
+<span id="cb67-8">x_train_a,weights_a <span class="op" style="color: #5E5E5E;">=</span> x_train.numpy(),weights.numpy()</span>
+<span id="cb67-9"><span class="op" style="color: #5E5E5E;">%</span>timeit _ <span class="op" style="color: #5E5E5E;">=</span> matmul(x_train_a, weights_a)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>3.71 s ± 20.7 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)</code></pre>
+</div>
+</div>
+</section>
+<section id="pytorch-broadcasting" class="level3">
+<h3 class="anchored" data-anchor-id="pytorch-broadcasting">PyTorch Broadcasting</h3>
+<div class="cell" data-execution_count="197">
+<div class="sourceCode cell-code" id="cb69" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb69-1"><span class="kw" style="color: #003B4F;">def</span> matmul(a,b):</span>
+<span id="cb69-2">    (ar,ac),(br,bc) <span class="op" style="color: #5E5E5E;">=</span> a.shape,b.shape</span>
+<span id="cb69-3">    c <span class="op" style="color: #5E5E5E;">=</span> torch.zeros(ar, bc)</span>
+<span id="cb69-4">    <span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(ar): c[i] <span class="op" style="color: #5E5E5E;">=</span> (a[i,:,<span class="va" style="color: #111111;">None</span>] <span class="op" style="color: #5E5E5E;">*</span> b).<span class="bu" style="color: null;">sum</span>(dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>)</span>
+<span id="cb69-5">    <span class="cf" style="color: #003B4F;">return</span> c</span>
+<span id="cb69-6"></span>
+<span id="cb69-7"><span class="op" style="color: #5E5E5E;">%</span>timeit _ <span class="op" style="color: #5E5E5E;">=</span> matmul(x_train, weights)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>1.26 s ± 1.42 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="198">
+<div class="sourceCode cell-code" id="cb71" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb71-1">x_train.shape, weights.shape</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="198">
+<pre><code>(torch.Size([50000, 784]), torch.Size([784, 10]))</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="200">
+<div class="sourceCode cell-code" id="cb73" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb73-1"><span class="op" style="color: #5E5E5E;">%</span>timeit _ <span class="op" style="color: #5E5E5E;">=</span> matmul(x_train.cuda(), weights.cuda())</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>2.86 s ± 4.5 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)</code></pre>
+</div>
+</div>
+<p>Interestingly, putting the tensors on the GPU and then broadcasting is slower than the CPU.</p>
+</section>
+<section id="numba-cuda" class="level3">
+<h3 class="anchored" data-anchor-id="numba-cuda">Numba Cuda</h3>
+<div class="cell" data-execution_count="139">
+<div class="sourceCode cell-code" id="cb75" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb75-1"><span class="at" style="color: #657422;">@cuda.jit</span></span>
+<span id="cb75-2"><span class="kw" style="color: #003B4F;">def</span> matmul(a,b,c):</span>
+<span id="cb75-3">    i, j <span class="op" style="color: #5E5E5E;">=</span> cuda.grid(<span class="dv" style="color: #AD0000;">2</span>)</span>
+<span id="cb75-4">    <span class="cf" style="color: #003B4F;">if</span> i <span class="op" style="color: #5E5E5E;">&lt;</span> c.shape[<span class="dv" style="color: #AD0000;">0</span>] <span class="kw" style="color: #003B4F;">and</span> j <span class="op" style="color: #5E5E5E;">&lt;</span> c.shape[<span class="dv" style="color: #AD0000;">1</span>]:</span>
+<span id="cb75-5">        tmp <span class="op" style="color: #5E5E5E;">=</span> <span class="fl" style="color: #AD0000;">0.</span></span>
+<span id="cb75-6">        <span class="cf" style="color: #003B4F;">for</span> k <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(a.shape[<span class="dv" style="color: #AD0000;">1</span>]): tmp <span class="op" style="color: #5E5E5E;">+=</span> a[i, k] <span class="op" style="color: #5E5E5E;">*</span> b[k, j]</span>
+<span id="cb75-7">        c[i,j] <span class="op" style="color: #5E5E5E;">=</span> tmp</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="141">
+<div class="sourceCode cell-code" id="cb76" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb76-1">r <span class="op" style="color: #5E5E5E;">=</span> np.zeros((<span class="dv" style="color: #AD0000;">50000</span>, <span class="dv" style="color: #AD0000;">10</span>))</span>
+<span id="cb76-2">m1g,m2g,rg <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">map</span>(cuda.to_device, (x_train,weights,r))</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="142">
+<div class="sourceCode cell-code" id="cb77" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb77-1">TPB <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">16</span></span>
+<span id="cb77-2">rr,rc <span class="op" style="color: #5E5E5E;">=</span> r.shape</span>
+<span id="cb77-3">blockspergrid <span class="op" style="color: #5E5E5E;">=</span> (math.ceil(rr <span class="op" style="color: #5E5E5E;">/</span> TPB), math.ceil(rc <span class="op" style="color: #5E5E5E;">/</span> TPB))</span>
+<span id="cb77-4">blockspergrid</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="142">
+<pre><code>(3125, 1)</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="144">
+<div class="sourceCode cell-code" id="cb79" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb79-1"><span class="op" style="color: #5E5E5E;">%%</span>timeit <span class="op" style="color: #5E5E5E;">-</span>n <span class="dv" style="color: #AD0000;">10</span></span>
+<span id="cb79-2">matmul[blockspergrid, (TPB,TPB)](m1g,m2g,rg)</span>
+<span id="cb79-3">r <span class="op" style="color: #5E5E5E;">=</span> rg.copy_to_host()</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>3.91 ms ± 68.6 μs per loop (mean ± std. dev. of 7 runs, 10 loops each)</code></pre>
+</div>
+</div>
+</section>
+<section id="pytorch-cuda" class="level3">
+<h3 class="anchored" data-anchor-id="pytorch-cuda">PyTorch <code>cuda</code></h3>
+<div class="cell" data-execution_count="183">
+<div class="sourceCode cell-code" id="cb81" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb81-1">m1c,m2c <span class="op" style="color: #5E5E5E;">=</span> x_train.cuda(),weights.cuda()</span>
+<span id="cb81-2"><span class="op" style="color: #5E5E5E;">%</span>timeit <span class="op" style="color: #5E5E5E;">-</span>n <span class="dv" style="color: #AD0000;">10</span> r<span class="op" style="color: #5E5E5E;">=</span>(m1c<span class="op" style="color: #5E5E5E;">@</span>m2c).cpu()</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>541 μs ± 6.82 μs per loop (mean ± std. dev. of 7 runs, 10 loops each)</code></pre>
+</div>
+</div>
+</section>
+<section id="einstein-summation" class="level3">
+<h3 class="anchored" data-anchor-id="einstein-summation">Einstein Summation</h3>
+<div class="cell" data-execution_count="188">
+<div class="sourceCode cell-code" id="cb83" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb83-1"><span class="kw" style="color: #003B4F;">def</span> matmul(a,b): <span class="cf" style="color: #003B4F;">return</span> torch.einsum(<span class="st" style="color: #20794D;">'ik,kj-&gt;ij'</span>, a, b)</span>
+<span id="cb83-2"><span class="op" style="color: #5E5E5E;">%</span>timeit <span class="op" style="color: #5E5E5E;">-</span>n <span class="dv" style="color: #AD0000;">10</span> _<span class="op" style="color: #5E5E5E;">=</span>matmul(x_train, weights)</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>5.87 ms ± 229 μs per loop (mean ± std. dev. of 7 runs, 10 loops each)</code></pre>
+</div>
+</div>
+</section>
+<section id="numba-broadcasting" class="level3">
+<h3 class="anchored" data-anchor-id="numba-broadcasting">Numba Broadcasting</h3>
+<div class="cell" data-execution_count="191">
+<div class="sourceCode cell-code" id="cb85" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb85-1"><span class="at" style="color: #657422;">@njit</span></span>
+<span id="cb85-2"><span class="kw" style="color: #003B4F;">def</span> matmul(a,b):</span>
+<span id="cb85-3">    (ar,ac),(br,bc) <span class="op" style="color: #5E5E5E;">=</span> a.shape,b.shape</span>
+<span id="cb85-4">    c <span class="op" style="color: #5E5E5E;">=</span> np.zeros((ar, bc))</span>
+<span id="cb85-5">    <span class="cf" style="color: #003B4F;">for</span> i <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(ar): c[i] <span class="op" style="color: #5E5E5E;">=</span> (a[i,:,<span class="va" style="color: #111111;">None</span>] <span class="op" style="color: #5E5E5E;">*</span> b).<span class="bu" style="color: null;">sum</span>(axis<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>)</span>
+<span id="cb85-6">    <span class="cf" style="color: #003B4F;">return</span> c</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="192">
+<div class="sourceCode cell-code" id="cb86" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb86-1">_<span class="op" style="color: #5E5E5E;">=</span>matmul(x_train.numpy(), weights.numpy())</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="193">
+<div class="sourceCode cell-code" id="cb87" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb87-1"><span class="op" style="color: #5E5E5E;">%</span>timeit _<span class="op" style="color: #5E5E5E;">=</span>matmul(x_train.numpy(), weights.numpy())</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>663 ms ± 378 μs per loop (mean ± std. dev. of 7 runs, 1 loop each)</code></pre>
+</div>
+</div>
+</section>
+<section id="pytorch-op" class="level3">
+<h3 class="anchored" data-anchor-id="pytorch-op">PyTorch <code>@</code> Op</h3>
+<div class="cell" data-execution_count="194">
+<div class="sourceCode cell-code" id="cb89" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb89-1"><span class="op" style="color: #5E5E5E;">%</span>timeit <span class="op" style="color: #5E5E5E;">-</span>n <span class="dv" style="color: #AD0000;">10</span> _<span class="op" style="color: #5E5E5E;">=</span>x_train<span class="op" style="color: #5E5E5E;">@</span>weights</span></code></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>5.8 ms ± 212 μs per loop (mean ± std. dev. of 7 runs, 10 loops each)</code></pre>
+</div>
+</div>
+</section>
+</section>
+<section id="comparing-5-digit-subset-to-full-dataset-times" class="level2">
+<h2 class="anchored" data-anchor-id="comparing-5-digit-subset-to-full-dataset-times">Comparing 5-digit Subset to Full Dataset Times</h2>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Method</th>
+<th style="text-align: center;">Full Dataset Time</th>
+<th style="text-align: center;">5-digit Subset Time/Rank</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">PyTorch <code>cuda</code></td>
+<td style="text-align: center;">541 μs</td>
+<td style="text-align: center;">108 μs (4)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">Numba Cuda</td>
+<td style="text-align: center;">3.91 ms</td>
+<td style="text-align: center;">108 μs (4)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">PyTorch <code>@</code> Op</td>
+<td style="text-align: center;">5.8 ms</td>
+<td style="text-align: center;">18.1 μs (1)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">Einstein Summation</td>
+<td style="text-align: center;">5.87 ms</td>
+<td style="text-align: center;">83.1 μs (3)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">Numba Broadcasting</td>
+<td style="text-align: center;">663 ms</td>
+<td style="text-align: center;">69.2 μs (2)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">PyTorch Broadcasting</td>
+<td style="text-align: center;">1.26 s</td>
+<td style="text-align: center;">203 μs (6)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">Numba Dot Product</td>
+<td style="text-align: center;">3.71 s</td>
+<td style="text-align: center;">542 μs (7)</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="closing-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="closing-thoughts">Closing Thoughts</h2>
+<p>I initially ran into some problems on Colab when implementing <code>@cuda.jit</code> (an error about compute compatibility) so I switched to an RTX 3090 machine and installed the following, which let me successfully run this notebook:</p>
+<pre><code>conda install -y -c nvidia/label/cuda-12.8.0 cuda-toolkit
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+conda install -y numba
+conda install -y fastcore -c fastai</code></pre>
+<p>The glaring takeaway from this exercise is that these methods all scale differently. For the 5-digit subset, PyTorch <code>cuda</code> was about 9 times slower than PyTorch CPU (when using the <code>@</code> operator). Numba cuda and PyTorch <code>cuda</code> were tied for the small subset, but PyTorch <code>cuda</code> was 8 times faster for the larger dataset. I don’t yet understand <em>why</em> these differences exist, so that’s something I’ll keep an eye out for as I learn more about how GPUs work!</p>
+
+
+</section>
+
+ ]]></description>
+  <category>python</category>
+  <category>deep learning</category>
+  <category>fastai</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-05-21-matmul-2/index.html</guid>
+  <pubDate>Wed, 21 May 2025 07:00:00 GMT</pubDate>
+  <media:content url="https://vishalbakshi.github.io/blog/posts/2025-05-21-matmul-2/1.png" medium="image" type="image/png" height="51" width="144"/>
+</item>
 <item>
   <title>DataInspector with BinPackCollator: Inspecting Packed Dataloader Items</title>
   <dc:creator>Vishal Bakshi</dc:creator>
@@ -11536,356 +12204,6 @@ Line #    Mem usage    Increment  Occurrences   Line Contents
   <guid>https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/index.html</guid>
   <pubDate>Wed, 12 Feb 2025 08:00:00 GMT</pubDate>
   <media:content url="https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/RTX6000/2M.png" medium="image" type="image/png" height="114" width="144"/>
-</item>
-<item>
-  <title>Evaluating the DAPR ConditionalQA Dataset with RAGatouille</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2025-02-08-ConditionalQA-RAGatouille/index.html</link>
-  <description><![CDATA[ 
-
-
-
-<section id="setup" class="level2">
-<h2 class="anchored" data-anchor-id="setup">Setup</h2>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="op" style="color: #5E5E5E;">!</span>pip install datasets ragatouille pytrec_eval ranx</span></code></pre></div>
-</div>
-<div class="cell" data-execution_count="1">
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="im" style="color: #00769E;">from</span> datasets <span class="im" style="color: #00769E;">import</span> load_dataset</span>
-<span id="cb2-2"><span class="im" style="color: #00769E;">from</span> ragatouille <span class="im" style="color: #00769E;">import</span> RAGPretrainedModel</span>
-<span id="cb2-3"></span>
-<span id="cb2-4"><span class="im" style="color: #00769E;">import</span> numpy <span class="im" style="color: #00769E;">as</span> np</span>
-<span id="cb2-5"><span class="im" style="color: #00769E;">import</span> pandas <span class="im" style="color: #00769E;">as</span> pd</span>
-<span id="cb2-6"></span>
-<span id="cb2-7"><span class="im" style="color: #00769E;">import</span> pytrec_eval</span>
-<span id="cb2-8"><span class="im" style="color: #00769E;">from</span> ranx <span class="im" style="color: #00769E;">import</span> evaluate</span>
-<span id="cb2-9"><span class="im" style="color: #00769E;">from</span> ranx <span class="im" style="color: #00769E;">import</span> Qrels, Run</span></code></pre></div>
-</div>
-</section>
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<p>I wanted to get familiar with classic information retrieval datasets, especially those with explicit documents. I searched with Perplexity and ChatGPT and came across <a href="https://huggingface.co/datasets/UKPLab/dapr">DAPR: Document-Aware Passage Retrieval</a> which sounded perfect for my use case.</p>
-<p>In this blog post I’ll work through evaluating the test split of the <em>ConditionalQA</em> dataset in DAPR using RAGatouille and the <code>answerai-colbert-small-v1</code> model for retrieval and the pytrec and ranx libraries for evaluation. I’ll use the simple Recall@10 metric as it’s the easiest to manually check.</p>
-</section>
-<section id="load-and-view-data" class="level2">
-<h2 class="anchored" data-anchor-id="load-and-view-data">Load and View Data</h2>
-<p>Here are the three datasets we are going to use for this evaluation:</p>
-<ul>
-<li><code>ConditionalQA-corpus</code>, our <em>passages</em></li>
-<li><code>ConditionalQA_queries</code>, our <em>queries</em></li>
-<li>and <code>ConditionalQA_qrels</code>, the mapping between queries and passages.</li>
-</ul>
-<div class="cell" data-outputid="ceab6651-e1f3-4b5a-8373-82e45f396356" data-execution_count="3">
-<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1">passages <span class="op" style="color: #5E5E5E;">=</span> load_dataset(<span class="st" style="color: #20794D;">"UKPLab/dapr"</span>, <span class="st" style="color: #20794D;">"ConditionalQA-corpus"</span>, split<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"test"</span>)</span>
-<span id="cb3-2">passages</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="3">
-<pre><code>Dataset({
-    features: ['_id', 'text', 'title', 'doc_id', 'paragraph_no', 'total_paragraphs', 'is_candidate'],
-    num_rows: 69199
-})</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="e8490f49-f5ff-4825-d72d-1f7ea5e95830" data-execution_count="4">
-<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1">passages[<span class="dv" style="color: #AD0000;">0</span>]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="4">
-<pre><code>{'_id': '0-0',
- 'text': 'Overview',
- 'title': 'Child Tax Credit',
- 'doc_id': '0',
- 'paragraph_no': 0,
- 'total_paragraphs': 77,
- 'is_candidate': True}</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="b8182782-913d-452c-9309-cf3619b76b74" data-execution_count="6">
-<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1">queries <span class="op" style="color: #5E5E5E;">=</span> load_dataset(<span class="st" style="color: #20794D;">"UKPLab/dapr"</span>, <span class="st" style="color: #20794D;">"ConditionalQA-queries"</span>, split<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"test"</span>)</span>
-<span id="cb7-2">queries</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="6">
-<pre><code>Dataset({
-    features: ['_id', 'text'],
-    num_rows: 271
-})</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="d6c6b29f-4247-4d08-a3c2-0127dfbd2976" data-execution_count="7">
-<div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1">queries[<span class="dv" style="color: #AD0000;">0</span>]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="7">
-<pre><code>{'_id': 'dev-0',
- 'text': 'My brother and his wife are in prison for carrying out a large fraud scheme. Their 7 and 8 year old children have been living with me for the last 4 years. I want to become their Special Guardian to look after them permanently How long will it be before I hear back from the court?'}</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="3143c688-ff8e-4d82-c86f-45cc6a5740c6" data-execution_count="9">
-<div class="sourceCode cell-code" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1">qrels_rows <span class="op" style="color: #5E5E5E;">=</span> load_dataset(<span class="st" style="color: #20794D;">"UKPLab/dapr"</span>, <span class="st" style="color: #20794D;">"ConditionalQA-qrels"</span>, split<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"test"</span>)</span>
-<span id="cb11-2">qrels_rows</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="9">
-<pre><code>Dataset({
-    features: ['query_id', 'corpus_id', 'score'],
-    num_rows: 1165
-})</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="4f02605d-6926-402d-a9fa-d64c632e8d45" data-execution_count="10">
-<div class="sourceCode cell-code" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1">qrels_rows[<span class="dv" style="color: #AD0000;">0</span>]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="10">
-<pre><code>{'query_id': 'dev-0', 'corpus_id': '86-41', 'score': 1}</code></pre>
-</div>
-</div>
-<p>Load <code>answerai-colbert-small-v1</code>:</p>
-<div class="cell" data-outputid="26b62465-2651-46fc-dd7c-b2d4f18cbf11" data-execution_count="12">
-<div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1">RAG <span class="op" style="color: #5E5E5E;">=</span> RAGPretrainedModel.from_pretrained(<span class="st" style="color: #20794D;">"answerdotai/answerai-colbert-small-v1"</span>)</span>
-<span id="cb15-2">RAG</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="12">
-<pre><code>&lt;ragatouille.RAGPretrainedModel.RAGPretrainedModel at 0x7e5328fdced0&gt;</code></pre>
-</div>
-</div>
-<p>Structure the passages for indexing:</p>
-<div class="cell" data-outputid="0a932d5e-c59b-4730-c312-b1fdbecf20c7" data-execution_count="13">
-<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1">passages[:<span class="dv" style="color: #AD0000;">5</span>]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="13">
-<pre><code>{'_id': ['0-0', '0-1', '0-2', '0-3', '0-4'],
- 'text': ['Overview',
-  'You can only make a claim for Child Tax Credit if you already get Working Tax Credit.',
-  'If you cannot apply for Child Tax Credit, you can apply for Universal Credit instead.',
-  'You might be able to apply for Pension Credit if you and your partner are State Pension age or over.',
-  'What you’ll get'],
- 'title': ['Child Tax Credit',
-  'Child Tax Credit',
-  'Child Tax Credit',
-  'Child Tax Credit',
-  'Child Tax Credit'],
- 'doc_id': ['0', '0', '0', '0', '0'],
- 'paragraph_no': [0, 1, 2, 3, 4],
- 'total_paragraphs': [77, 77, 77, 77, 77],
- 'is_candidate': [True, True, True, True, True]}</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="06d8e8e2-5646-4526-a747-90b40a622637" data-execution_count="14">
-<div class="sourceCode cell-code" id="cb19" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1">passage_texts <span class="op" style="color: #5E5E5E;">=</span> [p[<span class="st" style="color: #20794D;">'text'</span>] <span class="cf" style="color: #003B4F;">for</span> p <span class="kw" style="color: #003B4F;">in</span> passages]</span>
-<span id="cb19-2">passage_texts[:<span class="dv" style="color: #AD0000;">5</span>]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="14">
-<pre><code>['Overview',
- 'You can only make a claim for Child Tax Credit if you already get Working Tax Credit.',
- 'If you cannot apply for Child Tax Credit, you can apply for Universal Credit instead.',
- 'You might be able to apply for Pension Credit if you and your partner are State Pension age or over.',
- 'What you’ll get']</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="5b1b49c9-3b17-460c-a60d-4219b7ab425e" data-execution_count="15">
-<div class="sourceCode cell-code" id="cb21" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1">passage_ids <span class="op" style="color: #5E5E5E;">=</span> [p[<span class="st" style="color: #20794D;">'_id'</span>] <span class="cf" style="color: #003B4F;">for</span> p <span class="kw" style="color: #003B4F;">in</span> passages]</span>
-<span id="cb21-2">passage_ids[:<span class="dv" style="color: #AD0000;">5</span>]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="15">
-<pre><code>['0-0', '0-1', '0-2', '0-3', '0-4']</code></pre>
-</div>
-</div>
-</section>
-<section id="build-the-index-and-run-search" class="level2">
-<h2 class="anchored" data-anchor-id="build-the-index-and-run-search">Build the index and run search</h2>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb23" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1">index_path <span class="op" style="color: #5E5E5E;">=</span> RAG.index(</span>
-<span id="cb23-2">    index_name<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"conditionalqa_index"</span>,</span>
-<span id="cb23-3">    collection<span class="op" style="color: #5E5E5E;">=</span>passage_texts,</span>
-<span id="cb23-4">    document_ids<span class="op" style="color: #5E5E5E;">=</span>passage_ids</span>
-<span id="cb23-5">)</span></code></pre></div>
-</div>
-<p>Taking a look at the results for a single query. Each result has a <code>content</code>, <code>score</code>, <code>rank</code>, <code>document_id</code>, and <code>passage_id</code>. Note a bit of confusing terminology: <code>document_id</code> is actually the id of the item in the <code>passages</code> dataset and <code>passage_id</code> is an identifier created by RAGatouille, unrelated to the datasets.</p>
-<div class="cell" data-outputid="4e79a9a3-9bc4-4613-d584-aedc0e59c16c" data-execution_count="18">
-<div class="sourceCode cell-code" id="cb24" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1">results <span class="op" style="color: #5E5E5E;">=</span> RAG.search(queries[<span class="dv" style="color: #AD0000;">0</span>][<span class="st" style="color: #20794D;">'text'</span>], k<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">10</span>)</span>
-<span id="cb24-2">results</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="18">
-<pre><code>[{'content': 'You must advertise your claim within 14 days from the day you get a date for the first court hearing. The advert must appear in a print or online newspaper that covers the missing person’s last known usual address.',
-  'score': 70.0,
-  'rank': 1,
-  'document_id': '107-103',
-  'passage_id': 10480},
- {'content': 'The guardianship order will make you a guardian for a maximum of 4 years.',
-  'score': 70.0,
-  'rank': 2,
-  'document_id': '107-242',
-  'passage_id': 10619},
- {'content': 'You can claim joint Housing Benefit for up to 13 weeks if one of you has gone to prison and is likely to return home in 13 weeks or less - including any time on remand.',
-  'score': 69.9375,
-  'rank': 3,
-  'document_id': '8-67',
-  'passage_id': 911},
- {'content': 'The date will be either 14 or 28 days after your court hearing. If you’re in an exceptionally difficult situation, you may be able to convince the judge to delay this for up to 6 weeks.',
-  'score': 69.9375,
-  'rank': 4,
-  'document_id': '496-116',
-  'passage_id': 47939},
- {'content': 'You can claim or continue to claim joint Council Tax Reduction if your partner’s expected to be in prison for 13 weeks or less – including any time on remand.',
-  'score': 69.875,
-  'rank': 5,
-  'document_id': '8-80',
-  'passage_id': 924},
- {'content': 'Sometimes you’ll be given a 2 to 4 week period that you’ll need to keep free - this is known as a ‘warned period’ or ‘floating trial’. If this happens, you’ll be given 1 working day’s notice before you are due to go to court.',
-  'score': 69.875,
-  'rank': 6,
-  'document_id': '254-4',
-  'passage_id': 23999},
- {'content': 'Your Child Benefit payments will stop after 8 weeks if your child goes to prison or is on remand. You’ll get arrears if they’re cleared of the offence.',
-  'score': 69.8125,
-  'rank': 7,
-  'document_id': '8-116',
-  'passage_id': 960},
- {'content': 'You may be able to make a claim if you’re the dependant of someone who suffered from a dust-related disease but who has died. A dependant claim must be made within 12 months of the death of the sufferer.',
-  'score': 69.8125,
-  'rank': 8,
-  'document_id': '45-133',
-  'passage_id': 4921},
- {'content': 'You’ll be responsible for looking after the child until they’re 18 (unless the court takes your responsibility away earlier).',
-  'score': 69.8125,
-  'rank': 9,
-  'document_id': '86-2',
-  'passage_id': 8150},
- {'content': 'If it’s less than 90 days since the person went missing, explain you need the guardianship order urgently, for example, because the person is going to lose their house.',
-  'score': 69.8125,
-  'rank': 10,
-  'document_id': '107-43',
-  'passage_id': 10420}]</code></pre>
-</div>
-</div>
-</section>
-<section id="evaluation" class="level2">
-<h2 class="anchored" data-anchor-id="evaluation">Evaluation</h2>
-<p>I’ll prepare <code>qrels</code> for the pytrec evaluator as is done in the DAPR dataset card example on HF:</p>
-<div class="cell" data-execution_count="19">
-<div class="sourceCode cell-code" id="cb26" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1">qrels <span class="op" style="color: #5E5E5E;">=</span> {}</span>
-<span id="cb26-2"><span class="cf" style="color: #003B4F;">for</span> qrel_row <span class="kw" style="color: #003B4F;">in</span> qrels_rows:</span>
-<span id="cb26-3">    qid <span class="op" style="color: #5E5E5E;">=</span> qrel_row[<span class="st" style="color: #20794D;">"query_id"</span>]</span>
-<span id="cb26-4">    pid <span class="op" style="color: #5E5E5E;">=</span> qrel_row[<span class="st" style="color: #20794D;">"corpus_id"</span>]</span>
-<span id="cb26-5">    rel <span class="op" style="color: #5E5E5E;">=</span> qrel_row[<span class="st" style="color: #20794D;">"score"</span>]</span>
-<span id="cb26-6">    qrels.setdefault(qid, {})</span>
-<span id="cb26-7">    qrels[qid][pid] <span class="op" style="color: #5E5E5E;">=</span> rel</span></code></pre></div>
-</div>
-<p><code>dev-5</code> is a query ID with multiple passages so I’ve chosen it as the test example:</p>
-<div class="cell" data-execution_count="20">
-<div class="sourceCode cell-code" id="cb27" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1">qid <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">'dev-5'</span></span></code></pre></div>
-</div>
-<div class="cell" data-outputid="0cab7461-acd2-49c9-f942-456f2daae9a3" data-execution_count="21">
-<div class="sourceCode cell-code" id="cb28" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1">qrels[qid]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="21">
-<pre><code>{'61-1': 1, '61-4': 1, '61-5': 1, '61-17': 1, '61-37': 1, '61-39': 1}</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="fcb898ec-c639-4b1a-bb0c-69cf15d6fcfe" data-execution_count="22">
-<div class="sourceCode cell-code" id="cb30" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1">pytrec_results <span class="op" style="color: #5E5E5E;">=</span> {}</span>
-<span id="cb30-2">pytrec_results</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="22">
-<pre><code>{}</code></pre>
-</div>
-</div>
-<p>Next we’ll run retrieval and structure results for the pytrec evaluator, again copying the DAPR example which structures the retrieval results as:</p>
-<div class="sourceCode" id="cb32" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1">retrieval_scores[query_id][passage_id] <span class="op" style="color: #5E5E5E;">=</span> score</span></code></pre></div>
-<p>Note again that <code>document_id</code> means passage_id.</p>
-<div class="cell" data-execution_count="23">
-<div class="sourceCode cell-code" id="cb33" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><span class="cf" style="color: #003B4F;">for</span> q <span class="kw" style="color: #003B4F;">in</span> queries:</span>
-<span id="cb33-2">    results <span class="op" style="color: #5E5E5E;">=</span> RAG.search(q[<span class="st" style="color: #20794D;">'text'</span>], k<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">10</span>)</span>
-<span id="cb33-3">    pytrec_results[q[<span class="st" style="color: #20794D;">'_id'</span>]] <span class="op" style="color: #5E5E5E;">=</span> {result[<span class="st" style="color: #20794D;">'document_id'</span>]: <span class="bu" style="color: null;">float</span>(result[<span class="st" style="color: #20794D;">'score'</span>]) <span class="cf" style="color: #003B4F;">for</span> result <span class="kw" style="color: #003B4F;">in</span> results}</span></code></pre></div>
-</div>
-<p>We can see the 10 passages and each one has a corresponding score.</p>
-<div class="cell" data-outputid="3d972b82-3755-4937-9ac6-ad20f8c672fc" data-execution_count="36">
-<div class="sourceCode cell-code" id="cb34" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1">pytrec_results[qid]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="36">
-<pre><code>{'61-1': 71.125,
- '423-16': 70.5625,
- '61-27': 70.4375,
- '61-109': 70.375,
- '61-110': 70.25,
- '61-113': 70.25,
- '61-114': 70.25,
- '426-22': 70.1875,
- '420-42': 70.1875,
- '423-7': 70.125}</code></pre>
-</div>
-</div>
-<p>Calculate Recall for all queries and viewing a single query’s Recall:</p>
-<div class="cell" data-execution_count="24">
-<div class="sourceCode cell-code" id="cb36" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1">evaluator <span class="op" style="color: #5E5E5E;">=</span> pytrec_eval.RelevanceEvaluator(qrels, {<span class="st" style="color: #20794D;">'recall.10'</span>})</span></code></pre></div>
-</div>
-<p>There are 271 queries and 271 metrics (one per query):</p>
-<div class="cell" data-outputid="571e47c0-b984-4d5c-dba4-7b501c02f139" data-execution_count="25">
-<div class="sourceCode cell-code" id="cb37" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1">metrics <span class="op" style="color: #5E5E5E;">=</span> evaluator.evaluate(pytrec_results)</span>
-<span id="cb37-2"><span class="bu" style="color: null;">len</span>(metrics)</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="25">
-<pre><code>271</code></pre>
-</div>
-</div>
-<p>For our <code>dev-5</code> query the Recall@10 is 0.167 or 1/6.</p>
-<div class="cell" data-outputid="07661f1e-4732-4c1f-ca8b-896b1afff7e0" data-execution_count="26">
-<div class="sourceCode cell-code" id="cb39" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1">metrics[qid]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="26">
-<pre><code>{'recall_10': 0.16666666666666666}</code></pre>
-</div>
-</div>
-<p>Here are the 6 passages that we needed to retrieve to fully answer this question:</p>
-<div class="cell" data-outputid="2d1792f4-7e92-4f3e-bab5-a8d0ff79fbdf" data-execution_count="27">
-<div class="sourceCode cell-code" id="cb41" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1">qrels[qid]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="27">
-<pre><code>{'61-1': 1, '61-4': 1, '61-5': 1, '61-17': 1, '61-37': 1, '61-39': 1}</code></pre>
-</div>
-</div>
-<p>And here are the results again—only 1 relevant passage, <code>61-1</code>, was retrieved.</p>
-<div class="cell" data-outputid="b638ed99-ba08-486a-ee92-bba78540238a" data-execution_count="28">
-<div class="sourceCode cell-code" id="cb43" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1">pytrec_results[qid]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="28">
-<pre><code>{'61-1': 71.125,
- '423-16': 70.5625,
- '61-27': 70.4375,
- '61-109': 70.375,
- '61-110': 70.25,
- '61-113': 70.25,
- '61-114': 70.25,
- '426-22': 70.1875,
- '420-42': 70.1875,
- '423-7': 70.125}</code></pre>
-</div>
-</div>
-<p>Calculating mean Recall across all queries to get our mean Recall@10 for the entire collection of queries:</p>
-<div class="cell" data-outputid="ab74903a-5984-4afb-90df-d77c18d0cc50" data-execution_count="29">
-<div class="sourceCode cell-code" id="cb45" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1">mean_recall <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">sum</span>(metrics[qid][<span class="st" style="color: #20794D;">'recall_10'</span>] <span class="cf" style="color: #003B4F;">for</span> qid <span class="kw" style="color: #003B4F;">in</span> metrics.keys()) <span class="op" style="color: #5E5E5E;">/</span> <span class="bu" style="color: null;">len</span>(metrics)</span>
-<span id="cb45-2">mean_recall</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="29">
-<pre><code>0.28046940381859803</code></pre>
-</div>
-</div>
-<p>So, about 28% of all queries’ relevant passages were present in the top-10 passages retrieved.</p>
-<p>I wanted to confirm my calculation so I’ll also calculate Recall@10 using the ranx library.</p>
-<div class="cell" data-execution_count="31">
-<div class="sourceCode cell-code" id="cb47" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1">qrels_ranx <span class="op" style="color: #5E5E5E;">=</span> Qrels(qrels)</span>
-<span id="cb47-2">ranx_results <span class="op" style="color: #5E5E5E;">=</span> Run(pytrec_results)</span></code></pre></div>
-</div>
-<div class="cell" data-outputid="8924772d-4e13-4e1e-c1d6-1edbeba5faff" data-execution_count="35">
-<div class="sourceCode cell-code" id="cb48" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1">evaluate(qrels_ranx, ranx_results, <span class="st" style="color: #20794D;">"recall@10"</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="35">
-<pre><code>0.2804694038185978</code></pre>
-</div>
-</div>
-<p>And we get the same results. Great!</p>
-</section>
-<section id="final-thoughts" class="level2">
-<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
-<p>In a future blog post I’ll calculate Recall@10 (and other metrics) on all of the datasets included in DAPR:</p>
-<ul>
-<li>ConditionalQA</li>
-<li>MS MARCO</li>
-<li>Genomics</li>
-<li>MIRACL</li>
-<li>Natural Questions</li>
-</ul>
-<p>Once that’s done, I’ll pick a few different retrieval models and compare their results across these datasets.</p>
-<p>I think by the end of these experiments I’ll have a better grasp on how to work with classic IR datasets and metrics.</p>
-
-
-</section>
-
- ]]></description>
-  <category>python</category>
-  <category>information retrieval</category>
-  <category>deep learning</category>
-  <category>RAGatouille</category>
-  <category>ColBERT</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2025-02-08-ConditionalQA-RAGatouille/index.html</guid>
-  <pubDate>Sat, 08 Feb 2025 08:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
