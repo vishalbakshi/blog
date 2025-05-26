@@ -10,7 +10,522 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.2.335</generator>
-<lastBuildDate>Wed, 21 May 2025 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Sun, 25 May 2025 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>Exploring Precision in ColBERT Indexing and Retrieval</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-05-25-Exploring-ColBERT-Precision/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<div class="cell" data-execution_count="4">
+<details>
+<summary>Ensure faiss-gpu is correctly installed</summary>
+<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im" style="color: #00769E;">import</span> faiss</span>
+<span id="cb1-2"><span class="bu" style="color: null;">hasattr</span>(faiss, <span class="st" style="color: #20794D;">"StandardGpuResources"</span>)</span></code></pre></div>
+</details>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<pre><code>True</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="45">
+<details>
+<summary>Show imports</summary>
+<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="im" style="color: #00769E;">from</span> datasets <span class="im" style="color: #00769E;">import</span> load_dataset</span>
+<span id="cb3-2"><span class="im" style="color: #00769E;">import</span> matplotlib.pyplot <span class="im" style="color: #00769E;">as</span> plt</span>
+<span id="cb3-3"></span>
+<span id="cb3-4"><span class="im" style="color: #00769E;">from</span> colbert.data <span class="im" style="color: #00769E;">import</span> Queries</span>
+<span id="cb3-5"><span class="im" style="color: #00769E;">from</span> colbert.infra <span class="im" style="color: #00769E;">import</span> Run, RunConfig, ColBERTConfig</span>
+<span id="cb3-6"><span class="im" style="color: #00769E;">from</span> colbert <span class="im" style="color: #00769E;">import</span> Searcher</span>
+<span id="cb3-7"></span>
+<span id="cb3-8"><span class="im" style="color: #00769E;">import</span> matplotlib.pyplot <span class="im" style="color: #00769E;">as</span> plt</span>
+<span id="cb3-9"><span class="im" style="color: #00769E;">import</span> numpy</span>
+<span id="cb3-10"><span class="im" style="color: #00769E;">import</span> torch</span>
+<span id="cb3-11"><span class="im" style="color: #00769E;">import</span> json</span>
+<span id="cb3-12"><span class="im" style="color: #00769E;">import</span> tqdm</span>
+<span id="cb3-13"><span class="im" style="color: #00769E;">import</span> glob</span>
+<span id="cb3-14"><span class="im" style="color: #00769E;">import</span> re</span>
+<span id="cb3-15"><span class="im" style="color: #00769E;">import</span> pytrec_eval</span>
+<span id="cb3-16"><span class="im" style="color: #00769E;">import</span> pickle</span></code></pre></div>
+</details>
+</div>
+<div class="cell">
+<details>
+<summary>Show indexing + memory profiling script</summary>
+<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><span class="im" style="color: #00769E;">import</span> colbert</span>
+<span id="cb4-2"><span class="im" style="color: #00769E;">from</span> colbert <span class="im" style="color: #00769E;">import</span> Indexer, Searcher</span>
+<span id="cb4-3"><span class="im" style="color: #00769E;">from</span> colbert.infra <span class="im" style="color: #00769E;">import</span> Run, RunConfig, ColBERTConfig</span>
+<span id="cb4-4"><span class="im" style="color: #00769E;">from</span> colbert.data <span class="im" style="color: #00769E;">import</span> Queries, Collection</span>
+<span id="cb4-5"><span class="im" style="color: #00769E;">from</span> datasets <span class="im" style="color: #00769E;">import</span> load_dataset</span>
+<span id="cb4-6"><span class="im" style="color: #00769E;">import</span> threading</span>
+<span id="cb4-7"><span class="im" style="color: #00769E;">import</span> time</span>
+<span id="cb4-8"><span class="im" style="color: #00769E;">import</span> psutil</span>
+<span id="cb4-9"><span class="im" style="color: #00769E;">from</span> datetime <span class="im" style="color: #00769E;">import</span> datetime</span>
+<span id="cb4-10"><span class="im" style="color: #00769E;">import</span> pandas <span class="im" style="color: #00769E;">as</span> pd</span>
+<span id="cb4-11"><span class="im" style="color: #00769E;">import</span> numpy <span class="im" style="color: #00769E;">as</span> np</span>
+<span id="cb4-12"><span class="im" style="color: #00769E;">import</span> matplotlib.pyplot <span class="im" style="color: #00769E;">as</span> plt</span>
+<span id="cb4-13"><span class="im" style="color: #00769E;">import</span> argparse </span>
+<span id="cb4-14"><span class="im" style="color: #00769E;">import</span> pynvml</span>
+<span id="cb4-15"></span>
+<span id="cb4-16"><span class="kw" style="color: #003B4F;">def</span> memory_monitor(stop_event, cpu_readings, gpu_readings):</span>
+<span id="cb4-17">    pynvml.nvmlInit()</span>
+<span id="cb4-18">    handle <span class="op" style="color: #5E5E5E;">=</span> pynvml.nvmlDeviceGetHandleByIndex(<span class="dv" style="color: #AD0000;">0</span>)</span>
+<span id="cb4-19">    </span>
+<span id="cb4-20">    <span class="cf" style="color: #003B4F;">while</span> <span class="kw" style="color: #003B4F;">not</span> stop_event.is_set():</span>
+<span id="cb4-21">        mem_cpu <span class="op" style="color: #5E5E5E;">=</span> psutil.Process().memory_info().rss <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span></span>
+<span id="cb4-22">        info <span class="op" style="color: #5E5E5E;">=</span> pynvml.nvmlDeviceGetMemoryInfo(handle)</span>
+<span id="cb4-23">        mem_gpu <span class="op" style="color: #5E5E5E;">=</span> info.used <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span></span>
+<span id="cb4-24">        </span>
+<span id="cb4-25">        cpu_readings.append((datetime.now(), mem_cpu))</span>
+<span id="cb4-26">        gpu_readings.append((datetime.now(), mem_gpu))</span>
+<span id="cb4-27">        time.sleep(<span class="dv" style="color: #AD0000;">5</span>)</span>
+<span id="cb4-28"></span>
+<span id="cb4-29"><span class="kw" style="color: #003B4F;">def</span> log_memory(index_name, passages):</span>
+<span id="cb4-30">    stop_event <span class="op" style="color: #5E5E5E;">=</span> threading.Event()</span>
+<span id="cb4-31">    cpu_readings <span class="op" style="color: #5E5E5E;">=</span> []</span>
+<span id="cb4-32">    gpu_readings <span class="op" style="color: #5E5E5E;">=</span> []</span>
+<span id="cb4-33">    monitor_thread <span class="op" style="color: #5E5E5E;">=</span> threading.Thread(target<span class="op" style="color: #5E5E5E;">=</span>memory_monitor, args<span class="op" style="color: #5E5E5E;">=</span>(stop_event, cpu_readings, gpu_readings))</span>
+<span id="cb4-34">    monitor_thread.start()</span>
+<span id="cb4-35"></span>
+<span id="cb4-36">    <span class="cf" style="color: #003B4F;">try</span>:</span>
+<span id="cb4-37">        <span class="cf" style="color: #003B4F;">with</span> Run().context(RunConfig(nranks<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>, rank<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">0</span>)):</span>
+<span id="cb4-38">            config <span class="op" style="color: #5E5E5E;">=</span> ColBERTConfig(</span>
+<span id="cb4-39">                doc_maxlen<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">220</span>,</span>
+<span id="cb4-40">                nbits<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">2</span>,</span>
+<span id="cb4-41">                dim<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">96</span>,</span>
+<span id="cb4-42">                kmeans_niters<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">4</span>,</span>
+<span id="cb4-43">                index_bsize<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">32</span>,</span>
+<span id="cb4-44">                bsize<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">64</span>,</span>
+<span id="cb4-45">                checkpoint<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"answerdotai/answerai-colbert-small-v1"</span>,</span>
+<span id="cb4-46">                avoid_fork_if_possible<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span></span>
+<span id="cb4-47">            )</span>
+<span id="cb4-48">        </span>
+<span id="cb4-49">            indexer <span class="op" style="color: #5E5E5E;">=</span> Indexer(checkpoint<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"answerdotai/answerai-colbert-small-v1"</span>, config<span class="op" style="color: #5E5E5E;">=</span>config)</span>
+<span id="cb4-50">            index_path <span class="op" style="color: #5E5E5E;">=</span> indexer.index(name<span class="op" style="color: #5E5E5E;">=</span>index_name, collection<span class="op" style="color: #5E5E5E;">=</span>passages[<span class="st" style="color: #20794D;">"text"</span>], overwrite<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">True</span>)</span>
+<span id="cb4-51">    <span class="cf" style="color: #003B4F;">finally</span>:</span>
+<span id="cb4-52">        stop_event.<span class="bu" style="color: null;">set</span>()</span>
+<span id="cb4-53">        monitor_thread.join()</span>
+<span id="cb4-54">    </span>
+<span id="cb4-55">    <span class="cf" style="color: #003B4F;">return</span> cpu_readings, gpu_readings</span>
+<span id="cb4-56"></span>
+<span id="cb4-57"><span class="kw" style="color: #003B4F;">def</span> main():</span>
+<span id="cb4-58">    parser <span class="op" style="color: #5E5E5E;">=</span> argparse.ArgumentParser(description<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'fp'</span>)</span>
+<span id="cb4-59">    parser.add_argument(<span class="st" style="color: #20794D;">'--fp'</span>, <span class="bu" style="color: null;">type</span><span class="op" style="color: #5E5E5E;">=</span><span class="bu" style="color: null;">str</span>, default<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"fp32"</span>, <span class="bu" style="color: null;">help</span><span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'Floating point precision used'</span>)</span>
+<span id="cb4-60">    args <span class="op" style="color: #5E5E5E;">=</span> parser.parse_args()</span>
+<span id="cb4-61">    fp <span class="op" style="color: #5E5E5E;">=</span> args.fp</span>
+<span id="cb4-62">        </span>
+<span id="cb4-63">    dataset_name <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">"ConditionalQA"</span></span>
+<span id="cb4-64">    index_name <span class="op" style="color: #5E5E5E;">=</span> <span class="ss" style="color: #20794D;">f'ColBERT_</span><span class="sc" style="color: #5E5E5E;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_</span><span class="sc" style="color: #5E5E5E;">{</span>fp<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">'</span></span>
+<span id="cb4-65">    passages <span class="op" style="color: #5E5E5E;">=</span> load_dataset(<span class="st" style="color: #20794D;">"UKPLab/dapr"</span>, <span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">-corpus"</span>, split<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"test"</span>)</span>
+<span id="cb4-66"></span>
+<span id="cb4-67">    cpu_readings, gpu_readings <span class="op" style="color: #5E5E5E;">=</span> log_memory(index_name, passages)</span>
+<span id="cb4-68"></span>
+<span id="cb4-69">    <span class="co" style="color: #5E5E5E;"># CPU RAM artifacts</span></span>
+<span id="cb4-70">    start_time <span class="op" style="color: #5E5E5E;">=</span> cpu_readings[<span class="dv" style="color: #AD0000;">0</span>][<span class="dv" style="color: #AD0000;">0</span>]</span>
+<span id="cb4-71">    index <span class="op" style="color: #5E5E5E;">=</span> [(t <span class="op" style="color: #5E5E5E;">-</span> start_time).total_seconds() <span class="cf" style="color: #003B4F;">for</span> t, _ <span class="kw" style="color: #003B4F;">in</span> cpu_readings]</span>
+<span id="cb4-72">    cpu_readings <span class="op" style="color: #5E5E5E;">=</span> pd.Series([mem <span class="cf" style="color: #003B4F;">for</span> _, mem <span class="kw" style="color: #003B4F;">in</span> cpu_readings], index<span class="op" style="color: #5E5E5E;">=</span>index, name<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"mem_gb"</span> )</span>
+<span id="cb4-73">    cpu_readings.index.name <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">"time_secs"</span></span>
+<span id="cb4-74">    cpu_readings.plot(title<span class="op" style="color: #5E5E5E;">=</span><span class="ss" style="color: #20794D;">f'ColBERT CPU RAM (</span><span class="sc" style="color: #5E5E5E;">{</span>fp<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">)'</span>, xlabel<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'Time (sec)'</span>, ylabel<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'Memory (GB)'</span>)</span>
+<span id="cb4-75">    plt.tight_layout()</span>
+<span id="cb4-76">    plt.savefig(<span class="ss" style="color: #20794D;">f'colbert_</span><span class="sc" style="color: #5E5E5E;">{</span>fp<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_cpu_readings.png'</span>)</span>
+<span id="cb4-77">    plt.close()</span>
+<span id="cb4-78">    cpu_readings.to_csv(<span class="ss" style="color: #20794D;">f"colbert_</span><span class="sc" style="color: #5E5E5E;">{</span>fp<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_cpu_readings.csv"</span>)</span>
+<span id="cb4-79"></span>
+<span id="cb4-80">    <span class="co" style="color: #5E5E5E;"># GPU RAM artifacts</span></span>
+<span id="cb4-81">    start_time <span class="op" style="color: #5E5E5E;">=</span> gpu_readings[<span class="dv" style="color: #AD0000;">0</span>][<span class="dv" style="color: #AD0000;">0</span>]</span>
+<span id="cb4-82">    index <span class="op" style="color: #5E5E5E;">=</span> [(t <span class="op" style="color: #5E5E5E;">-</span> start_time).total_seconds() <span class="cf" style="color: #003B4F;">for</span> t, _ <span class="kw" style="color: #003B4F;">in</span> gpu_readings]</span>
+<span id="cb4-83">    gpu_readings <span class="op" style="color: #5E5E5E;">=</span> pd.Series([mem <span class="cf" style="color: #003B4F;">for</span> _, mem <span class="kw" style="color: #003B4F;">in</span> gpu_readings], index<span class="op" style="color: #5E5E5E;">=</span>index, name<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"mem_gb"</span> )</span>
+<span id="cb4-84">    gpu_readings.index.name <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">"time_secs"</span></span>
+<span id="cb4-85">    gpu_readings.plot(title<span class="op" style="color: #5E5E5E;">=</span><span class="ss" style="color: #20794D;">f'ColBERT GPU RAM (</span><span class="sc" style="color: #5E5E5E;">{</span>fp<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">)'</span>, xlabel<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'Time (sec)'</span>, ylabel<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'Memory (GB)'</span>)</span>
+<span id="cb4-86">    plt.tight_layout()</span>
+<span id="cb4-87">    plt.savefig(<span class="ss" style="color: #20794D;">f'colbert_</span><span class="sc" style="color: #5E5E5E;">{</span>fp<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_gpu_readings.png'</span>)</span>
+<span id="cb4-88">    plt.close()</span>
+<span id="cb4-89">    gpu_readings.to_csv(<span class="ss" style="color: #20794D;">f"colbert_</span><span class="sc" style="color: #5E5E5E;">{</span>fp<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_gpu_readings.csv"</span>)</span>
+<span id="cb4-90"></span>
+<span id="cb4-91"><span class="cf" style="color: #003B4F;">if</span> <span class="va" style="color: #111111;">__name__</span> <span class="op" style="color: #5E5E5E;">==</span> <span class="st" style="color: #20794D;">"__main__"</span>:</span>
+<span id="cb4-92">    main()</span></code></pre></div>
+</details>
+</div>
+<div class="cell">
+<details>
+<summary>Show Recall calculation script</summary>
+<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><span class="im" style="color: #00769E;">from</span> datasets <span class="im" style="color: #00769E;">import</span> load_dataset</span>
+<span id="cb5-2"><span class="im" style="color: #00769E;">import</span> matplotlib.pyplot <span class="im" style="color: #00769E;">as</span> plt</span>
+<span id="cb5-3"></span>
+<span id="cb5-4"><span class="im" style="color: #00769E;">from</span> colbert.data <span class="im" style="color: #00769E;">import</span> Queries</span>
+<span id="cb5-5"><span class="im" style="color: #00769E;">from</span> colbert.infra <span class="im" style="color: #00769E;">import</span> Run, RunConfig, ColBERTConfig</span>
+<span id="cb5-6"><span class="im" style="color: #00769E;">from</span> colbert <span class="im" style="color: #00769E;">import</span> Searcher</span>
+<span id="cb5-7"></span>
+<span id="cb5-8"><span class="im" style="color: #00769E;">import</span> matplotlib.pyplot <span class="im" style="color: #00769E;">as</span> plt</span>
+<span id="cb5-9"><span class="im" style="color: #00769E;">import</span> numpy</span>
+<span id="cb5-10"><span class="im" style="color: #00769E;">import</span> torch</span>
+<span id="cb5-11"><span class="im" style="color: #00769E;">import</span> json</span>
+<span id="cb5-12"><span class="im" style="color: #00769E;">import</span> tqdm</span>
+<span id="cb5-13"><span class="im" style="color: #00769E;">import</span> glob</span>
+<span id="cb5-14"><span class="im" style="color: #00769E;">import</span> re</span>
+<span id="cb5-15"><span class="im" style="color: #00769E;">import</span> pytrec_eval</span>
+<span id="cb5-16"><span class="im" style="color: #00769E;">import</span> argparse </span>
+<span id="cb5-17"><span class="im" style="color: #00769E;">import</span> pickle</span>
+<span id="cb5-18"></span>
+<span id="cb5-19"><span class="kw" style="color: #003B4F;">def</span> get_qrels(qrels_rows):</span>
+<span id="cb5-20">    qrels <span class="op" style="color: #5E5E5E;">=</span> {}</span>
+<span id="cb5-21">    <span class="cf" style="color: #003B4F;">for</span> qrel_row <span class="kw" style="color: #003B4F;">in</span> qrels_rows:</span>
+<span id="cb5-22">        qid <span class="op" style="color: #5E5E5E;">=</span> qrel_row[<span class="st" style="color: #20794D;">"query_id"</span>]</span>
+<span id="cb5-23">        pid <span class="op" style="color: #5E5E5E;">=</span> qrel_row[<span class="st" style="color: #20794D;">"corpus_id"</span>]</span>
+<span id="cb5-24">        rel <span class="op" style="color: #5E5E5E;">=</span> qrel_row[<span class="st" style="color: #20794D;">"score"</span>]</span>
+<span id="cb5-25">        qrels.setdefault(qid, {})</span>
+<span id="cb5-26">        qrels[qid][pid] <span class="op" style="color: #5E5E5E;">=</span> rel</span>
+<span id="cb5-27">    </span>
+<span id="cb5-28">    <span class="cf" style="color: #003B4F;">return</span> qrels</span>
+<span id="cb5-29"></span>
+<span id="cb5-30"><span class="kw" style="color: #003B4F;">def</span> _recall(qrels, res):</span>
+<span id="cb5-31">    evaluator <span class="op" style="color: #5E5E5E;">=</span> pytrec_eval.RelevanceEvaluator(qrels, {<span class="st" style="color: #20794D;">'recall.10'</span>})</span>
+<span id="cb5-32">    metrics <span class="op" style="color: #5E5E5E;">=</span> evaluator.evaluate(res)</span>
+<span id="cb5-33">    <span class="cf" style="color: #003B4F;">assert</span> <span class="bu" style="color: null;">len</span>(metrics) <span class="op" style="color: #5E5E5E;">==</span> <span class="bu" style="color: null;">len</span>(<span class="bu" style="color: null;">set</span>(qrels_rows[<span class="st" style="color: #20794D;">"query_id"</span>]))</span>
+<span id="cb5-34"></span>
+<span id="cb5-35">    mean_recall <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">sum</span>(metrics[qid][<span class="st" style="color: #20794D;">'recall_10'</span>] <span class="cf" style="color: #003B4F;">for</span> qid <span class="kw" style="color: #003B4F;">in</span> metrics.keys()) <span class="op" style="color: #5E5E5E;">/</span> <span class="bu" style="color: null;">len</span>(metrics)</span>
+<span id="cb5-36">    <span class="cf" style="color: #003B4F;">return</span> mean_recall</span>
+<span id="cb5-37"></span>
+<span id="cb5-38"></span>
+<span id="cb5-39">dataset_name <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">"ConditionalQA"</span></span>
+<span id="cb5-40">queries <span class="op" style="color: #5E5E5E;">=</span> load_dataset(<span class="st" style="color: #20794D;">"UKPLab/dapr"</span>, <span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">-queries"</span>, split<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"test"</span>)</span>
+<span id="cb5-41">passages <span class="op" style="color: #5E5E5E;">=</span> load_dataset(<span class="st" style="color: #20794D;">"UKPLab/dapr"</span>, <span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">-corpus"</span>, split<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"test"</span>)</span>
+<span id="cb5-42">qrels_rows <span class="op" style="color: #5E5E5E;">=</span> load_dataset(<span class="st" style="color: #20794D;">"UKPLab/dapr"</span>, <span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">-qrels"</span>, split<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"test"</span>)</span>
+<span id="cb5-43">qrels <span class="op" style="color: #5E5E5E;">=</span> get_qrels(qrels_rows)</span>
+<span id="cb5-44"><span class="bu" style="color: null;">print</span>(dataset_name)</span>
+<span id="cb5-45"></span>
+<span id="cb5-46">queries_dict <span class="op" style="color: #5E5E5E;">=</span> {}</span>
+<span id="cb5-47"><span class="cf" style="color: #003B4F;">for</span> item <span class="kw" style="color: #003B4F;">in</span> queries: queries_dict[item[<span class="st" style="color: #20794D;">'_id'</span>]] <span class="op" style="color: #5E5E5E;">=</span> item[<span class="st" style="color: #20794D;">'text'</span>]</span>
+<span id="cb5-48"></span>
+<span id="cb5-49"><span class="kw" style="color: #003B4F;">def</span> main():</span>
+<span id="cb5-50">    parser <span class="op" style="color: #5E5E5E;">=</span> argparse.ArgumentParser(description<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'index'</span>)</span>
+<span id="cb5-51">    parser.add_argument(<span class="st" style="color: #20794D;">'--index'</span>, <span class="bu" style="color: null;">type</span><span class="op" style="color: #5E5E5E;">=</span><span class="bu" style="color: null;">str</span>, default<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">""</span>, <span class="bu" style="color: null;">help</span><span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'Index name'</span>)</span>
+<span id="cb5-52">    args <span class="op" style="color: #5E5E5E;">=</span> parser.parse_args()</span>
+<span id="cb5-53">    index <span class="op" style="color: #5E5E5E;">=</span> args.index</span>
+<span id="cb5-54">    </span>
+<span id="cb5-55">    <span class="cf" style="color: #003B4F;">with</span> Run().context(RunConfig(nranks<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>)):</span>
+<span id="cb5-56">        searcher <span class="op" style="color: #5E5E5E;">=</span> Searcher(</span>
+<span id="cb5-57">            index<span class="op" style="color: #5E5E5E;">=</span>index,</span>
+<span id="cb5-58">            config<span class="op" style="color: #5E5E5E;">=</span>ColBERTConfig(</span>
+<span id="cb5-59">                    ncells<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">4</span>,</span>
+<span id="cb5-60">                    centroid_score_threshold<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">0.45</span>,</span>
+<span id="cb5-61">                    ndocs<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1024</span></span>
+<span id="cb5-62">                )</span>
+<span id="cb5-63">        )</span>
+<span id="cb5-64">    </span>
+<span id="cb5-65">        _queries <span class="op" style="color: #5E5E5E;">=</span> Queries(data<span class="op" style="color: #5E5E5E;">=</span>queries_dict)</span>
+<span id="cb5-66">        ranking <span class="op" style="color: #5E5E5E;">=</span> searcher.search_all(_queries, k<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">10</span>)</span>
+<span id="cb5-67"></span>
+<span id="cb5-68">    colbert_results <span class="op" style="color: #5E5E5E;">=</span> {}</span>
+<span id="cb5-69"></span>
+<span id="cb5-70">    <span class="cf" style="color: #003B4F;">for</span> qid <span class="kw" style="color: #003B4F;">in</span> ranking.todict().keys():</span>
+<span id="cb5-71">        colbert_scores <span class="op" style="color: #5E5E5E;">=</span> ranking.todict()[qid]</span>
+<span id="cb5-72">        colbert_results[qid] <span class="op" style="color: #5E5E5E;">=</span> {passages[idx][<span class="st" style="color: #20794D;">'_id'</span>]: score <span class="cf" style="color: #003B4F;">for</span> idx, _, score <span class="kw" style="color: #003B4F;">in</span> colbert_scores}</span>
+<span id="cb5-73"></span>
+<span id="cb5-74">    <span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(<span class="ss" style="color: #20794D;">f"colbert_results_</span><span class="sc" style="color: #5E5E5E;">{</span>index<span class="sc" style="color: #5E5E5E;">.</span>split(<span class="st" style="color: #20794D;">'_'</span>)[<span class="op" style="color: #5E5E5E;">-</span><span class="dv" style="color: #AD0000;">1</span>]<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">.pkl"</span>, <span class="st" style="color: #20794D;">'wb'</span>) <span class="im" style="color: #00769E;">as</span> <span class="bu" style="color: null;">file</span>: pickle.dump(colbert_results, <span class="bu" style="color: null;">file</span>)</span>
+<span id="cb5-75">    <span class="bu" style="color: null;">print</span>(_recall(qrels, colbert_results))</span>
+<span id="cb5-76"></span>
+<span id="cb5-77"><span class="cf" style="color: #003B4F;">if</span> <span class="va" style="color: #111111;">__name__</span> <span class="op" style="color: #5E5E5E;">==</span> <span class="st" style="color: #20794D;">"__main__"</span>:</span>
+<span id="cb5-78">    main()</span></code></pre></div>
+</details>
+</div>
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>I ran an experiment to explore the differences between FP32 full precision and mixed precision in ColBERT indexing and retrieval. This was purely a curiosity-driven exploration - not claiming this is best practice, just wanted to see if there were any differences. This notebook shares my findings. I use the <a href="https://huggingface.co/datasets/UKPLab/dapr/viewer/ConditionalQA-docs">UKPLab/DAPR ConditionalQA dataset</a> for this exercise.</p>
+<p><strong>What I did:</strong></p>
+<ul>
+<li>Created <a href="https://github.com/vishalbakshi/ColBERT/commits/mixed_precision_false/">a fork of ColBERT</a> and turned off all mixed precision conversions</li>
+<li>Used Claude and ChatGPT to help identify all the places that needed changes (including CUDA kernels)</li>
+<li>Ran indexing experiments on the UKPLabs conditional QA dataset (70k documents)</li>
+<li>Tracked memory usage during indexing (see script above)</li>
+<li>Compared recall performance and retrieved passages (see script above)</li>
+<li>Analyzed the resulting index artifacts</li>
+</ul>
+<p><strong>Key findings:</strong></p>
+<ul>
+<li>Mixed precision took 2.5x longer to index (180s vs 70s) - wasn’t expecting that</li>
+<li>Mixed precision used slightly more GPU memory, full precision used more CPU memory</li>
+<li>Full precision gave a tiny 0.3% recall boost (basically negligible)</li>
+<li>14% of retrieved passages were different between the two approaches</li>
+<li>The centroids created during indexing were completely different</li>
+<li>Different mappings between passage IDs and centroids</li>
+</ul>
+<iframe width="560" height="315" src="https://www.youtube.com/embed/aiNQ4I8YaD0?si=OKvaUtumf7q1qGYf" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+</section>
+<section id="indexing-time" class="level2">
+<h2 class="anchored" data-anchor-id="indexing-time">Indexing Time</h2>
+<p>I was surprised to see that using mixed precision resulted in a much longer indexing time. I wonder if that would still hold over multiple iterations of indexing.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Precision</th>
+<th style="text-align: center;">Indexing Time (seconds)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">fp32</td>
+<td style="text-align: center;">70</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">amp</td>
+<td style="text-align: center;">180</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="maximum-memory-usage" class="level2">
+<h2 class="anchored" data-anchor-id="maximum-memory-usage">Maximum Memory Usage</h2>
+<p>Another surprise—mixed precision actually uses <em>more</em> GPU memory than full precision.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Precision</th>
+<th style="text-align: center;">Max GPU Mem (GB)</th>
+<th style="text-align: center;">Max CPU Mem (GB)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">fp32</td>
+<td style="text-align: center;">5.51</td>
+<td style="text-align: center;">0.824</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">amp</td>
+<td style="text-align: center;">5.78</td>
+<td style="text-align: center;">0.814</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="recall10" class="level2">
+<h2 class="anchored" data-anchor-id="recall10">Recall@10</h2>
+<p>The differences in Recall@10 is negligible, the full precision index has a slight advantage.</p>
+<p>fp32: 0.13034885692197787</p>
+<p>amp: 0.1299388528219369</p>
+<div class="cell" data-execution_count="44">
+<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1">(<span class="fl" style="color: #AD0000;">0.13034885692197787</span> <span class="op" style="color: #5E5E5E;">-</span> <span class="fl" style="color: #AD0000;">0.1299388528219369</span>)<span class="op" style="color: #5E5E5E;">/</span><span class="fl" style="color: #AD0000;">0.1299388528219369</span></span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="44">
+<pre><code>0.003155361857802613</code></pre>
+</div>
+</div>
+</section>
+<section id="comparing-retrieved-passages-and-scores" class="level2">
+<h2 class="anchored" data-anchor-id="comparing-retrieved-passages-and-scores">Comparing Retrieved Passages and Scores</h2>
+<p>Out of the 2710 total passages retrieved, 388 passages were retrieved using one index but not the other—that’s about a 14% difference in retrieved passages due to a difference in precision.</p>
+<div class="cell" data-execution_count="49">
+<div class="sourceCode cell-code" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(<span class="st" style="color: #20794D;">'colbert_results_fp32.pkl'</span>, <span class="st" style="color: #20794D;">'rb'</span>) <span class="im" style="color: #00769E;">as</span> <span class="bu" style="color: null;">file</span>: colbert_results_fp32 <span class="op" style="color: #5E5E5E;">=</span> pickle.load(<span class="bu" style="color: null;">file</span>)</span>
+<span id="cb8-2"><span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(<span class="st" style="color: #20794D;">'colbert_results_amp.pkl'</span>, <span class="st" style="color: #20794D;">'rb'</span>) <span class="im" style="color: #00769E;">as</span> <span class="bu" style="color: null;">file</span>: colbert_results_amp <span class="op" style="color: #5E5E5E;">=</span> pickle.load(<span class="bu" style="color: null;">file</span>)</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="51">
+<div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1">colbert_results_fp32.keys() <span class="op" style="color: #5E5E5E;">==</span> colbert_results_amp.keys()</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="51">
+<pre><code>True</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="53">
+<div class="sourceCode cell-code" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1">colbert_results_fp32[<span class="st" style="color: #20794D;">'dev-0'</span>]</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="53">
+<pre><code>{'265-59': 29.345699310302734,
+ '8-116': 29.341297149658203,
+ '8-118': 29.336307525634766,
+ '8-67': 29.32498550415039,
+ '8-9': 29.2913875579834,
+ '8-70': 29.290199279785156,
+ '270-51': 29.28421401977539,
+ '40-29': 29.28375244140625,
+ '107-110': 29.282079696655273,
+ '459-115': 29.28005599975586}</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="58">
+<div class="sourceCode cell-code" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1">n_diffs <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">0</span></span>
+<span id="cb13-2"><span class="cf" style="color: #003B4F;">for</span> qid, fp32_res <span class="kw" style="color: #003B4F;">in</span> colbert_results_fp32.items():</span>
+<span id="cb13-3">    <span class="cf" style="color: #003B4F;">for</span> pid <span class="kw" style="color: #003B4F;">in</span> fp32_res.keys():</span>
+<span id="cb13-4">        <span class="cf" style="color: #003B4F;">if</span> pid <span class="kw" style="color: #003B4F;">not</span> <span class="kw" style="color: #003B4F;">in</span> colbert_results_amp[qid].keys(): </span>
+<span id="cb13-5">            n_diffs <span class="op" style="color: #5E5E5E;">+=</span> <span class="dv" style="color: #AD0000;">1</span></span>
+<span id="cb13-6"> </span>
+<span id="cb13-7"><span class="cf" style="color: #003B4F;">for</span> qid, amp_res <span class="kw" style="color: #003B4F;">in</span> colbert_results_amp.items():</span>
+<span id="cb13-8">    <span class="cf" style="color: #003B4F;">for</span> pid <span class="kw" style="color: #003B4F;">in</span> amp_res.keys():</span>
+<span id="cb13-9">        <span class="cf" style="color: #003B4F;">if</span> pid <span class="kw" style="color: #003B4F;">not</span> <span class="kw" style="color: #003B4F;">in</span> colbert_results_fp32[qid].keys(): </span>
+<span id="cb13-10">            n_diffs <span class="op" style="color: #5E5E5E;">+=</span> <span class="dv" style="color: #AD0000;">1</span></span>
+<span id="cb13-11"></span>
+<span id="cb13-12">n_diffs</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="58">
+<pre><code>388</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="60">
+<div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1">n_diffs<span class="op" style="color: #5E5E5E;">/</span>(<span class="dv" style="color: #AD0000;">271</span><span class="op" style="color: #5E5E5E;">*</span><span class="dv" style="color: #AD0000;">10</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="60">
+<pre><code>0.14317343173431735</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="61">
+<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1">colbert_results_fp32[<span class="st" style="color: #20794D;">'dev-0'</span>]</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="61">
+<pre><code>{'265-59': 29.345699310302734,
+ '8-116': 29.341297149658203,
+ '8-118': 29.336307525634766,
+ '8-67': 29.32498550415039,
+ '8-9': 29.2913875579834,
+ '8-70': 29.290199279785156,
+ '270-51': 29.28421401977539,
+ '40-29': 29.28375244140625,
+ '107-110': 29.282079696655273,
+ '459-115': 29.28005599975586}</code></pre>
+</div>
+</div>
+<p>Overall, the full precision index results in a slightly lower retrieved passage score.</p>
+<div class="cell" data-execution_count="64">
+<div class="sourceCode cell-code" id="cb19" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1">total_amp_score <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">0</span></span>
+<span id="cb19-2"><span class="cf" style="color: #003B4F;">for</span> qid, amp_res <span class="kw" style="color: #003B4F;">in</span> colbert_results_amp.items():</span>
+<span id="cb19-3">    <span class="cf" style="color: #003B4F;">for</span> score <span class="kw" style="color: #003B4F;">in</span> amp_res.values(): total_amp_score <span class="op" style="color: #5E5E5E;">+=</span> score</span>
+<span id="cb19-4">total_amp_score</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="64">
+<pre><code>80438.375</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="66">
+<div class="sourceCode cell-code" id="cb21" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1">total_fp32_score <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">0</span></span>
+<span id="cb21-2"><span class="cf" style="color: #003B4F;">for</span> qid, fp32_res <span class="kw" style="color: #003B4F;">in</span> colbert_results_fp32.items():</span>
+<span id="cb21-3">    <span class="cf" style="color: #003B4F;">for</span> score <span class="kw" style="color: #003B4F;">in</span> fp32_res.values(): total_fp32_score <span class="op" style="color: #5E5E5E;">+=</span> score</span>
+<span id="cb21-4">total_fp32_score</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="66">
+<pre><code>80435.61682701111</code></pre>
+</div>
+</div>
+</section>
+<section id="comparing-index-artifacts" class="level2">
+<h2 class="anchored" data-anchor-id="comparing-index-artifacts">Comparing Index Artifacts</h2>
+<div class="cell" data-execution_count="15">
+<div class="sourceCode cell-code" id="cb23" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1">colbert_fp32_root <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">"./experiments/default/indexes/ColBERT_ConditionalQA_fp32"</span></span>
+<span id="cb23-2">colbert_amp_root  <span class="op" style="color: #5E5E5E;">=</span> <span class="st" style="color: #20794D;">"./experiments/default/indexes/ColBERT_ConditionalQA_amp"</span></span></code></pre></div>
+</div>
+<section id="metadata.json" class="level3">
+<h3 class="anchored" data-anchor-id="metadata.json">metadata.json</h3>
+<p>Both indexes (full precision and mixed precision) produce the same metadata.json.</p>
+<div class="cell" data-execution_count="16">
+<div class="sourceCode cell-code" id="cb24" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1">params <span class="op" style="color: #5E5E5E;">=</span> [</span>
+<span id="cb24-2">    <span class="st" style="color: #20794D;">"index_bsize"</span>,</span>
+<span id="cb24-3">    <span class="st" style="color: #20794D;">"nbits"</span>,</span>
+<span id="cb24-4">    <span class="st" style="color: #20794D;">"kmeans_niters"</span>,</span>
+<span id="cb24-5">    <span class="st" style="color: #20794D;">"dim"</span>,</span>
+<span id="cb24-6">    <span class="st" style="color: #20794D;">"rank"</span>,</span>
+<span id="cb24-7">    <span class="st" style="color: #20794D;">"gpus"</span>,</span>
+<span id="cb24-8">    <span class="st" style="color: #20794D;">"nranks"</span>,</span>
+<span id="cb24-9">    <span class="st" style="color: #20794D;">"num_chunks"</span>,</span>
+<span id="cb24-10">    <span class="st" style="color: #20794D;">"num_partitions"</span>,</span>
+<span id="cb24-11">    <span class="st" style="color: #20794D;">"num_embeddings"</span>,</span>
+<span id="cb24-12">    <span class="st" style="color: #20794D;">"avg_doclen"</span></span>
+<span id="cb24-13">    ]</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="17">
+<div class="sourceCode cell-code" id="cb25" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(<span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>colbert_fp32_root<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">/metadata.json"</span>, <span class="st" style="color: #20794D;">'r'</span>) <span class="im" style="color: #00769E;">as</span> f: colbert_fp32_metadata <span class="op" style="color: #5E5E5E;">=</span> json.load(f)</span>
+<span id="cb25-2"><span class="cf" style="color: #003B4F;">with</span> <span class="bu" style="color: null;">open</span>(<span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>colbert_amp_root<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">/metadata.json"</span>, <span class="st" style="color: #20794D;">'r'</span>) <span class="im" style="color: #00769E;">as</span> f: colbert_amp_metadata <span class="op" style="color: #5E5E5E;">=</span> json.load(f)</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="18">
+<div class="sourceCode cell-code" id="cb26" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><span class="cf" style="color: #003B4F;">for</span> p <span class="kw" style="color: #003B4F;">in</span> params:</span>
+<span id="cb26-2">    <span class="cf" style="color: #003B4F;">if</span> p <span class="kw" style="color: #003B4F;">not</span> <span class="kw" style="color: #003B4F;">in</span> [<span class="st" style="color: #20794D;">"num_chunks"</span>, <span class="st" style="color: #20794D;">"num_partitions"</span>, <span class="st" style="color: #20794D;">"num_embeddings"</span>, <span class="st" style="color: #20794D;">"avg_doclen"</span>]: <span class="cf" style="color: #003B4F;">assert</span> colbert_fp32_metadata[<span class="st" style="color: #20794D;">'config'</span>][p] <span class="op" style="color: #5E5E5E;">==</span> colbert_amp_metadata[<span class="st" style="color: #20794D;">'config'</span>][p], p</span>
+<span id="cb26-3">    <span class="cf" style="color: #003B4F;">elif</span> p <span class="op" style="color: #5E5E5E;">==</span> <span class="st" style="color: #20794D;">"avg_doclen"</span>: <span class="cf" style="color: #003B4F;">assert</span> (colbert_fp32_metadata[p] <span class="op" style="color: #5E5E5E;">-</span> colbert_amp_metadata[p]) <span class="op" style="color: #5E5E5E;">&lt;</span> <span class="fl" style="color: #AD0000;">1e-7</span></span>
+<span id="cb26-4">    <span class="cf" style="color: #003B4F;">else</span>: <span class="cf" style="color: #003B4F;">assert</span> colbert_fp32_metadata[p] <span class="op" style="color: #5E5E5E;">==</span> colbert_amp_metadata[p], p</span></code></pre></div>
+</div>
+</section>
+<section id="centroids.pt" class="level3">
+<h3 class="anchored" data-anchor-id="centroids.pt">centroids.pt</h3>
+<p>There is a significant difference in centroids—meaning that the sampled document token embeddings and their clusters are different based on the type of precision used.</p>
+<div class="cell" data-execution_count="19">
+<div class="sourceCode cell-code" id="cb27" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1">colbert_fp32_centroids <span class="op" style="color: #5E5E5E;">=</span> torch.load(<span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>colbert_fp32_root<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">/centroids.pt"</span>)</span>
+<span id="cb27-2">colbert_amp_centroids <span class="op" style="color: #5E5E5E;">=</span> torch.load(<span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>colbert_amp_root<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">/centroids.pt"</span>)</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="22">
+<div class="sourceCode cell-code" id="cb28" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1">torch.allclose(colbert_fp32_centroids, colbert_amp_centroids.<span class="bu" style="color: null;">float</span>())</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="22">
+<pre><code>False</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="23">
+<div class="sourceCode cell-code" id="cb30" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1">torch.allclose(colbert_fp32_centroids.half(), colbert_amp_centroids)</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="23">
+<pre><code>False</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="27">
+<div class="sourceCode cell-code" id="cb32" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1">torch.allclose(colbert_fp32_centroids, colbert_amp_centroids.<span class="bu" style="color: null;">float</span>(), atol<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">1e-0</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="27">
+<pre><code>True</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="29">
+<div class="sourceCode cell-code" id="cb34" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1">colbert_fp32_centroids.flatten().shape, colbert_amp_centroids.flatten().shape</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="29">
+<pre><code>(torch.Size([1572864]), torch.Size([1572864]))</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="33">
+<div class="sourceCode cell-code" id="cb36" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1">plt.scatter(colbert_fp32_centroids.flatten().cpu().numpy(), colbert_amp_centroids.flatten().cpu().numpy(), s<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">1</span>)<span class="op" style="color: #5E5E5E;">;</span></span></code></pre></div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-24-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-25-Exploring-ColBERT-Precision/index_files/figure-html/cell-24-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="ivf.pid.pt" class="level3">
+<h3 class="anchored" data-anchor-id="ivf.pid.pt">ivf.pid.pt</h3>
+<p>Finally, there is a difference in mappings between passages IDs and centroid IDs. Interestingly, mixed precision results in more passage IDs mapped to centroids.</p>
+<div class="cell" data-execution_count="34">
+<div class="sourceCode cell-code" id="cb37" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1">colbert_fp32_ivf <span class="op" style="color: #5E5E5E;">=</span> torch.load(<span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>colbert_fp32_root<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">/ivf.pid.pt"</span>)</span>
+<span id="cb37-2">colbert_amp_ivf  <span class="op" style="color: #5E5E5E;">=</span> torch.load(<span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>colbert_amp_root<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">/ivf.pid.pt"</span>)</span></code></pre></div>
+</div>
+<div class="cell" data-execution_count="35">
+<div class="sourceCode cell-code" id="cb38" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1">colbert_fp32_ivf[<span class="dv" style="color: #AD0000;">0</span>].shape, colbert_amp_ivf[<span class="dv" style="color: #AD0000;">0</span>].shape</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="35">
+<pre><code>(torch.Size([963143]), torch.Size([975457]))</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="41">
+<div class="sourceCode cell-code" id="cb40" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1">colbert_amp_ivf[<span class="dv" style="color: #AD0000;">0</span>].shape[<span class="dv" style="color: #AD0000;">0</span>]<span class="op" style="color: #5E5E5E;">-</span>colbert_fp32_ivf[<span class="dv" style="color: #AD0000;">0</span>].shape[<span class="dv" style="color: #AD0000;">0</span>]</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="41">
+<pre><code>12314</code></pre>
+</div>
+</div>
+<div class="cell" data-execution_count="36">
+<div class="sourceCode cell-code" id="cb42" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1">colbert_fp32_ivf[<span class="dv" style="color: #AD0000;">1</span>].shape, colbert_amp_ivf[<span class="dv" style="color: #AD0000;">1</span>].shape</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="36">
+<pre><code>(torch.Size([16384]), torch.Size([16384]))</code></pre>
+</div>
+</div>
+</section>
+</section>
+<section id="closing-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="closing-thoughts">Closing Thoughts</h2>
+<p>This is just one small dataset with short documents (avg 15 tokens). Sample size of one. I also might have missed some precision conversions in my implementation. Don’t take this as definitive - just an interesting exploration of how precision affects the ColBERT pipeline. Here’s a summary again of my key findings:</p>
+<ul>
+<li>Mixed precision took 2.5x longer to index (180s vs 70s) - wasn’t expecting that</li>
+<li>Mixed precision used slightly more GPU memory, full precision used more CPU memory</li>
+<li>Full precision gave a tiny 0.3% recall boost (basically negligible)</li>
+<li>14% of retrieved passages were different between the two approaches</li>
+<li>The centroids created during indexing were completely different</li>
+<li>Different mappings between passage IDs and centroids</li>
+</ul>
+
+
+</section>
+
+ ]]></description>
+  <category>python</category>
+  <category>deep learning</category>
+  <category>ColBERT</category>
+  <category>information retrieval</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-05-25-Exploring-ColBERT-Precision/index.html</guid>
+  <pubDate>Sun, 25 May 2025 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>The Evolution of Matrix Multiplication (fastai course Part 2 Lessons 11 and 12)</title>
   <dc:creator>Vishal Bakshi</dc:creator>
@@ -12003,245 +12518,6 @@ Line #    Mem usage    Increment  Occurrences   Line Contents
   <guid>https://vishalbakshi.github.io/blog/posts/2025-02-14-RAGatouille-ColBERT-Memory-Profiling/index.html</guid>
   <pubDate>Mon, 17 Feb 2025 08:00:00 GMT</pubDate>
   <media:content url="https://vishalbakshi.github.io/blog/posts/2025-02-14-RAGatouille-ColBERT-Memory-Profiling/1.png" medium="image" type="image/png" height="60" width="144"/>
-</item>
-<item>
-  <title>Estimating Storage and CPU RAM Requirements for Indexing 12.6M Documents</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/index.html</link>
-  <description><![CDATA[ 
-
-
-
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<p>After a few days of flailing about trying to index the 12.6M document <em>Genomics</em> dataset (from <a href="https://huggingface.co/datasets/UKPLab/dapr">UKPLab/DAPR</a>) in Google Colab Pro using RAGatouille, I decided to plan the attempt in a more organized way. In this blog post I’ll share my findings and next actions.</p>
-<p>Here’s an example text from the corpus:</p>
-<pre><code>The 33D1 rat MoAb92  identifies a low-density Ag on mouse (marginal zone) spleen DC. The antibody does not stain DC in cryostat sections and does not react with LC. No biochemical data on the Ag are available. Nonetheless, this antibody has proved extremely useful for C lysis of mouse spleen DC.\r\n</code></pre>
-<p>The average length of text in this corpus is ~540 characters.</p>
-</section>
-<section id="rag.index" class="level2">
-<h2 class="anchored" data-anchor-id="rag.index"><code>RAG.index</code></h2>
-<p>The main function of interest if <code>RAG.index</code> which takes a list of documents and indexes them in preparation for retrieval.</p>
-<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">index_path <span class="op" style="color: #5E5E5E;">=</span> RAG.index(</span>
-<span id="cb2-2">            index_name<span class="op" style="color: #5E5E5E;">=</span><span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_index"</span>,</span>
-<span id="cb2-3">            collection<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"text"</span>],</span>
-<span id="cb2-4">            document_ids<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"_id"</span>]</span>
-<span id="cb2-5">        )</span></code></pre></div>
-<p>I used the following code to log the RAM memory usage, with <code>ndocs</code> being defined globally:</p>
-<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="kw" style="color: #003B4F;">def</span> memory_monitor(stop_event, readings):</span>
-<span id="cb3-2">    <span class="cf" style="color: #003B4F;">while</span> <span class="kw" style="color: #003B4F;">not</span> stop_event.is_set():</span>
-<span id="cb3-3">        mem <span class="op" style="color: #5E5E5E;">=</span> psutil.Process().memory_info().rss <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span> <span class="op" style="color: #5E5E5E;">/</span> <span class="dv" style="color: #AD0000;">1024</span></span>
-<span id="cb3-4">        readings.append((datetime.now(), mem))</span>
-<span id="cb3-5">        time.sleep(<span class="dv" style="color: #AD0000;">5</span>)</span>
-<span id="cb3-6"></span>
-<span id="cb3-7"><span class="kw" style="color: #003B4F;">def</span> log_memory_during_index():</span>
-<span id="cb3-8">    stop_event <span class="op" style="color: #5E5E5E;">=</span> threading.Event()</span>
-<span id="cb3-9">    readings <span class="op" style="color: #5E5E5E;">=</span> []</span>
-<span id="cb3-10">    monitor_thread <span class="op" style="color: #5E5E5E;">=</span> threading.Thread(target<span class="op" style="color: #5E5E5E;">=</span>memory_monitor, args<span class="op" style="color: #5E5E5E;">=</span>(stop_event, readings))</span>
-<span id="cb3-11">    monitor_thread.start()</span>
-<span id="cb3-12">    </span>
-<span id="cb3-13">    <span class="cf" style="color: #003B4F;">try</span>:</span>
-<span id="cb3-14">        index_path <span class="op" style="color: #5E5E5E;">=</span> RAG.index(</span>
-<span id="cb3-15">            index_name<span class="op" style="color: #5E5E5E;">=</span><span class="ss" style="color: #20794D;">f"</span><span class="sc" style="color: #5E5E5E;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">_index"</span>,</span>
-<span id="cb3-16">            collection<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"text"</span>],</span>
-<span id="cb3-17">            document_ids<span class="op" style="color: #5E5E5E;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;">"_id"</span>]</span>
-<span id="cb3-18">        )</span>
-<span id="cb3-19">    <span class="cf" style="color: #003B4F;">finally</span>:</span>
-<span id="cb3-20">        stop_event.<span class="bu" style="color: null;">set</span>()</span>
-<span id="cb3-21">        monitor_thread.join()</span>
-<span id="cb3-22">    </span>
-<span id="cb3-23">    <span class="cf" style="color: #003B4F;">return</span> index_path, readings</span>
-<span id="cb3-24"></span>
-<span id="cb3-25">index_path, memory_readings <span class="op" style="color: #5E5E5E;">=</span> log_memory_during_index()</span></code></pre></div>
-</section>
-<section id="memory-logging-results" class="level2">
-<h2 class="anchored" data-anchor-id="memory-logging-results">Memory Logging Results</h2>
-<p>I used two machines for these experiments:</p>
-<ul>
-<li>T4 GPU (16 GB vRAM, 51GB RAM) using Google Colab Pro.</li>
-<li>RTX6000Ada (48GB vRAM, 128GB RAM) using Jarvis Labs.</li>
-</ul>
-<p>I chose the following number of documents to index: - 100k - 250k - 500k - 1M - 2M</p>
-<p>Here are the results:</p>
-<p><em>RTX6000Ada (48GB vRAM, 128GB RAM)</em></p>
-<table class="table">
-<thead>
-<tr class="header">
-<th style="text-align: center;"># Docs</th>
-<th style="text-align: center;">index_path Size</th>
-<th style="text-align: center;">Max RAM</th>
-<th style="text-align: center;">Time</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: center;">100k</td>
-<td style="text-align: center;">0.41 GB</td>
-<td style="text-align: center;">6.96 GB</td>
-<td style="text-align: center;">4 min</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">250k</td>
-<td style="text-align: center;">1.1 GB</td>
-<td style="text-align: center;">8.4 GB</td>
-<td style="text-align: center;">6.4 min</td>
-</tr>
-<tr class="odd">
-<td style="text-align: center;">500k</td>
-<td style="text-align: center;">2.2 GB</td>
-<td style="text-align: center;">11.4 GB</td>
-<td style="text-align: center;">12 min</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">1M</td>
-<td style="text-align: center;">4.5 GB</td>
-<td style="text-align: center;">16.3 GB</td>
-<td style="text-align: center;">24 min</td>
-</tr>
-<tr class="odd">
-<td style="text-align: center;">2M</td>
-<td style="text-align: center;">9.1 GB</td>
-<td style="text-align: center;">24 GB</td>
-<td style="text-align: center;">47 min</td>
-</tr>
-</tbody>
-</table>
-<p><em>T4 w/High-RAM (16GB vRAM, 51GB RAM)</em></p>
-<table class="table">
-<thead>
-<tr class="header">
-<th style="text-align: center;"># Docs</th>
-<th style="text-align: center;">index_path Size</th>
-<th style="text-align: center;">Max RAM</th>
-<th style="text-align: center;">Time</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: center;">100k</td>
-<td style="text-align: center;">0.41 GB</td>
-<td style="text-align: center;">6.5 GB</td>
-<td style="text-align: center;">8 min</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">250k</td>
-<td style="text-align: center;">1.1 GB</td>
-<td style="text-align: center;">8.8 GB</td>
-<td style="text-align: center;">20 min</td>
-</tr>
-<tr class="odd">
-<td style="text-align: center;">500k</td>
-<td style="text-align: center;">2.2 GB</td>
-<td style="text-align: center;">11.8 GB</td>
-<td style="text-align: center;">36 min</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">1M</td>
-<td style="text-align: center;">4.5 GB</td>
-<td style="text-align: center;">18.8 GB</td>
-<td style="text-align: center;">78 min</td>
-</tr>
-<tr class="odd">
-<td style="text-align: center;">2M</td>
-<td style="text-align: center;">9.1 GB</td>
-<td style="text-align: center;">28.6 GB</td>
-<td style="text-align: center;">145 min</td>
-</tr>
-</tbody>
-</table>
-<p>I also used the A100 instance on Google Colab Pro for some initial experiments. It’s interesting to note the difference in speed of encoding 25k passages:</p>
-<table class="table">
-<thead>
-<tr class="header">
-<th style="text-align: center;">GPU</th>
-<th style="text-align: center;">seconds/25k</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: center;">RTX6000Ada</td>
-<td style="text-align: center;">12</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">A100</td>
-<td style="text-align: center;">22</td>
-</tr>
-<tr class="odd">
-<td style="text-align: center;">T4</td>
-<td style="text-align: center;">44</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="extrapolating-to-12.6m-documents" class="level2">
-<h2 class="anchored" data-anchor-id="extrapolating-to-12.6m-documents">Extrapolating to 12.6M Documents</h2>
-<p>I’ll start with the easier one: the size of the directory created by <code>RAG.index</code>. Doubling the number of documents doubles its size (approximately) so if 1M documents takes up 4.5GB of space I expect 12.6M documents to take up ~54GB of space. I’ll set my storage size to 100GB just in case.</p>
-<p>The maximum RAM used (by the CPU, not the GPU vRAM) for 12.6M documents is a bit more involved. I’m planning to use the RTX6000Ada machine so I’ll use its numbers.</p>
-<p><em>RTX6000Ada (48GB vRAM, 128GB RAM)</em></p>
-<table class="table">
-<thead>
-<tr class="header">
-<th style="text-align: center;"># Docs</th>
-<th style="text-align: center;">Max RAM</th>
-<th style="text-align: center;">Increase</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: center;">100k</td>
-<td style="text-align: center;">6.96 GB</td>
-<td style="text-align: center;">–</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">250k</td>
-<td style="text-align: center;">8.4 GB</td>
-<td style="text-align: center;">20%</td>
-</tr>
-<tr class="odd">
-<td style="text-align: center;">500k</td>
-<td style="text-align: center;">11.4 GB</td>
-<td style="text-align: center;">36%</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">1M</td>
-<td style="text-align: center;">16.3 GB</td>
-<td style="text-align: center;">43%</td>
-</tr>
-<tr class="odd">
-<td style="text-align: center;">2M</td>
-<td style="text-align: center;">24 GB</td>
-<td style="text-align: center;">47%</td>
-</tr>
-</tbody>
-</table>
-<p>The percent increase amount is slowing down. Let’s say it plateaus at a 50% increase going from 2M to 4M documents (doubling). 2M to 12.6M is ~2.66 doublings (is that a word?). 24 GB x 1.5^2.66 = 70GB. If I was using Colab numbers: 28.6 x 1.5^2.66 = 84 GB. When I tried to index 12.6M documents with an A100 High-RAM (83.5 GB CPU) instance on Google Colab Pro, the runtime crashed as it ran out of System RAM so this checks out.</p>
-<p>Finally, let’s say the time it takes to index documents doubles when the number of documents doubles from 2M onwards. 47 min x 2^2.66 = 300 minutes or 5 hours. At about $1/hr, this would take $5 on an RTX6000Ada.</p>
-<p>I should note that in all my experiments, the GPU vRAM usage didn’t go past 3-4 GB.</p>
-<p>While the peak CPU RAM usage varied, in all instances the plots looked like the following (2M documents on RTX6000Ada):</p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="RTX6000/2M.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="System RAM Usage over Indexing Time"><img src="https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/RTX6000/2M.png" class="img-fluid figure-img"></a></p>
-<p></p><figcaption class="figure-caption">System RAM Usage over Indexing Time</figcaption><p></p>
-</figure>
-</div>
-<p>I couldn’t figure out from my profiler the exact function call during that largest spike. Also note the spike near the end before indexing is finished.</p>
-</section>
-<section id="final-thoughts" class="level2">
-<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
-<p>Time will tell if these calculations are worth anything, but it seems like my best option is to use Jarvis Labs’ RTX6000Ada machine with 128GB CPU RAM. Once I successfully index the 12.6M-document <em>Genomics</em> dataset, I’ll have a better estimate for how much it will cost to index the largest dataset in the DAPR collection: MIRACL (32.9M documents). Stay tuned!</p>
-
-
-</section>
-
- ]]></description>
-  <category>python</category>
-  <category>information retrieval</category>
-  <category>deep learning</category>
-  <category>RAGatouille</category>
-  <category>ColBERT</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/index.html</guid>
-  <pubDate>Wed, 12 Feb 2025 08:00:00 GMT</pubDate>
-  <media:content url="https://vishalbakshi.github.io/blog/posts/2025-02-12-indexing-memory/RTX6000/2M.png" medium="image" type="image/png" height="114" width="144"/>
 </item>
 </channel>
 </rss>
