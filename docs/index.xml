@@ -10,9 +10,1230 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.2.335</generator>
-<lastBuildDate>Sat, 31 May 2025 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Sun, 01 Jun 2025 07:00:00 GMT</lastBuildDate>
 <item>
-  <title>Under the Mean Shift Clustering Algorithm (and PyTorch Broadcasting)</title>
+  <title>Initial Experiments with Imagenette</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<div class="cell" data-execution_count="6">
+<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im" style="color: #00769E;">from</span> fastai.vision.<span class="bu" style="color: null;">all</span> <span class="im" style="color: #00769E;">import</span> <span class="op" style="color: #5E5E5E;">*</span></span>
+<span id="cb1-2"><span class="im" style="color: #00769E;">from</span> fastai.callback.wandb <span class="im" style="color: #00769E;">import</span> WandbCallback</span>
+<span id="cb1-3"><span class="im" style="color: #00769E;">import</span> wandb</span>
+<span id="cb1-4"><span class="im" style="color: #00769E;">import</span> pandas <span class="im" style="color: #00769E;">as</span> pd</span>
+<span id="cb1-5"><span class="im" style="color: #00769E;">import</span> matplotlib.pyplot <span class="im" style="color: #00769E;">as</span> plt</span></code></pre></div>
+</div>
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In this blog post I’m going to share my initial experiments as I try to get on the <a href="https://github.com/fastai/imagenette">imagenette leaderboard</a>.</p>
+<blockquote class="blockquote">
+<p>Imagenette is a subset of 10 easily classified classes from Imagenet (tench, English springer, cassette player, chain saw, church, French horn, garbage truck, gas pump, golf ball, parachute).</p>
+</blockquote>
+<p>This exercise is a bit of a detour but related to my <a href="https://vishalbakshi.github.io/blog/posts/2025-04-26-TinyScale-Lab-Kickoff/">TinyScaleLab project</a> in which I’m trying to analyze the relationship between downstream capabilities and training dynamics for tiny language models (5M-125M) trained on the TinyStories dataset.</p>
+<p>I was running some initial rough 1 epoch training runs with my 5M architecture to find the best batch size for training efficiency (memory usage and training speed). I encountered a peculiar result which was counterintuitive to me:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Metric</th>
+<th style="text-align: left;">bs=64</th>
+<th style="text-align: left;">256</th>
+<th style="text-align: left;">1024</th>
+<th style="text-align: left;">2048</th>
+<th style="text-align: left;">4096</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;">Time</td>
+<td style="text-align: left;">3hr</td>
+<td style="text-align: left;">1hr</td>
+<td style="text-align: left;">0.5hr</td>
+<td style="text-align: left;">0.5hr</td>
+<td style="text-align: left;">OOM</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;">Train loss</td>
+<td style="text-align: left;">3.58</td>
+<td style="text-align: left;">3.46</td>
+<td style="text-align: left;">4.42</td>
+<td style="text-align: left;">5.57</td>
+<td style="text-align: left;">OOM</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;">Eval loss</td>
+<td style="text-align: left;">3.58</td>
+<td style="text-align: left;">3.46</td>
+<td style="text-align: left;">4.43</td>
+<td style="text-align: left;">5.57</td>
+<td style="text-align: left;">OOM</td>
+</tr>
+</tbody>
+</table>
+<p>I was expecting that increase the batch size would:</p>
+<ol type="1">
+<li>speed up training</li>
+<li>decrease loss</li>
+</ol>
+<p>However, increasing batch size from 1024 to 2048 did not speed up training, and increasing batch size from 256 to 2048 did not improve the loss. As always, when I run into something unexpected, I post it on Twitter. I received a number of insightful comments:</p>
+<blockquote class="twitter-tweet blockquote">
+<p lang="en" dir="ltr">
+We covered this in some of our earlier courses - lower batch sizes provide more updates, which should give better results for a fixed # epochs.
+</p>
+— Jeremy Howard (<span class="citation" data-cites="jeremyphoward">@jeremyphoward</span>) <a href="https://twitter.com/jeremyphoward/status/1927192030335132090?ref_src=twsrc%5Etfw">May 27, 2025</a>
+</blockquote>
+<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+<p>The batch size of 256 was certainly providing more updates in one epoch than a batch size of 1024 or 2048. It’s interesting to note that a batch size of 64, even though providing 4x the number of updates as 256, had a higher loss at the end of the epoch. It’s important to note that I did not measure downstream performance for this experiment.</p>
+<blockquote class="twitter-tweet blockquote">
+<p lang="en" dir="ltr">
+TinyStories is a pretty homogeneous dataset, so one doesn't need as large of a batch size to achieve a smooth gradient compared to a more diverse pretraining dataset.<br><br>You'll want to set the batch size balancing speed and performance.
+</p>
+— Benjamin Warner (<span class="citation" data-cites="benjamin_warner">@benjamin_warner</span>) <a href="https://twitter.com/benjamin_warner/status/1927194448389169190?ref_src=twsrc%5Etfw">May 27, 2025</a>
+</blockquote>
+<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+<p>This was another interesting point. The benefit of increasing batch size is to get a closer representation to the overall dataset. Since the TinyStories dataset is quite homogenous (all dataset items are children’s stories) a smaller batch size will be sufficiently representative of the full dataset. On the flip side, if we have a dataset like the PETS dataset, and used a small batch size of say 32, we could imagine a scenario where the batch only includes images of a single class. The model, which has been learning about a diverse set of animals to this point will perform poorly and the loss will spike. Larger models, having more parameters, may not recover from this spike like small models can. Furthermore, if the dataset contains mislabeled images and you are unfortunate to get a batch of incorrectly labeled cats, your loss spike will be combined with the model learning incorrect information. These were points discussed in a fastai study group!</p>
+<blockquote class="twitter-tweet blockquote">
+<p lang="en" dir="ltr">
+Also, one heuristic that people use is that in most scenarios, you can scale the lr proportionally to the bs.<br><br>Larger bs, better but less frequent updates, can take longer steps.<br><br>Smaller bs, more frequent updates, but need to take smaller steps due to worse direction of updates.
+</p>
+— Radek Osmulski 🇺🇦 (<span class="citation" data-cites="radekosmulski">@radekosmulski</span>) <a href="https://twitter.com/radekosmulski/status/1927195672056340620?ref_src=twsrc%5Etfw">May 27, 2025</a>
+</blockquote>
+<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+<p>In my case, I had used the same learning rate for all batch sizes, and did not utilize the benefit of larger batch sizes taking longer steps (higher learning rate).</p>
+<p>Jeremy also encouraged me to do some imagenette speedruns, which is why we’re here!</p>
+<blockquote class="twitter-tweet blockquote">
+<p lang="en" dir="ltr">
+You should maybe try doing some imagenette speed-running – it's a good way to get an intuitive understanding of these issues.
+</p>
+— Jeremy Howard (<span class="citation" data-cites="jeremyphoward">@jeremyphoward</span>) <a href="https://twitter.com/jeremyphoward/status/1927216989837185133?ref_src=twsrc%5Etfw">May 27, 2025</a>
+</blockquote>
+<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+</section>
+<section id="approach-and-results" class="level2">
+<h2 class="anchored" data-anchor-id="approach-and-results">Approach and Results</h2>
+<p>My data prep and training code can be viewed in the “appendix” below. Before I did this exercise, I ran the code in the <a href="https://docs.fast.ai/tutorial.imagenette.html">fastai “Training Imagenette” tutorial</a> which is where most of the code below comes from. I’ll share my approach and results in this section. I wanted to break this exercise (of trying to get onto the Imagenette leaderboard) into smaller steps, so I focused this notebook on training with a batch size of 64, for three learning rates (1e-4, 1e-3 and 1e-4) for three models: xse_resnext50 (25.6M), xresnet34 (21.3M), xresnet18 (11.2M).</p>
+<section id="accuracy-curves" class="level3">
+<h3 class="anchored" data-anchor-id="accuracy-curves">Accuracy Curves</h3>
+<p>Since I’m most interested in competing on the leaderboard, I’ll focus on observing the accuracy curves of these models, all trained on 5 epochs of the same training/validation split.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="Accuracy curves for all 10 training runs"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/1.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Accuracy curves for all 10 training runs</figcaption><p></p>
+</figure>
+</div>
+<p>The models/learning rate combination with the highest accuracy is xresnet34/1e-2 and xse_resnext50/1e-2. xresnet18/1e-2 is surprisingly competitive at half the parameter count. There is a clear hierarchy of learning rates, 1e-2 performs the best for all three models, followed by 1e-3 and then 1e-4. I used <code>lr_find</code> for each model and found that xresnet18 was stable for 1e-1 though it performs second-to-last place in accuracy for that model.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Model/Learning Rate</th>
+<th style="text-align: center;">Accuracy</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">xresnet34/1e-2</td>
+<td style="text-align: center;">0.7929</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">xse_resnext50/1e-2</td>
+<td style="text-align: center;">0.7926</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">xresnet18/1e-2</td>
+<td style="text-align: center;">0.7870</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">xresnet34/1e-3</td>
+<td style="text-align: center;">0.7776</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">xresnet18/1e-3</td>
+<td style="text-align: center;">0.7743</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">xse_resnext50/1e-3</td>
+<td style="text-align: center;">0.7526</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">xresnet18/1e-1</td>
+<td style="text-align: center;">0.7373</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">xse_resnext50/1e-4</td>
+<td style="text-align: center;">0.6532</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">xresnet34/1e-4</td>
+<td style="text-align: center;">0.6446</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">xresnet18/1e-4</td>
+<td style="text-align: center;">0.6171</td>
+</tr>
+</tbody>
+</table>
+<p>Other notable observations:</p>
+<ul>
+<li>xse_resnext50/1e-2 starts out with the lowest accuracy, but then quickly catches up and finally beats out all other models/LRs but one.</li>
+<li>xresnet18/1e-1 accuracy decreases from epoch 1 to 2, then catches up to finish in 7th place.</li>
+<li>xresnet34/1e-2 accuracy increasing at slower rate from epoch 1 to 2 than from epoch 2 to 3, catching up quickly to finish in the top spot.</li>
+</ul>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2" title="Notable accuracy curves"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/2.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Notable accuracy curves</figcaption><p></p>
+</figure>
+</div>
+</section>
+</section>
+<section id="next-steps" class="level2">
+<h2 class="anchored" data-anchor-id="next-steps">Next Steps</h2>
+<p>I want to focus on a couple of thoughts Jeremy shared:</p>
+<blockquote class="twitter-tweet blockquote">
+<p lang="en" dir="ltr">
+Maybe on the way you'll want to create some tables like you're making there, but I rarely find them as interesting as small targeted iterations changing one thing at a time.
+</p>
+— Jeremy Howard (<span class="citation" data-cites="jeremyphoward">@jeremyphoward</span>) <a href="https://twitter.com/jeremyphoward/status/1927241575765061916?ref_src=twsrc%5Etfw">May 27, 2025</a>
+</blockquote>
+<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+<p>Last year I worked through Jeremy’s <a href="https://vishalbakshi.github.io/blog/#category=paddy%20doctor">Kaggle Paddy Docter competition live coding series</a> and learned a ton about just that—small targeted iterations changing one thing at a time.</p>
+<p>I’m not quite sure what my plan will be for this Imagenette leaderboard exercise, but I since I started this exploration with the intent to build intuition about batch size/learning rate and downstream performance, it makes sense to pick my best 2-3 models and vary the batch size and learning rate next.</p>
+<p>I also am keen on working with Benjamin Warner’s <a href="https://fastxtend.benjaminwarner.dev/callback.progresize.html">fastxtend</a> (which I used last year in the <a href="https://www.kaggle.com/code/vishalbakshi/birdclef-2024-recap-0-61-final-lb-score">BirdCLEF24 Kaggle competition</a> to finish in the top 34%) and <a href="https://optimi.benjaminwarner.dev/">optimi</a> libraries. I’m particularly keen on trying out the different data augmentation techniques provided in fastxtend when I train for longer than 5 epochs.</p>
+<p>I’m trying to grow my YouTube channel, so if you like my content, <a href="https://www.youtube.com/@vishal_learner">please subscribe</a>!</p>
+</section>
+<section id="appendix" class="level2">
+<h2 class="anchored" data-anchor-id="appendix">Appendix</h2>
+<section id="data-prep" class="level3">
+<h3 class="anchored" data-anchor-id="data-prep">Data Prep</h3>
+<div class="cell" data-outputid="4a1c7bd1-fb16-4c4f-8308-939fe9e2b7c4" data-execution_count="2">
+<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">path <span class="op" style="color: #5E5E5E;">=</span> untar_data(URLs.IMAGENETTE_160)</span></code></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+    <div>
+      <progress value="99008512" class="" max="99003388" style="width:300px; height:20px; vertical-align: middle;"></progress>
+      100.01% [99008512/99003388 00:03&lt;00:00]
+    </div>
+    
+</div>
+</div>
+<div class="cell" data-execution_count="3">
+<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1">lbl_dict <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">dict</span>(</span>
+<span id="cb3-2">    n01440764<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'tench'</span>,</span>
+<span id="cb3-3">    n02102040<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'English springer'</span>,</span>
+<span id="cb3-4">    n02979186<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'cassette player'</span>,</span>
+<span id="cb3-5">    n03000684<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'chain saw'</span>,</span>
+<span id="cb3-6">    n03028079<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'church'</span>,</span>
+<span id="cb3-7">    n03394916<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'French horn'</span>,</span>
+<span id="cb3-8">    n03417042<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'garbage truck'</span>,</span>
+<span id="cb3-9">    n03425413<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'gas pump'</span>,</span>
+<span id="cb3-10">    n03445777<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'golf ball'</span>,</span>
+<span id="cb3-11">    n03888257<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'parachute'</span></span>
+<span id="cb3-12">)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="73776257-bc3e-4c33-d6cc-ca691b73662c" data-execution_count="6">
+<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1">imagenette <span class="op" style="color: #5E5E5E;">=</span> DataBlock(blocks <span class="op" style="color: #5E5E5E;">=</span> (ImageBlock, CategoryBlock),</span>
+<span id="cb4-2">                       get_items <span class="op" style="color: #5E5E5E;">=</span> get_image_files,</span>
+<span id="cb4-3">                       get_y <span class="op" style="color: #5E5E5E;">=</span> Pipeline([parent_label, lbl_dict.<span class="fu" style="color: #4758AB;">__getitem__</span>]),</span>
+<span id="cb4-4">                       splitter <span class="op" style="color: #5E5E5E;">=</span> GrandparentSplitter(valid_name<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">'val'</span>),</span>
+<span id="cb4-5">                       item_tfms <span class="op" style="color: #5E5E5E;">=</span> RandomResizedCrop(<span class="dv" style="color: #AD0000;">128</span>, min_scale<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">0.35</span>),</span>
+<span id="cb4-6">                       batch_tfms <span class="op" style="color: #5E5E5E;">=</span> Normalize.from_stats(<span class="op" style="color: #5E5E5E;">*</span>imagenet_stats))</span>
+<span id="cb4-7"></span>
+<span id="cb4-8">dls <span class="op" style="color: #5E5E5E;">=</span> imagenette.dataloaders(path, bs<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">64</span>)</span>
+<span id="cb4-9">dls.show_batch()</span></code></pre></div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-5-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/index_files/figure-html/cell-5-output-1.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="training-code" class="level3">
+<h3 class="anchored" data-anchor-id="training-code">Training Code</h3>
+<p>I chose to run everything on a Colab Pro A100 GPU to maximize speed.</p>
+<section id="xse_resnext50" class="level4">
+<h4 class="anchored" data-anchor-id="xse_resnext50">xse_resnext50</h4>
+<div class="cell" data-outputid="8338b75d-2a6c-41ec-c54b-dae12a88bc63" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1">learn <span class="op" style="color: #5E5E5E;">=</span> vision_learner(dls, xse_resnext50, metrics<span class="op" style="color: #5E5E5E;">=</span>accuracy, pretrained<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">False</span>)</span>
+<span id="cb5-2">learn.lr_find()</span></code></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+</div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<pre><code>SuggestedLRs(valley=0.0004786300996784121)</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-6-output-4.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/index_files/figure-html/cell-6-output-4.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell" data-outputid="542d3515-ed60-4e15-dfd7-73fab5fe583d" data-execution_count="14">
+<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1">wandb.login()</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<pre><code>True</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1">wandb.init(</span>
+<span id="cb9-2">    project<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"tinyscale-lab"</span>,</span>
+<span id="cb9-3">    name<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"imagenette-xse_resnext50-bs-64-lr-1e-4"</span>,</span>
+<span id="cb9-4">)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="f05260cd-91b1-42a4-8b82-a0465f190a53" data-execution_count="16">
+<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1">learn <span class="op" style="color: #5E5E5E;">=</span> vision_learner(dls, xse_resnext50, metrics<span class="op" style="color: #5E5E5E;">=</span>accuracy, pretrained<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">False</span>, cbs<span class="op" style="color: #5E5E5E;">=</span>WandbCallback())</span>
+<span id="cb10-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;">5</span>, <span class="fl" style="color: #AD0000;">1e-4</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>epoch</th>
+      <th>train_loss</th>
+      <th>valid_loss</th>
+      <th>accuracy</th>
+      <th>time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>2.437292</td>
+      <td>1.562259</td>
+      <td>0.498599</td>
+      <td>00:15</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>1.898073</td>
+      <td>1.330338</td>
+      <td>0.581401</td>
+      <td>00:15</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>1.625788</td>
+      <td>1.184957</td>
+      <td>0.630828</td>
+      <td>00:15</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>1.491183</td>
+      <td>1.138762</td>
+      <td>0.650446</td>
+      <td>00:15</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>1.425214</td>
+      <td>1.119943</td>
+      <td>0.653248</td>
+      <td>00:15</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+<div class="cell" data-execution_count="29">
+<div class="sourceCode cell-code" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1">wandb.finish()</span></code></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1">wandb.init(</span>
+<span id="cb12-2">    project<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"tinyscale-lab"</span>,</span>
+<span id="cb12-3">    name<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"imagenette-xse_resnext50-bs-64-lr-1e-3"</span>,</span>
+<span id="cb12-4">)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="0356a936-1d9c-40ca-9d7e-b645c0c3a3c7" data-execution_count="19">
+<div class="sourceCode cell-code" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1">learn <span class="op" style="color: #5E5E5E;">=</span> vision_learner(dls, xse_resnext50, metrics<span class="op" style="color: #5E5E5E;">=</span>accuracy, pretrained<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">False</span>, cbs<span class="op" style="color: #5E5E5E;">=</span>WandbCallback())</span>
+<span id="cb13-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;">5</span>, <span class="fl" style="color: #AD0000;">1e-3</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>epoch</th>
+      <th>train_loss</th>
+      <th>valid_loss</th>
+      <th>accuracy</th>
+      <th>time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>2.115490</td>
+      <td>1.610692</td>
+      <td>0.511592</td>
+      <td>00:15</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>1.563322</td>
+      <td>1.359540</td>
+      <td>0.592866</td>
+      <td>00:15</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>1.205948</td>
+      <td>1.041064</td>
+      <td>0.673631</td>
+      <td>00:15</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>0.988717</td>
+      <td>0.896793</td>
+      <td>0.712611</td>
+      <td>00:15</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>0.865071</td>
+      <td>0.776657</td>
+      <td>0.752611</td>
+      <td>00:15</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+<div class="cell" data-execution_count="21">
+<div class="sourceCode cell-code" id="cb14" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1">wandb.finish()</span></code></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1">wandb.init(</span>
+<span id="cb15-2">    project<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"tinyscale-lab"</span>,</span>
+<span id="cb15-3">    name<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"imagenette-xse_resnext50-bs-64-lr-1e-2"</span>,</span>
+<span id="cb15-4">)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="b97a464f-d64e-4797-8814-2034c9d3013d" data-execution_count="23">
+<div class="sourceCode cell-code" id="cb16" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1">learn <span class="op" style="color: #5E5E5E;">=</span> vision_learner(dls, xse_resnext50, metrics<span class="op" style="color: #5E5E5E;">=</span>accuracy, pretrained<span class="op" style="color: #5E5E5E;">=</span><span class="va" style="color: #111111;">False</span>, cbs<span class="op" style="color: #5E5E5E;">=</span>WandbCallback())</span>
+<span id="cb16-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;">5</span>, <span class="fl" style="color: #AD0000;">1e-2</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>epoch</th>
+      <th>train_loss</th>
+      <th>valid_loss</th>
+      <th>accuracy</th>
+      <th>time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>2.025805</td>
+      <td>4.565277</td>
+      <td>0.225478</td>
+      <td>00:15</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>1.586654</td>
+      <td>1.567472</td>
+      <td>0.527389</td>
+      <td>00:15</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>1.162438</td>
+      <td>0.994889</td>
+      <td>0.680255</td>
+      <td>00:15</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>0.868640</td>
+      <td>0.672154</td>
+      <td>0.780892</td>
+      <td>00:15</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>0.703673</td>
+      <td>0.635068</td>
+      <td>0.792611</td>
+      <td>00:15</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1">wandb.finish()</span></code></pre></div>
+</div>
+</section>
+<section id="xresnet34" class="level4">
+<h4 class="anchored" data-anchor-id="xresnet34">xresnet34</h4>
+<div class="cell" data-outputid="1ca7b389-6205-4651-af2b-35c00be9e633" data-execution_count="27">
+<div class="sourceCode cell-code" id="cb18" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1">learn <span class="op" style="color: #5E5E5E;">=</span> Learner(dls, xresnet34(n_out<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">10</span>), metrics<span class="op" style="color: #5E5E5E;">=</span>accuracy)</span>
+<span id="cb18-2">learn.lr_find()</span></code></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+</div>
+<div class="cell-output cell-output-display" data-execution_count="27">
+<pre><code>SuggestedLRs(valley=0.0005754399462603033)</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-17-output-4.png" class="lightbox" data-gallery="quarto-lightbox-gallery-5"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/index_files/figure-html/cell-17-output-4.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell" data-outputid="db64c191-eac3-4e90-8146-0ea19c8691a1" data-execution_count="28">
+<div class="sourceCode cell-code" id="cb20" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1">learn.loss_func</span></code></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="28">
+<pre><code>FlattenedLoss of CrossEntropyLoss()</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb22" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1">wandb.init(</span>
+<span id="cb22-2">    project<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"tinyscale-lab"</span>,</span>
+<span id="cb22-3">    name<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"imagenette-xresnet34-bs-64-lr-1e-4"</span>,</span>
+<span id="cb22-4">)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="5ff0c3d6-f0e0-4501-c244-eb567e579c59" data-execution_count="35">
+<div class="sourceCode cell-code" id="cb23" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1">learn <span class="op" style="color: #5E5E5E;">=</span> Learner(dls, xresnet34(n_out<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">10</span>), metrics<span class="op" style="color: #5E5E5E;">=</span>accuracy, cbs<span class="op" style="color: #5E5E5E;">=</span>WandbCallback())</span>
+<span id="cb23-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;">5</span>, <span class="fl" style="color: #AD0000;">1e-4</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>epoch</th>
+      <th>train_loss</th>
+      <th>valid_loss</th>
+      <th>accuracy</th>
+      <th>time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>2.054720</td>
+      <td>1.864616</td>
+      <td>0.371975</td>
+      <td>00:09</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>1.605212</td>
+      <td>1.489624</td>
+      <td>0.525350</td>
+      <td>00:09</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>1.307533</td>
+      <td>1.235453</td>
+      <td>0.619618</td>
+      <td>00:09</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>1.180410</td>
+      <td>1.153767</td>
+      <td>0.642038</td>
+      <td>00:09</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>1.124177</td>
+      <td>1.139668</td>
+      <td>0.644586</td>
+      <td>00:09</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+<div class="cell" data-execution_count="37">
+<div class="sourceCode cell-code" id="cb24" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1">wandb.finish()</span></code></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb25" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1">wandb.init(</span>
+<span id="cb25-2">    project<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"tinyscale-lab"</span>,</span>
+<span id="cb25-3">    name<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"imagenette-xresnet34-bs-64-lr-1e-3"</span>,</span>
+<span id="cb25-4">)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="307e87f9-20f2-419b-beda-9f1f32a62a2c" data-execution_count="39">
+<div class="sourceCode cell-code" id="cb26" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1">learn <span class="op" style="color: #5E5E5E;">=</span> Learner(dls, xresnet34(n_out<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">10</span>), metrics<span class="op" style="color: #5E5E5E;">=</span>accuracy, cbs<span class="op" style="color: #5E5E5E;">=</span>WandbCallback())</span>
+<span id="cb26-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;">5</span>, <span class="fl" style="color: #AD0000;">1e-3</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>epoch</th>
+      <th>train_loss</th>
+      <th>valid_loss</th>
+      <th>accuracy</th>
+      <th>time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>1.607826</td>
+      <td>1.416133</td>
+      <td>0.538344</td>
+      <td>00:10</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>1.204550</td>
+      <td>1.263326</td>
+      <td>0.578853</td>
+      <td>00:09</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>0.946661</td>
+      <td>0.917620</td>
+      <td>0.710828</td>
+      <td>00:09</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>0.784756</td>
+      <td>0.758046</td>
+      <td>0.755414</td>
+      <td>00:09</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>0.683072</td>
+      <td>0.704371</td>
+      <td>0.777580</td>
+      <td>00:09</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+<div class="cell" data-execution_count="41">
+<div class="sourceCode cell-code" id="cb27" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1">wandb.finish()</span></code></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb28" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1">wandb.init(</span>
+<span id="cb28-2">    project<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"tinyscale-lab"</span>,</span>
+<span id="cb28-3">    name<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"imagenette-xresnet34-bs-64-lr-1e-2"</span>,</span>
+<span id="cb28-4">)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="435b8593-bec7-427e-d136-a51a327efc95" data-execution_count="43">
+<div class="sourceCode cell-code" id="cb29" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1">learn <span class="op" style="color: #5E5E5E;">=</span> Learner(dls, xresnet34(n_out<span class="op" style="color: #5E5E5E;">=</span><span class="dv" style="color: #AD0000;">10</span>), metrics<span class="op" style="color: #5E5E5E;">=</span>accuracy, cbs<span class="op" style="color: #5E5E5E;">=</span>WandbCallback())</span>
+<span id="cb29-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;">5</span>, <span class="fl" style="color: #AD0000;">1e-2</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>epoch</th>
+      <th>train_loss</th>
+      <th>valid_loss</th>
+      <th>accuracy</th>
+      <th>time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>1.571024</td>
+      <td>2.439970</td>
+      <td>0.335541</td>
+      <td>00:09</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>1.255883</td>
+      <td>2.097694</td>
+      <td>0.395414</td>
+      <td>00:09</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>1.018229</td>
+      <td>0.989576</td>
+      <td>0.681529</td>
+      <td>00:09</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>0.785577</td>
+      <td>0.728265</td>
+      <td>0.762293</td>
+      <td>00:09</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>0.623264</td>
+      <td>0.640818</td>
+      <td>0.792866</td>
+      <td>00:09</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+<div class="cell" data-execution_count="45">
+<div class="sourceCode cell-code" id="cb30" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1">wandb.finish()</span></code></pre></div>
+</div>
+</section>
+<section id="xresnet18" class="level4">
+<h4 class="anchored" data-anchor-id="xresnet18">xresnet18</h4>
+<div class="cell" data-outputid="3bb76188-48c5-47dd-ad6d-3d66a04be44f" data-execution_count="46">
+<div class="sourceCode cell-code" id="cb31" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1">learn <span class="op" style="color: #5E5E5E;">=</span> Learner(dls, xresnet18(), metrics<span class="op" style="color: #5E5E5E;">=</span>accuracy)</span>
+<span id="cb31-2">learn.lr_find()</span></code></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+</div>
+<div class="cell-output cell-output-display" data-execution_count="46">
+<pre><code>SuggestedLRs(valley=0.0020892962347716093)</code></pre>
+</div>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="index_files/figure-html/cell-28-output-4.png" class="lightbox" data-gallery="quarto-lightbox-gallery-6"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/index_files/figure-html/cell-28-output-4.png" class="img-fluid figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb33" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1">wandb.init(</span>
+<span id="cb33-2">    project<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"tinyscale-lab"</span>,</span>
+<span id="cb33-3">    name<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"imagenette-xresnet18-bs-64-lr-1e-4"</span>,</span>
+<span id="cb33-4">)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="c6dbf534-bb10-48ef-cb77-0eb7b8597ac1" data-execution_count="48">
+<div class="sourceCode cell-code" id="cb34" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1">learn <span class="op" style="color: #5E5E5E;">=</span> Learner(dls, xresnet18(), metrics<span class="op" style="color: #5E5E5E;">=</span>accuracy, cbs<span class="op" style="color: #5E5E5E;">=</span>WandbCallback())</span>
+<span id="cb34-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;">5</span>, <span class="fl" style="color: #AD0000;">1e-4</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>epoch</th>
+      <th>train_loss</th>
+      <th>valid_loss</th>
+      <th>accuracy</th>
+      <th>time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>5.608559</td>
+      <td>4.292247</td>
+      <td>0.301147</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>2.270526</td>
+      <td>1.728192</td>
+      <td>0.505478</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>1.517185</td>
+      <td>1.401804</td>
+      <td>0.579108</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>1.327132</td>
+      <td>1.287121</td>
+      <td>0.610446</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>1.274527</td>
+      <td>1.265958</td>
+      <td>0.617070</td>
+      <td>00:07</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+<div class="cell" data-execution_count="50">
+<div class="sourceCode cell-code" id="cb35" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1">wandb.finish()</span></code></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb36" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1">wandb.init(</span>
+<span id="cb36-2">    project<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"tinyscale-lab"</span>,</span>
+<span id="cb36-3">    name<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"imagenette-xresnet18-bs-64-lr-1e-3"</span>,</span>
+<span id="cb36-4">)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="170bf98b-8634-4d14-88fb-e1422e043217" data-execution_count="52">
+<div class="sourceCode cell-code" id="cb37" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1">learn <span class="op" style="color: #5E5E5E;">=</span> Learner(dls, xresnet18(), metrics<span class="op" style="color: #5E5E5E;">=</span>accuracy, cbs<span class="op" style="color: #5E5E5E;">=</span>WandbCallback())</span>
+<span id="cb37-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;">5</span>, <span class="fl" style="color: #AD0000;">1e-3</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>epoch</th>
+      <th>train_loss</th>
+      <th>valid_loss</th>
+      <th>accuracy</th>
+      <th>time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>2.134495</td>
+      <td>1.742504</td>
+      <td>0.445860</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>1.249879</td>
+      <td>1.266531</td>
+      <td>0.584204</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>0.986120</td>
+      <td>1.082811</td>
+      <td>0.648153</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>0.804976</td>
+      <td>0.767623</td>
+      <td>0.758471</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>0.708721</td>
+      <td>0.734305</td>
+      <td>0.774267</td>
+      <td>00:07</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+<div class="cell" data-execution_count="54">
+<div class="sourceCode cell-code" id="cb38" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1">wandb.finish()</span></code></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb39" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1">wandb.init(</span>
+<span id="cb39-2">    project<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"tinyscale-lab"</span>,</span>
+<span id="cb39-3">    name<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"imagenette-xresnet18-bs-64-lr-1e-2"</span>,</span>
+<span id="cb39-4">)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="43fb4098-6228-4d0e-f708-d395b7324de1" data-execution_count="56">
+<div class="sourceCode cell-code" id="cb40" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1">learn <span class="op" style="color: #5E5E5E;">=</span> Learner(dls, xresnet18(), metrics<span class="op" style="color: #5E5E5E;">=</span>accuracy, cbs<span class="op" style="color: #5E5E5E;">=</span>WandbCallback())</span>
+<span id="cb40-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;">5</span>, <span class="fl" style="color: #AD0000;">1e-2</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>epoch</th>
+      <th>train_loss</th>
+      <th>valid_loss</th>
+      <th>accuracy</th>
+      <th>time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>1.665481</td>
+      <td>2.706135</td>
+      <td>0.358726</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>1.278437</td>
+      <td>1.516189</td>
+      <td>0.505987</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>1.017887</td>
+      <td>1.038873</td>
+      <td>0.663440</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>0.801989</td>
+      <td>0.718528</td>
+      <td>0.761529</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>0.638737</td>
+      <td>0.650084</td>
+      <td>0.787006</td>
+      <td>00:07</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+<div class="cell" data-execution_count="59">
+<div class="sourceCode cell-code" id="cb41" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1">wandb.finish()</span></code></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb42" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1">wandb.init(</span>
+<span id="cb42-2">    project<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"tinyscale-lab"</span>,</span>
+<span id="cb42-3">    name<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"imagenette-xresnet18-bs-64-lr-1e-1"</span>,</span>
+<span id="cb42-4">)</span></code></pre></div>
+</div>
+<div class="cell" data-outputid="f9e04227-875a-40b7-8fe7-f4790ac3bc32" data-execution_count="61">
+<div class="sourceCode cell-code" id="cb43" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1">learn <span class="op" style="color: #5E5E5E;">=</span> Learner(dls, xresnet18(), metrics<span class="op" style="color: #5E5E5E;">=</span>accuracy, cbs<span class="op" style="color: #5E5E5E;">=</span>WandbCallback())</span>
+<span id="cb43-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;">5</span>, <span class="fl" style="color: #AD0000;">1e-1</span>)</span></code></pre></div>
+<div class="cell-output cell-output-display">
+
+<style>
+    /* Turns off some styling */
+    progress {
+        /* gets rid of default border in Firefox and Opera. */
+        border: none;
+        /* Needs to be in here for Safari polyfill so background images work as expected. */
+        background-size: auto;
+    }
+    progress:not([value]), progress:not([value])::-webkit-progress-bar {
+        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
+    }
+    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
+        background: #F44336;
+    }
+</style>
+</div>
+<div class="cell-output cell-output-display">
+
+<table class="dataframe table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>epoch</th>
+      <th>train_loss</th>
+      <th>valid_loss</th>
+      <th>accuracy</th>
+      <th>time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>1.755140</td>
+      <td>2.272295</td>
+      <td>0.325860</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>1.501531</td>
+      <td>3.738475</td>
+      <td>0.322293</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>1.238407</td>
+      <td>1.375671</td>
+      <td>0.547516</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>1.036412</td>
+      <td>0.896265</td>
+      <td>0.707516</td>
+      <td>00:07</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>0.850425</td>
+      <td>0.815597</td>
+      <td>0.737325</td>
+      <td>00:07</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+</div>
+<div class="cell" data-execution_count="64">
+<div class="sourceCode cell-code" id="cb44" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1">wandb.finish()</span></code></pre></div>
+</div>
+
+
+</section>
+</section>
+</section>
+
+ ]]></description>
+  <category>python</category>
+  <category>fastai</category>
+  <category>deep learning</category>
+  <category>tinyscalelab</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/index.html</guid>
+  <pubDate>Sun, 01 Jun 2025 07:00:00 GMT</pubDate>
+  <media:content url="https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/1.png" medium="image" type="image/png" height="73" width="144"/>
+</item>
+<item>
+  <title>Understanding the Mean Shift Clustering Algorithm (and PyTorch Broadcasting)</title>
   <dc:creator>Vishal Bakshi</dc:creator>
   <link>https://vishalbakshi.github.io/blog/posts/2025-05-30-meanshift/index.html</link>
   <description><![CDATA[ 
@@ -44,7 +1265,7 @@
 </blockquote>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="Conceptual visual showing the mean shift clustering algorithm weighting by distance. The red point is x."><img src="https://vishalbakshi.github.io/blog/posts/2025-05-30-meanshift/1.png" class="img-fluid figure-img"></a></p>
+<p><a href="1.png" class="lightbox" title="Conceptual visual showing the mean shift clustering algorithm weighting by distance. The red point is x." data-gallery="quarto-lightbox-gallery-1"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-30-meanshift/1.png" class="img-fluid figure-img"></a></p>
 <p></p><figcaption class="figure-caption">Conceptual visual showing the mean shift clustering algorithm weighting by distance. The red point is <code>x</code>.</figcaption><p></p>
 </figure>
 </div>
@@ -2048,13 +3269,13 @@ JEYAAgAkRgACACRGAAIAJEYAAgAkRgACACRGAAIAJEYAAgAkRgACACRGAAIAJEYAAgAkRgACACTm\
 <p>Looking at each of those statements visually:</p>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><a href="2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-7" title="Each pair of coordinates in X is broadcasted 5 times so they can be subtracted from each pair of coordinates in the batch"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-30-meanshift/2.png" class="img-fluid figure-img"></a></p>
+<p><a href="2.png" class="lightbox" title="Each pair of coordinates in X is broadcasted 5 times so they can be subtracted from each pair of coordinates in the batch" data-gallery="quarto-lightbox-gallery-7"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-30-meanshift/2.png" class="img-fluid figure-img"></a></p>
 <p></p><figcaption class="figure-caption">Each pair of coordinates in X is broadcasted 5 times so they can be subtracted from each pair of coordinates in the batch</figcaption><p></p>
 </figure>
 </div>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><a href="3.png" class="lightbox" data-gallery="quarto-lightbox-gallery-8" title="The batch x is broadcasted 1500 times so that each pair of coordinates in X can be subtracted from it."><img src="https://vishalbakshi.github.io/blog/posts/2025-05-30-meanshift/3.png" class="img-fluid figure-img"></a></p>
+<p><a href="3.png" class="lightbox" title="The batch x is broadcasted 1500 times so that each pair of coordinates in X can be subtracted from it." data-gallery="quarto-lightbox-gallery-8"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-30-meanshift/3.png" class="img-fluid figure-img"></a></p>
 <p></p><figcaption class="figure-caption">The batch <code>x</code> is broadcasted 1500 times so that each pair of coordinates in <code>X</code> can be subtracted from it.</figcaption><p></p>
 </figure>
 </div>
@@ -2113,7 +3334,7 @@ JEYAAgAkRgACACRGAAIAJEYAAgAkRgACACRGAAIAJEYAAgAkRgACACRGAAIAJEYAAgAkRgACACTm\
 <p>Conceptually we want something like this (example shown for the first two batch items’ weights)</p>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><a href="4.png" class="lightbox" data-gallery="quarto-lightbox-gallery-9" title="Multiplying weights by X and summing down the columns to get a pair of coordinates"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-30-meanshift/4.png" class="img-fluid figure-img"></a></p>
+<p><a href="4.png" class="lightbox" title="Multiplying weights by X and summing down the columns to get a pair of coordinates" data-gallery="quarto-lightbox-gallery-9"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-30-meanshift/4.png" class="img-fluid figure-img"></a></p>
 <p></p><figcaption class="figure-caption">Multiplying weights by <code>X</code> and summing down the columns to get a pair of coordinates</figcaption><p></p>
 </figure>
 </div>
@@ -2212,7 +3433,7 @@ JEYAAgAkRgACACRGAAIAJEYAAgAkRgACACRGAAIAJEYAAgAkRgACACRGAAIAJEYAAgAkRgACACTm\
 <p>Looking at this visually:</p>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><a href="5.png" class="lightbox" data-gallery="quarto-lightbox-gallery-10" title="Elementwise multiplication of weight[...,None] and X[None] followed by sum(0) down the columns"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-30-meanshift/5.png" class="img-fluid figure-img"></a></p>
+<p><a href="5.png" class="lightbox" title="Elementwise multiplication of weight[...,None] and X[None] followed by sum(0) down the columns" data-gallery="quarto-lightbox-gallery-10"><img src="https://vishalbakshi.github.io/blog/posts/2025-05-30-meanshift/5.png" class="img-fluid figure-img"></a></p>
 <p></p><figcaption class="figure-caption">Elementwise multiplication of <code>weight[...,None]</code> and <code>X[None]</code> followed by <code>sum(0)</code> down the columns</figcaption><p></p>
 </figure>
 </div>
@@ -13473,253 +14694,6 @@ num_partitions is the number of centroids to be generated.
   <category>ColBERT</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2025-03-12-RAGatouille-ColBERT-Indexing-Deep-Dive/index.html</guid>
   <pubDate>Wed, 12 Mar 2025 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>TIL: PeftModel Base Model Behavior</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2025-03-10-TIL-PeftModel-Behavior/index.html</link>
-  <description><![CDATA[ 
-
-
-
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<p>In this TIL blog post I share some unexpected behavior when using <code>PeftModel</code>. In short, when merging LoRA adapter weights with the base model, the base model gets overwritten. While unexpected, in hindsight this makes sense if you want to minimize memory usage.</p>
-<div class="cell" data-execution_count="22">
-<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im" style="color: #00769E;">from</span> transformers <span class="im" style="color: #00769E;">import</span> AutoModelForCausalLM</span>
-<span id="cb1-2"><span class="im" style="color: #00769E;">from</span> peft <span class="im" style="color: #00769E;">import</span> PeftModel</span>
-<span id="cb1-3"><span class="im" style="color: #00769E;">import</span> os</span>
-<span id="cb1-4"><span class="im" style="color: #00769E;">import</span> torch</span>
-<span id="cb1-5"><span class="im" style="color: #00769E;">import</span> psutil</span>
-<span id="cb1-6"><span class="im" style="color: #00769E;">import</span> copy</span>
-<span id="cb1-7"><span class="im" style="color: #00769E;">import</span> gc</span></code></pre></div>
-</div>
-<div class="cell" data-execution_count="2">
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="im" style="color: #00769E;">from</span> google.colab <span class="im" style="color: #00769E;">import</span> userdata</span>
-<span id="cb2-2"></span>
-<span id="cb2-3">os.environ[<span class="st" style="color: #20794D;">'HUGGING_FACE_HUB_TOKEN'</span>] <span class="op" style="color: #5E5E5E;">=</span> userdata.get(<span class="st" style="color: #20794D;">'HUGGING_FACE_HUB_TOKEN'</span>)</span></code></pre></div>
-</div>
-<div class="cell" data-execution_count="3">
-<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="kw" style="color: #003B4F;">def</span> _mem(): <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"RAM Usage: </span><span class="sc" style="color: #5E5E5E;">{</span>psutil<span class="sc" style="color: #5E5E5E;">.</span>virtual_memory()<span class="sc" style="color: #5E5E5E;">.</span>percent<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">% (Used: </span><span class="sc" style="color: #5E5E5E;">{</span>psutil<span class="sc" style="color: #5E5E5E;">.</span>virtual_memory()<span class="sc" style="color: #5E5E5E;">.</span>used <span class="op" style="color: #5E5E5E;">/</span> (<span class="dv" style="color: #AD0000;">1024</span><span class="op" style="color: #5E5E5E;">**</span><span class="dv" style="color: #AD0000;">3</span>)<span class="sc" style="color: #5E5E5E;">:.2f}</span><span class="ss" style="color: #20794D;"> GB / Total: </span><span class="sc" style="color: #5E5E5E;">{</span>psutil<span class="sc" style="color: #5E5E5E;">.</span>virtual_memory()<span class="sc" style="color: #5E5E5E;">.</span>total <span class="op" style="color: #5E5E5E;">/</span> (<span class="dv" style="color: #AD0000;">1024</span><span class="op" style="color: #5E5E5E;">**</span><span class="dv" style="color: #AD0000;">3</span>)<span class="sc" style="color: #5E5E5E;">:.2f}</span><span class="ss" style="color: #20794D;"> GB)"</span>)</span></code></pre></div>
-</div>
-</section>
-<section id="merging-lora-adapter-weights" class="level2">
-<h2 class="anchored" data-anchor-id="merging-lora-adapter-weights">Merging LoRA Adapter Weights</h2>
-<p>Before loading any model, here is the memory usage. I’m using an A100 GPU with Colab Pro.</p>
-<div class="cell" data-outputid="b461255e-c263-4bba-c06b-4148a74092f9" data-execution_count="4">
-<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1">_mem()</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>RAM Usage: 3.5% (Used: 2.10 GB / Total: 83.48 GB)</code></pre>
-</div>
-</div>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1">base_model <span class="op" style="color: #5E5E5E;">=</span> AutoModelForCausalLM.from_pretrained(<span class="st" style="color: #20794D;">"meta-llama/Llama-2-7b-hf"</span>).to(<span class="st" style="color: #20794D;">"cpu"</span>)</span></code></pre></div>
-</div>
-<p>After loading the base model (Llama2-7B) the memory usage increases to 27GB.</p>
-<div class="cell" data-outputid="8bf9d682-b07b-4bc0-c632-3081f1f8dce6" data-execution_count="6">
-<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1">_mem()</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>RAM Usage: 33.8% (Used: 27.35 GB / Total: 83.48 GB)</code></pre>
-</div>
-</div>
-<p>Loading the LoRA adapter weights increases the memory usage to 28 GB.</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1">model_to_merge <span class="op" style="color: #5E5E5E;">=</span> PeftModel.from_pretrained(</span>
-<span id="cb9-2">    model<span class="op" style="color: #5E5E5E;">=</span>base_model,</span>
-<span id="cb9-3">    model_id<span class="op" style="color: #5E5E5E;">=</span><span class="st" style="color: #20794D;">"LoRA-TMLR-2024/magicoder-lora-rank-64-alpha-128"</span></span>
-<span id="cb9-4">).to(<span class="st" style="color: #20794D;">"cpu"</span>)</span></code></pre></div>
-</div>
-<div class="cell" data-outputid="c5110313-9aa0-4808-dd9f-36ab1d38cb0b" data-execution_count="9">
-<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1">_mem()</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>RAM Usage: 34.8% (Used: 28.22 GB / Total: 83.48 GB)</code></pre>
-</div>
-</div>
-<div class="cell" data-execution_count="10">
-<div class="sourceCode cell-code" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1">merged_model <span class="op" style="color: #5E5E5E;">=</span> model_to_merge.merge_and_unload()</span></code></pre></div>
-</div>
-<p>Merging the model essentially keeps the memory usage constant at 28GB.</p>
-<div class="cell" data-outputid="53481002-dcec-4742-84c1-ed3e7770493f" data-execution_count="11">
-<div class="sourceCode cell-code" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1">_mem()</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>RAM Usage: 34.9% (Used: 28.28 GB / Total: 83.48 GB)</code></pre>
-</div>
-</div>
-</section>
-<section id="comparing-base_model-and-merged_model-weights" class="level2">
-<h2 class="anchored" data-anchor-id="comparing-base_model-and-merged_model-weights">Comparing <code>base_model</code> and <code>merged_model</code> Weights</h2>
-<p>However, saving memory comes at a cost! You no longer have access to the base model. I’ll first do a visual inspection of one of the weight matrices.</p>
-<div class="cell" data-outputid="71d52a31-eed0-4dec-f48c-bf132f221ed5" data-execution_count="12">
-<div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1">base_model.model.layers[<span class="dv" style="color: #AD0000;">0</span>].self_attn.q_proj.weight</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="12">
-<pre><code>Parameter containing:
-tensor([[-0.0020, -0.0156,  0.0023,  ...,  0.0098, -0.0017, -0.0031],
-        [ 0.0283, -0.0176,  0.0062,  ..., -0.0076,  0.0004,  0.0087],
-        [-0.0230,  0.0225,  0.0001,  ...,  0.0028,  0.0190, -0.0063],
-        ...,
-        [ 0.0003,  0.0016, -0.0013,  ...,  0.0081, -0.0308,  0.0110],
-        [ 0.0259,  0.0203,  0.0045,  ..., -0.0310, -0.0147, -0.0111],
-        [-0.0077, -0.0174,  0.0012,  ...,  0.0182,  0.0181, -0.0070]])</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="9b2f1df8-7c78-4f23-ef3b-77c2b981ff99" data-execution_count="13">
-<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1">merged_model.model.layers[<span class="dv" style="color: #AD0000;">0</span>].self_attn.q_proj.weight</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="13">
-<pre><code>Parameter containing:
-tensor([[-0.0020, -0.0156,  0.0023,  ...,  0.0098, -0.0017, -0.0031],
-        [ 0.0283, -0.0176,  0.0062,  ..., -0.0076,  0.0004,  0.0087],
-        [-0.0230,  0.0225,  0.0001,  ...,  0.0028,  0.0190, -0.0063],
-        ...,
-        [ 0.0003,  0.0016, -0.0013,  ...,  0.0081, -0.0308,  0.0110],
-        [ 0.0259,  0.0203,  0.0045,  ..., -0.0310, -0.0147, -0.0111],
-        [-0.0077, -0.0174,  0.0012,  ...,  0.0182,  0.0181, -0.0070]])</code></pre>
-</div>
-</div>
-<p>Both matrices are equal. Analyzing weight matrix differences more systematically:</p>
-<div class="cell" data-execution_count="20">
-<div class="sourceCode cell-code" id="cb19" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><span class="kw" style="color: #003B4F;">def</span> _diffs(model1, model2):</span>
-<span id="cb19-2">    n_diff <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">0</span></span>
-<span id="cb19-3">    <span class="cf" style="color: #003B4F;">for</span> layer_idx <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(<span class="dv" style="color: #AD0000;">32</span>):</span>
-<span id="cb19-4">        <span class="cf" style="color: #003B4F;">for</span> component <span class="kw" style="color: #003B4F;">in</span> [<span class="st" style="color: #20794D;">"q_proj"</span>, <span class="st" style="color: #20794D;">"k_proj"</span>, <span class="st" style="color: #20794D;">"o_proj"</span>, <span class="st" style="color: #20794D;">"v_proj"</span>]:</span>
-<span id="cb19-5">            W1 <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">getattr</span>(model1.model.layers[layer_idx].self_attn, component).weight</span>
-<span id="cb19-6">            W2<span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">getattr</span>(model2.model.layers[layer_idx].self_attn, component).weight</span>
-<span id="cb19-7">            <span class="cf" style="color: #003B4F;">if</span> <span class="kw" style="color: #003B4F;">not</span> torch.allclose(W1, W2, rtol<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">1e-5</span>, atol<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">1e-8</span>): n_diff <span class="op" style="color: #5E5E5E;">+=</span> <span class="dv" style="color: #AD0000;">1</span></span>
-<span id="cb19-8">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"Different Self-Attention Matrices: </span><span class="sc" style="color: #5E5E5E;">{</span>n_diff<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span>
-<span id="cb19-9">    n_diff <span class="op" style="color: #5E5E5E;">=</span> <span class="dv" style="color: #AD0000;">0</span></span>
-<span id="cb19-10">    <span class="cf" style="color: #003B4F;">for</span> layer_idx <span class="kw" style="color: #003B4F;">in</span> <span class="bu" style="color: null;">range</span>(<span class="dv" style="color: #AD0000;">32</span>):</span>
-<span id="cb19-11">        <span class="cf" style="color: #003B4F;">for</span> component <span class="kw" style="color: #003B4F;">in</span> [<span class="st" style="color: #20794D;">"up_proj"</span>, <span class="st" style="color: #20794D;">"down_proj"</span>, <span class="st" style="color: #20794D;">"gate_proj"</span>]:</span>
-<span id="cb19-12">            W1 <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">getattr</span>(model1.model.layers[layer_idx].mlp, component).weight</span>
-<span id="cb19-13">            W2 <span class="op" style="color: #5E5E5E;">=</span> <span class="bu" style="color: null;">getattr</span>(model2.model.layers[layer_idx].mlp, component).weight</span>
-<span id="cb19-14">            <span class="cf" style="color: #003B4F;">if</span> <span class="kw" style="color: #003B4F;">not</span> torch.allclose(W1, W2, rtol<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">1e-5</span>, atol<span class="op" style="color: #5E5E5E;">=</span><span class="fl" style="color: #AD0000;">1e-8</span>): n_diff <span class="op" style="color: #5E5E5E;">+=</span> <span class="dv" style="color: #AD0000;">1</span></span>
-<span id="cb19-15">    <span class="bu" style="color: null;">print</span>(<span class="ss" style="color: #20794D;">f"Different MLP Weight Matrices: </span><span class="sc" style="color: #5E5E5E;">{</span>n_diff<span class="sc" style="color: #5E5E5E;">}</span><span class="ss" style="color: #20794D;">"</span>)</span></code></pre></div>
-</div>
-<div class="cell" data-outputid="3725270e-f6e2-494a-ea46-28c2fa835116" data-execution_count="21">
-<div class="sourceCode cell-code" id="cb20" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1">_diffs(base_model, merged_model)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Different Self-Attention Matrices: 0
-Different MLP Weight Matrices: 0</code></pre>
-</div>
-</div>
-<p>For both self-attention and MLP modules, all weight matrices between the <code>base_model</code> and the <code>merged_model</code> are the same. Using the <code>is</code> operator we can see that they reference the same object in memory (which is where the memory savings come from):</p>
-<div class="cell" data-outputid="f6d7747c-a8d9-4c32-8172-0b6ba59831ed" data-execution_count="23">
-<div class="sourceCode cell-code" id="cb22" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1">base_model <span class="kw" style="color: #003B4F;">is</span> merged_model</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="23">
-<pre><code>True</code></pre>
-</div>
-</div>
-</section>
-<section id="copying-the-base-model-for-comparison" class="level2">
-<h2 class="anchored" data-anchor-id="copying-the-base-model-for-comparison">Copying the Base Model for Comparison</h2>
-<p>I’ll now load the base model again to compare with the merged model weights.</p>
-<div class="cell" data-outputid="7cefff4e-025f-4b4c-bff5-09676d8af019" data-execution_count="24">
-<div class="sourceCode cell-code" id="cb24" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1">_mem()</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>RAM Usage: 35.4% (Used: 28.68 GB / Total: 83.48 GB)</code></pre>
-</div>
-</div>
-<div class="cell" data-execution_count="25">
-<div class="sourceCode cell-code" id="cb26" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><span class="kw" style="color: #003B4F;">del</span> base_model</span></code></pre></div>
-</div>
-<div class="cell" data-outputid="213ac2ca-846f-4460-cce6-4b4bed5ad05f" data-execution_count="27">
-<div class="sourceCode cell-code" id="cb27" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1">gc.collect()</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="27">
-<pre><code>483</code></pre>
-</div>
-</div>
-<div class="cell" data-outputid="8a10f443-157a-456a-cb0a-34e11771d03b" data-execution_count="54">
-<div class="sourceCode cell-code" id="cb29" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1">_mem()</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>RAM Usage: 35.5% (Used: 28.78 GB / Total: 83.48 GB)</code></pre>
-</div>
-</div>
-<p>Note that deleting the base model did not change the memory usage.</p>
-<div class="cell" data-outputid="74341ad5-ee28-474b-d505-0a5f04e140e5" data-execution_count="55">
-<div class="sourceCode cell-code" id="cb31" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1">base_model <span class="op" style="color: #5E5E5E;">=</span> AutoModelForCausalLM.from_pretrained(<span class="st" style="color: #20794D;">"meta-llama/Llama-2-7b-hf"</span>).to(<span class="st" style="color: #20794D;">"cpu"</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-<script type="application/vnd.jupyter.widget-view+json">
-{"model_id":"ee5aafe00d32446f95ab002be2ec8fcc","version_major":2,"version_minor":0}
-</script>
-</div>
-</div>
-<div class="cell" data-outputid="faa5c925-2fdc-45b9-b943-07f8baf2e19c" data-execution_count="56">
-<div class="sourceCode cell-code" id="cb32" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1">_mem()</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>RAM Usage: 65.7% (Used: 53.94 GB / Total: 83.48 GB)</code></pre>
-</div>
-</div>
-<p>With a new base model loaded, the memory usage jumps up to 54 GB.</p>
-<div class="cell" data-outputid="83d16db7-457a-4ca2-c6a9-f24e099d27c6" data-execution_count="57">
-<div class="sourceCode cell-code" id="cb34" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1">_diffs(base_model, merged_model)</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Different Self-Attention Matrices: 128
-Different MLP Weight Matrices: 96</code></pre>
-</div>
-</div>
-<p>There are 32 layers in this Llama model, and each model’s self-attention module has 4 weight matrices we are comparing, resulting in 128 matrices in total. The MLP module has 3 weight matrices we are comparing, resulting in 96 total across the model. The base model and merged model are fully different models (in terms of weight matrix values).</p>
-</section>
-<section id="using-.get_base_model" class="level2">
-<h2 class="anchored" data-anchor-id="using-.get_base_model">Using <code>.get_base_model</code></h2>
-<p>Looking at the <code>PeftModel</code> documentation, I noted the method <code>get_base_model</code> which seems relevant to this exercise. However, using that method results in the same weights as the merged model:</p>
-<div class="cell" data-outputid="6ba3da16-ba96-4c24-9b8b-d0abcff91230" data-execution_count="59">
-<div class="sourceCode cell-code" id="cb36" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1">model_to_merge.get_base_model</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="59">
-<div style="max-width:800px; border: 1px solid var(--colab-border-color);"><style>
-      pre.function-repr-contents {
-        overflow-x: auto;
-        padding: 8px 12px;
-        max-height: 500px;
-      }
-
-      pre.function-repr-contents.function-repr-contents-collapsed {
-        cursor: pointer;
-        max-height: 100px;
-      }
-    </style>
-    <pre style="white-space: initial; background:
-         var(--colab-secondary-surface-color); padding: 8px 12px;
-         border-bottom: 1px solid var(--colab-border-color);"><b>peft.peft_model.PeftModel.get_base_model</b><br>def get_base_model() -&gt; torch.nn.Module</pre><pre class="function-repr-contents function-repr-contents-collapsed" style="">/usr/local/lib/python3.11/dist-packages/peft/peft_model.pyReturns the base model.</pre>
-      <script>
-      if (google.colab.kernel.accessAllowed && google.colab.files && google.colab.files.view) {
-        for (const element of document.querySelectorAll('.filepath')) {
-          element.style.display = 'block'
-          element.onclick = (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            google.colab.files.view(element.textContent, 912);
-          };
-        }
-      }
-      for (const element of document.querySelectorAll('.function-repr-contents')) {
-        element.onclick = (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          element.classList.toggle('function-repr-contents-collapsed');
-        };
-      }
-      </script>
-      </div>
-</div>
-</div>
-<div class="cell" data-outputid="28cc252a-570d-41b6-cecd-2a7dbbab953d" data-execution_count="60">
-<div class="sourceCode cell-code" id="cb37" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1">_diffs(merged_model, model_to_merge.get_base_model())</span></code></pre></div>
-<div class="cell-output cell-output-stdout">
-<pre><code>Different Self-Attention Matrices: 0
-Different MLP Weight Matrices: 0</code></pre>
-</div>
-</div>
-<hr>
-<p>I am planning to do more of these short TIL blog posts this year! It helps me solidify concepts as I come across them. I hope you enjoyed this blog post!</p>
-
-
-</section>
-
- ]]></description>
-  <category>python</category>
-  <category>deep learning</category>
-  <category>machine learning</category>
-  <category>LLM</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2025-03-10-TIL-PeftModel-Behavior/index.html</guid>
-  <pubDate>Mon, 10 Mar 2025 07:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
