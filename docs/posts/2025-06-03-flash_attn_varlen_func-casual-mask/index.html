@@ -1,0 +1,1783 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.335">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2025-06-03">
+<meta name="description" content="A deep dive into understanding flash_attn_varlen_func’s docstring’s causal masks (for seqlen_q != seqlen_k) by exploring Hugging Face’s KV Cache (DynamicCache) in model.generate() with hands-on Q/K shape inspection. Unravels “bottom-right alignment” and why flash_attn_func gets called.">
+
+<title>Vishal Bakshi’s Blog - HuggingFace’s Default KV Cache and the flash_attn_varlen_func Docstring</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Vishal Bakshi’s Blog</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html">
+ <span class="menu-text">About</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+              <div id="quarto-search" class="" title="Search"></div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#understanding-huggingfaces-default-kv-cache" id="toc-understanding-huggingfaces-default-kv-cache" class="nav-link" data-scroll-target="#understanding-huggingfaces-default-kv-cache">Understanding HuggingFace’s Default KV Cache</a>
+  <ul class="collapse">
+  <li><a href="#inspecting-model_kwargs-for-caching-method" id="toc-inspecting-model_kwargs-for-caching-method" class="nav-link" data-scroll-target="#inspecting-model_kwargs-for-caching-method">Inspecting <code>model_kwargs</code> for Caching Method</a></li>
+  <li><a href="#how-is-past_key_values-used" id="toc-how-is-past_key_values-used" class="nav-link" data-scroll-target="#how-is-past_key_values-used">How is <code>past_key_values</code> Used?</a></li>
+  <li><a href="#visualizing-the-dynamiccache.update" id="toc-visualizing-the-dynamiccache.update" class="nav-link" data-scroll-target="#visualizing-the-dynamiccache.update">Visualizing the <code>DynamicCache.update</code></a></li>
+  </ul></li>
+  <li><a href="#inspecting-past_key_values-during-model.generate" id="toc-inspecting-past_key_values-during-model.generate" class="nav-link" data-scroll-target="#inspecting-past_key_values-during-model.generate">Inspecting <code>past_key_values</code> During <code>model.generate</code></a></li>
+  <li><a href="#inspecting-intermediate-keyvalue-cache-tensors-during-generation" id="toc-inspecting-intermediate-keyvalue-cache-tensors-during-generation" class="nav-link" data-scroll-target="#inspecting-intermediate-keyvalue-cache-tensors-during-generation">Inspecting Intermediate Key/Value Cache Tensors During Generation</a></li>
+  <li><a href="#which-flash-attention-interface-is-used" id="toc-which-flash-attention-interface-is-used" class="nav-link" data-scroll-target="#which-flash-attention-interface-is-used">Which Flash Attention Interface is Used?</a></li>
+  <li><a href="#understanding-the-flash_attn_varlen_func-causal-mask-docstring" id="toc-understanding-the-flash_attn_varlen_func-causal-mask-docstring" class="nav-link" data-scroll-target="#understanding-the-flash_attn_varlen_func-causal-mask-docstring">Understanding the <code>flash_attn_varlen_func</code> Causal Mask Docstring</a>
+  <ul class="collapse">
+  <li><a href="#seqlen_q2-and-seqlen_k5" id="toc-seqlen_q2-and-seqlen_k5" class="nav-link" data-scroll-target="#seqlen_q2-and-seqlen_k5"><code>seqlen_q=2</code> and <code>seqlen_k=5</code></a></li>
+  <li><a href="#seqlen_q5-and-seqlen_k2" id="toc-seqlen_q5-and-seqlen_k2" class="nav-link" data-scroll-target="#seqlen_q5-and-seqlen_k2"><code>seqlen_q=5</code> and <code>seqlen_k=2</code></a></li>
+  <li><a href="#a-math-y-way-to-think-about-it" id="toc-a-math-y-way-to-think-about-it" class="nav-link" data-scroll-target="#a-math-y-way-to-think-about-it">A Math-y Way to think About It</a></li>
+  </ul></li>
+  <li><a href="#closing-thoughts" id="toc-closing-thoughts" class="nav-link" data-scroll-target="#closing-thoughts">Closing Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">HuggingFace’s Default KV Cache and the <code>flash_attn_varlen_func</code> Docstring</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">python</div>
+    <div class="quarto-category">deep learning</div>
+    <div class="quarto-category">Flash Attention</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    A deep dive into understanding <code>flash_attn_varlen_func</code>’s docstring’s causal masks (for seqlen_q != seqlen_k) by exploring Hugging Face’s KV Cache (<code>DynamicCache</code>) in <code>model.generate()</code> with hands-on Q/K shape inspection. Unravels “bottom-right alignment” and why <code>flash_attn_func</code> gets called.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">June 3, 2025</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>pip install <span class="op">-</span>qq <span class="op">-</span>U flash<span class="op">-</span>attn <span class="op">--</span>no<span class="op">-</span>build<span class="op">-</span>isolation</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-execution_count="2">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers <span class="im">import</span> AutoTokenizer, AutoModelForCausalLM, GenerationConfig</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch.nn <span class="im">as</span> nn</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>tokenizer <span class="op">=</span> AutoTokenizer.from_pretrained(<span class="st">"HuggingFaceTB/SmolLM2-135M"</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> AutoModelForCausalLM.from_pretrained(<span class="st">"HuggingFaceTB/SmolLM2-135M"</span>, attn_implementation<span class="op">=</span><span class="st">"flash_attention_2"</span>, torch_dtype<span class="op">=</span>torch.bfloat16).to(<span class="st">"cuda"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>I have recently been working on a research project which has required me to <a href="https://vishalbakshi.github.io/blog/posts/2025-05-04-Understanding-Sequence-Packing/">better understand sequence packing and Flash Attention</a>, and <a href="https://youtu.be/u_v6HHyv4No">eager attention as well</a>. However, I’ve found that both in terms of my interest, and for practical understanding, that hasn’t been enough!</p>
+<p>Tangentially, I also recently started using Gemini Pro 2.5 (the chat UI) and have been thoroughly enjoying it after using a year of daily use of Claude Pro. This seemed like a great opportunity to test out Gemini’s functionality to learn about a topic that is complex and currently outside of my comfort zone.</p>
+<p>I fed Gemini the Flash Attention GitHub repo and explained that I wanted to thoroughly understand <code>flash_attn_varlen_func</code> to the point where I could make a detailed video walkthrough with visuals. It provided me with this condensed timeline:</p>
+<ul>
+<li><strong>Phase 1: Python Layer &amp; Sequence Packing Concepts</strong>
+<ul>
+<li>Tasks: Understand <code>flash_attn_varlen_func</code>’s Python call stack, the role of <code>cu_seqlens</code>, <code>max_seqlen</code>, and <code>torch.autograd.Function</code>.</li>
+<li>Time: 1-2 Weeks</li>
+<li>Hours: Approximately 15-30 hours</li>
+</ul></li>
+<li><strong>Phase 2: Core CUDA Kernel Deep Dive</strong>
+<ul>
+<li>Tasks: Study the FlashAttention research paper(s).</li>
+<li>Analyze the C++/CUDA dispatcher code (e.g., in <code>csrc/flash_attn/flash_api.cpp</code>).</li>
+<li>Dissect the core CUDA kernels for variable length forward and backward passes (e.g., in <code>csrc/flash_attn/src/</code> like <code>flash_fwd_kernel.h</code> and <code>flash_bwd_kernel.h</code>).</li>
+<li>Time: 6-12 Weeks</li>
+<li>Hours: Approximately 125-240 hours</li>
+</ul></li>
+<li><strong>Phase 3: Content Creation (Video/Blog)</strong>
+<ul>
+<li>Tasks: Plan the structure for your content, create visuals, draft explanations, and prepare code snippets.</li>
+<li>Time: 2-3 Weeks</li>
+<li>Hours: Approximately 30-50 hours</li>
+</ul></li>
+<li><strong>Total Estimated for CUDA Path</strong>
+<ul>
+<li>Overall Timeline: Roughly 2.5 - 4.5 months</li>
+<li>Total Focused Hours: Approximately 170 - 320 hours</li>
+</ul></li>
+</ul>
+<p>This is obviously an amibitious goal and timeline, especially because of my limited C++/CUDA knowledge and experience. However, I do believe this is a case of aim-for-the-stars-land-on-the-moon, as I’ve already experienced growth and learning in the first steps of Phase 1.</p>
+<p>As I was reading through <a href="https://github.com/Dao-AILab/flash-attention/blob/df1847a74ad0f9cee007ed186fab44f83fa03fad/flash_attn/flash_attn_interface.py#L1370"><code>flash_attn_varlen_func</code></a> source code, I got stuck on the following piece of the docstring:</p>
+<pre><code>If causal=True, the causal mask is aligned to the bottom right corner of the attention matrix.
+For example, if seqlen_q = 2 and seqlen_k = 5, the causal mask (1 = keep, 0 = masked out) is:
+    1 1 1 1 0
+    1 1 1 1 1
+If seqlen_q = 5 and seqlen_k = 2, the causal mask is:
+    0 0
+    0 0
+    0 0
+    1 0
+    1 1
+If the row of the mask is all zero, the output will be zero.</code></pre>
+<p>I didn’t have hands-on experience working with this concept, where the query length is different than the key and value length. Gemini helped me realize that this happens in the extremely common case of autoregressive generation—the next token (query length of 1) attends to the previous tokens (key/value length &gt; 1). The concept of KV cache also came up in our conversation.</p>
+<p>I don’t tend to understand things until I see them in code, so in this notebook, I’ll inspect the shapes of Q, K and V during the HuggingFace <code>model.generate</code> call. I’ll also peel back a couple layers and understand how HugginFace uses KV cache. After that exploration, I’ll return back to the <code>flash_attn_varlen_func</code> docstring and walk through the logic behind how the causal mask is shaped.</p>
+<iframe width="560" height="315" src="https://www.youtube.com/embed/pZpK5uGr7Lo?si=znCX-qawKdcoX0V9" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+</section>
+<section id="understanding-huggingfaces-default-kv-cache" class="level2">
+<h2 class="anchored" data-anchor-id="understanding-huggingfaces-default-kv-cache">Understanding HuggingFace’s Default KV Cache</h2>
+<p>I’ll start by understanding how HuggingFace uses KV cache (I was surprised to find that it uses it by default!).</p>
+<section id="inspecting-model_kwargs-for-caching-method" class="level3">
+<h3 class="anchored" data-anchor-id="inspecting-model_kwargs-for-caching-method">Inspecting <code>model_kwargs</code> for Caching Method</h3>
+<p>Looking at the <a href="https://github.com/huggingface/transformers/blob/1094dd34f73dae1d9a91a6632635934516612490/src/transformers/generation/utils.py#L2481"><code>generate</code></a> source code, the first method call of interest when it comes to KV cache seems to be <a href="https://github.com/huggingface/transformers/blob/1094dd34f73dae1d9a91a6632635934516612490/src/transformers/generation/utils.py#L1981"><code>_prepare_cache_for_generation</code></a>, which takes the following arguments: <code>generation_config</code>, <code>model_kwargs</code>, <code>assistant_model</code>, <code>batch_size</code>, <code>max_cache_length</code>, <code>device</code>. Going down the different elif statements, <code>_prepare_cache_for_generation</code> sets the following <code>model_kwargs</code> value:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>model_kwargs[cache_name] <span class="op">=</span> (</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    DynamicCache()</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="kw">not</span> requires_cross_attention_cache</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span> EncoderDecoderCache(DynamicCache(), DynamicCache())</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Where <code>cache_name</code> is defined earlier in that method as:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>cache_name <span class="op">=</span> <span class="st">"past_key_values"</span> <span class="cf">if</span> <span class="kw">not</span> is_hybrid_cache <span class="cf">else</span> <span class="st">"cache_params"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>I want to inspect what <code>model_kwargs['past_key_values']</code> is.</p>
+<p><a href="https://github.com/huggingface/transformers/blob/1094dd34f73dae1d9a91a6632635934516612490/src/transformers/generation/utils.py#L2369"><code>_prepare_generation_config</code></a> is used in <code>generate</code> to produce <code>generation_config</code> and <code>model_kwargs</code>.</p>
+<div class="cell" data-outputid="d4927381-46b1-42f6-aec8-9e94d36c16a8" data-execution_count="50">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>generation_config, model_kwargs <span class="op">=</span> model._prepare_generation_config(<span class="va">None</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>generation_config, model_kwargs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="50">
+<pre><code>(GenerationConfig {
+   "bos_token_id": 0,
+   "eos_token_id": 0
+ },
+ {})</code></pre>
+</div>
+</div>
+<p>I can now pass those on to <code>_prepare_cache_for_generation</code>, which will internally modify <code>model_kwargs</code>.</p>
+<div class="cell" data-execution_count="51">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>model._prepare_cache_for_generation(generation_config, model_kwargs, <span class="va">None</span>, <span class="dv">1</span>, <span class="dv">8192</span>, <span class="st">"cuda"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="533d54c0-fad1-4f4a-9b31-4fe867e16454" data-execution_count="53">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>model_kwargs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="53">
+<pre><code>{'past_key_values': &lt;transformers.cache_utils.DynamicCache at 0x78c3b80d9850&gt;}</code></pre>
+</div>
+</div>
+<p>I can see now that <code>model_kwargs</code> has a <code>'past_key_values'</code> key which has a <code>DynamicCache</code> value.</p>
+</section>
+<section id="how-is-past_key_values-used" class="level3">
+<h3 class="anchored" data-anchor-id="how-is-past_key_values-used">How is <code>past_key_values</code> Used?</h3>
+<p>I think it makes sense to start by looking at <a href="https://github.com/huggingface/transformers/blob/e8b292e35f331d3c3de85f7e5d3496b0e13d3d6f/src/transformers/models/llama/modeling_llama.py#L223">the forward pass of the LlamaAttention module</a>:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>...</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>key_states <span class="op">=</span> <span class="va">self</span>.k_proj(hidden_states).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>value_states <span class="op">=</span> <span class="va">self</span>.v_proj(hidden_states).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>...</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> past_key_value <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>    key_states, value_states <span class="op">=</span> past_key_value.update(key_states, value_states, <span class="va">self</span>.layer_idx, cache_kwargs)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The <code>hidden_states</code> pass through <code>k_proj</code> and <code>v_proj</code> to produce <code>key_states</code> and <code>value_states</code>, respectively, which are then passed to <code>past_key_value.update</code> to produce a new set of <code>key_states</code> and <code>value_states</code>. Looking at <a href=""><code>DynamicCache.update</code></a>:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Update the cache</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> key_states <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">len</span>(<span class="va">self</span>.key_cache) <span class="op">&lt;=</span> layer_idx:</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>        <span class="co"># There may be skipped layers, fill them with empty lists</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="bu">len</span>(<span class="va">self</span>.key_cache), layer_idx):</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>.key_cache.append(torch.tensor([]))</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>.value_cache.append(torch.tensor([]))</span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.key_cache.append(key_states)</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.value_cache.append(value_states)</span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> (</span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>        <span class="kw">not</span> <span class="va">self</span>.key_cache[layer_idx].numel()  <span class="co"># prefers not t.numel() to len(t) == 0 to export the model</span></span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>    ):  <span class="co"># fills previously skipped layers; checking for tensor causes errors</span></span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.key_cache[layer_idx] <span class="op">=</span> key_states</span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.value_cache[layer_idx] <span class="op">=</span> value_states</span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.key_cache[layer_idx] <span class="op">=</span> torch.cat([<span class="va">self</span>.key_cache[layer_idx], key_states], dim<span class="op">=-</span><span class="dv">2</span>)</span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.value_cache[layer_idx] <span class="op">=</span> torch.cat([<span class="va">self</span>.value_cache[layer_idx], value_states], dim<span class="op">=-</span><span class="dv">2</span>)</span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> <span class="va">self</span>.key_cache[layer_idx], <span class="va">self</span>.value_cache[layer_idx]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Let’s walk through each condition in the if-else block.</p>
+<section id="if-lenself.key_cache-layer_idx" class="level4">
+<h4 class="anchored" data-anchor-id="if-lenself.key_cache-layer_idx"><code>if len(self.key_cache) &lt;= layer_idx</code></h4>
+<p>A full <code>key_cache</code> is has <code>n_layers</code> number of elements. If its number of elements is less than or equal to the <code>layer_idx</code> that means that it does not contain <code>key_states</code> for that <code>layer_idx</code> yet (because python starts count from <code>0</code>). For example suppose <code>layer_idx</code> is <code>0</code>, our first layer. <code>if len(self.key_cache) &lt;= layer_idx</code> is <code>True</code>, that means <code>len(self.key_cache)</code> is <code>0</code> and doesn’t contain <code>key_states</code> for the first layer, as would be the case if you were generating the first token of a response. In this case you simply <code>append</code> the <code>key_states</code> to the cache.</p>
+<p>If <code>layer_idx</code> is greater than <code>len(self.key_cache)</code> then it appends an empty tensor for the “skipped” layers. This would be a scenario where you were generating the first token of a response (<code>len(self.key_cache)</code> is <code>0</code>) but starting with <code>layer_idx</code> of <code>2</code>.</p>
+</section>
+<section id="elif-not-self.key_cachelayer_idx.numel" class="level4">
+<h4 class="anchored" data-anchor-id="elif-not-self.key_cachelayer_idx.numel"><code>elif not self.key_cache[layer_idx].numel()</code></h4>
+<p>If a layer was skipped and it has an empty tensor as its <code>key_cache</code> then this condition is triggered and it simply assigned <code>key_states</code> to that layer’s <code>key_cache</code>.</p>
+</section>
+<section id="else" class="level4">
+<h4 class="anchored" data-anchor-id="else"><code>else</code></h4>
+<p>I think this is the most common case, used for autoregressive next-token generation. The <code>key_cache</code> contains a non-empty value for this layer so it concatenates the current value with the new <code>key_states</code>. In this way, the <code>key_cache</code> for this layer grows over the course of next token generation. Specifically, it’s second to last dimension (sequence length) increases by 1 for each token processed.</p>
+</section>
+<section id="return-self.key_cachelayer_idx-self.value_cachelayer_idx" class="level4">
+<h4 class="anchored" data-anchor-id="return-self.key_cachelayer_idx-self.value_cachelayer_idx"><code>return self.key_cache[layer_idx], self.value_cache[layer_idx]</code></h4>
+<p>Finally, the concatenated <code>key_cache</code> and <code>value_cache</code> for the given layer are returned. The <code>update</code> step is complete.</p>
+<p><code>key_states</code> and <code>value_states</code> after the <code>past_key_values.update</code> step are passed onto the <code>attention_interface</code> which we’ll look at later in this blog post.</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>attn_output, attn_weights <span class="op">=</span> attention_interface(</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>,</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>            query_states,</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>            key_states,</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>            value_states,</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>            attention_mask,</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>            dropout<span class="op">=</span><span class="fl">0.0</span> <span class="cf">if</span> <span class="kw">not</span> <span class="va">self</span>.training <span class="cf">else</span> <span class="va">self</span>.attention_dropout,</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>            scaling<span class="op">=</span><span class="va">self</span>.scaling,</span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>            <span class="op">**</span>kwargs,</span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>        )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+</section>
+<section id="visualizing-the-dynamiccache.update" class="level3">
+<h3 class="anchored" data-anchor-id="visualizing-the-dynamiccache.update">Visualizing the <code>DynamicCache.update</code></h3>
+<p>To see how the cache update takes place during autoregressive language generation, I’ll monkey-patch a <code>debug_update</code> method.</p>
+<div class="cell" data-execution_count="58">
+<details>
+<summary>Show `debug_update</summary>
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> typing <span class="im">import</span> Any, Dict, Iterable, List, Optional, Tuple, Union</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> debug_update(</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>,</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    key_states: torch.Tensor,</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>    value_states: torch.Tensor,</span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>    layer_idx: <span class="bu">int</span>,</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>    cache_kwargs: Optional[Dict[<span class="bu">str</span>, Any]] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> Tuple[torch.Tensor, torch.Tensor]:</span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""</span></span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a><span class="co">    Updates the cache with the new `key_states` and `value_states` for the layer `layer_idx`.</span></span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a><span class="co">    Parameters:</span></span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a><span class="co">        key_states (`torch.Tensor`):</span></span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a><span class="co">            The new key states to cache.</span></span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a><span class="co">        value_states (`torch.Tensor`):</span></span>
+<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a><span class="co">            The new value states to cache.</span></span>
+<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a><span class="co">        layer_idx (`int`):</span></span>
+<span id="cb15-19"><a href="#cb15-19" aria-hidden="true" tabindex="-1"></a><span class="co">            The index of the layer to cache the states for.</span></span>
+<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a><span class="co">        cache_kwargs (`Dict[str, Any]`, `optional`):</span></span>
+<span id="cb15-21"><a href="#cb15-21" aria-hidden="true" tabindex="-1"></a><span class="co">            Additional arguments for the cache subclass. No additional arguments are used in `DynamicCache`.</span></span>
+<span id="cb15-22"><a href="#cb15-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-23"><a href="#cb15-23" aria-hidden="true" tabindex="-1"></a><span class="co">    Return:</span></span>
+<span id="cb15-24"><a href="#cb15-24" aria-hidden="true" tabindex="-1"></a><span class="co">        A tuple containing the updated key and value states.</span></span>
+<span id="cb15-25"><a href="#cb15-25" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
+<span id="cb15-26"><a href="#cb15-26" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Update the number of seen tokens</span></span>
+<span id="cb15-27"><a href="#cb15-27" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> layer_idx <span class="op">==</span> <span class="dv">0</span>:</span>
+<span id="cb15-28"><a href="#cb15-28" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._seen_tokens <span class="op">+=</span> key_states.shape[<span class="op">-</span><span class="dv">2</span>]</span>
+<span id="cb15-29"><a href="#cb15-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-30"><a href="#cb15-30" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Update the cache</span></span>
+<span id="cb15-31"><a href="#cb15-31" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> key_states <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb15-32"><a href="#cb15-32" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="bu">len</span>(<span class="va">self</span>.key_cache) <span class="op">&lt;=</span> layer_idx:</span>
+<span id="cb15-33"><a href="#cb15-33" aria-hidden="true" tabindex="-1"></a>            <span class="bu">print</span>(<span class="ss">f"DEBUG: initializing cache for layer_idx </span><span class="sc">{</span>layer_idx<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb15-34"><a href="#cb15-34" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="bu">len</span>(<span class="va">self</span>.key_cache), layer_idx):</span>
+<span id="cb15-35"><a href="#cb15-35" aria-hidden="true" tabindex="-1"></a>                <span class="va">self</span>.key_cache.append(torch.tensor([]))</span>
+<span id="cb15-36"><a href="#cb15-36" aria-hidden="true" tabindex="-1"></a>                <span class="va">self</span>.value_cache.append(torch.tensor([]))</span>
+<span id="cb15-37"><a href="#cb15-37" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>.key_cache.append(key_states)</span>
+<span id="cb15-38"><a href="#cb15-38" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>.value_cache.append(value_states)</span>
+<span id="cb15-39"><a href="#cb15-39" aria-hidden="true" tabindex="-1"></a>        <span class="cf">elif</span> (</span>
+<span id="cb15-40"><a href="#cb15-40" aria-hidden="true" tabindex="-1"></a>            <span class="kw">not</span> <span class="va">self</span>.key_cache[layer_idx].numel()  <span class="co"># prefers not t.numel() to len(t) == 0 to export the model</span></span>
+<span id="cb15-41"><a href="#cb15-41" aria-hidden="true" tabindex="-1"></a>        ):  <span class="co"># fills previously skipped layers; checking for tensor causes errors</span></span>
+<span id="cb15-42"><a href="#cb15-42" aria-hidden="true" tabindex="-1"></a>            <span class="bu">print</span>(<span class="ss">f"DEBUG: filling empty cache for layer_idx </span><span class="sc">{</span>layer_idx<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb15-43"><a href="#cb15-43" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>.key_cache[layer_idx] <span class="op">=</span> key_states</span>
+<span id="cb15-44"><a href="#cb15-44" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>.value_cache[layer_idx] <span class="op">=</span> value_states</span>
+<span id="cb15-45"><a href="#cb15-45" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
+<span id="cb15-46"><a href="#cb15-46" aria-hidden="true" tabindex="-1"></a>            <span class="bu">print</span>(<span class="ss">f"DEBUG: updating/concatenating cache for layer_idx </span><span class="sc">{</span>layer_idx<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb15-47"><a href="#cb15-47" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>.key_cache[layer_idx] <span class="op">=</span> torch.cat([<span class="va">self</span>.key_cache[layer_idx], key_states], dim<span class="op">=-</span><span class="dv">2</span>)</span>
+<span id="cb15-48"><a href="#cb15-48" aria-hidden="true" tabindex="-1"></a>            <span class="va">self</span>.value_cache[layer_idx] <span class="op">=</span> torch.cat([<span class="va">self</span>.value_cache[layer_idx], value_states], dim<span class="op">=-</span><span class="dv">2</span>)</span>
+<span id="cb15-49"><a href="#cb15-49" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-50"><a href="#cb15-50" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="va">self</span>.key_cache[layer_idx], <span class="va">self</span>.value_cache[layer_idx]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution_count="59">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.cache_utils <span class="im">import</span> DynamicCache</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="st">'ORIGINAL_DYNAMIC_CACHE_UPDATE'</span> <span class="kw">not</span> <span class="kw">in</span> <span class="bu">globals</span>():</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    ORIGINAL_DYNAMIC_CACHE_UPDATE <span class="op">=</span> DynamicCache.update</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"Stored original DynamicCache.update."</span>)</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>DynamicCache.update <span class="op">=</span> debug_update</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="3bbb53b2-9b89-4361-cb26-e980bb510959" data-execution_count="60">
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>prompt <span class="op">=</span> <span class="st">"The quick brown"</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>input_ids, attention_mask <span class="op">=</span> tokenizer(prompt, return_tensors<span class="op">=</span><span class="st">"pt"</span>).to(<span class="st">"cuda"</span>).values()</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>DEBUG: initializing cache for layer_idx 0
+DEBUG: initializing cache for layer_idx 1
+DEBUG: initializing cache for layer_idx 2
+DEBUG: initializing cache for layer_idx 3
+DEBUG: initializing cache for layer_idx 4
+DEBUG: initializing cache for layer_idx 5
+DEBUG: initializing cache for layer_idx 6
+DEBUG: initializing cache for layer_idx 7
+DEBUG: initializing cache for layer_idx 8
+DEBUG: initializing cache for layer_idx 9
+DEBUG: initializing cache for layer_idx 10
+DEBUG: initializing cache for layer_idx 11
+DEBUG: initializing cache for layer_idx 12
+DEBUG: initializing cache for layer_idx 13
+DEBUG: initializing cache for layer_idx 14
+DEBUG: initializing cache for layer_idx 15
+DEBUG: initializing cache for layer_idx 16
+DEBUG: initializing cache for layer_idx 17
+DEBUG: initializing cache for layer_idx 18
+DEBUG: initializing cache for layer_idx 19
+DEBUG: initializing cache for layer_idx 20
+DEBUG: initializing cache for layer_idx 21
+DEBUG: initializing cache for layer_idx 22
+DEBUG: initializing cache for layer_idx 23
+DEBUG: initializing cache for layer_idx 24
+DEBUG: initializing cache for layer_idx 25
+DEBUG: initializing cache for layer_idx 26
+DEBUG: initializing cache for layer_idx 27
+DEBUG: initializing cache for layer_idx 28
+DEBUG: initializing cache for layer_idx 29
+DEBUG: updating/concatenating cache for layer_idx 0
+DEBUG: updating/concatenating cache for layer_idx 1
+DEBUG: updating/concatenating cache for layer_idx 2
+DEBUG: updating/concatenating cache for layer_idx 3
+DEBUG: updating/concatenating cache for layer_idx 4
+DEBUG: updating/concatenating cache for layer_idx 5
+DEBUG: updating/concatenating cache for layer_idx 6
+DEBUG: updating/concatenating cache for layer_idx 7
+DEBUG: updating/concatenating cache for layer_idx 8
+DEBUG: updating/concatenating cache for layer_idx 9
+DEBUG: updating/concatenating cache for layer_idx 10
+DEBUG: updating/concatenating cache for layer_idx 11
+DEBUG: updating/concatenating cache for layer_idx 12
+DEBUG: updating/concatenating cache for layer_idx 13
+DEBUG: updating/concatenating cache for layer_idx 14
+DEBUG: updating/concatenating cache for layer_idx 15
+DEBUG: updating/concatenating cache for layer_idx 16
+DEBUG: updating/concatenating cache for layer_idx 17
+DEBUG: updating/concatenating cache for layer_idx 18
+DEBUG: updating/concatenating cache for layer_idx 19
+DEBUG: updating/concatenating cache for layer_idx 20
+DEBUG: updating/concatenating cache for layer_idx 21
+DEBUG: updating/concatenating cache for layer_idx 22
+DEBUG: updating/concatenating cache for layer_idx 23
+DEBUG: updating/concatenating cache for layer_idx 24
+DEBUG: updating/concatenating cache for layer_idx 25
+DEBUG: updating/concatenating cache for layer_idx 26
+DEBUG: updating/concatenating cache for layer_idx 27
+DEBUG: updating/concatenating cache for layer_idx 28
+DEBUG: updating/concatenating cache for layer_idx 29</code></pre>
+</div>
+</div>
+<p>As we can see by the printed output, for the first generated token <code>update</code> initializes cache with <code>self.key_cache.append(key_states)</code> and <code>self.value_cache.append(value_states)</code>. For the subsequent tokens, it updates the cache with <code>torch.cat</code>.</p>
+<p>I’ll re-assign the original <code>update</code> to <code>DynamicCache</code> to avoid cluttering with print outs.</p>
+<div class="cell" data-execution_count="61">
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>DynamicCache.update <span class="op">=</span> ORIGINAL_DYNAMIC_CACHE_UPDATE</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+</section>
+<section id="inspecting-past_key_values-during-model.generate" class="level2">
+<h2 class="anchored" data-anchor-id="inspecting-past_key_values-during-model.generate">Inspecting <code>past_key_values</code> During <code>model.generate</code></h2>
+<p>With an understanding of how KV cache is updated, I’ll now turn my attention to the key and value cache contents during autoregressive generation.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>tokenizer <span class="op">=</span> AutoTokenizer.from_pretrained(<span class="st">"HuggingFaceTB/SmolLM2-135M"</span>)</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> AutoModelForCausalLM.from_pretrained(<span class="st">"HuggingFaceTB/SmolLM2-135M"</span>, attn_implementation<span class="op">=</span><span class="st">"flash_attention_2"</span>, torch_dtype<span class="op">=</span>torch.bfloat16).to(<span class="st">"cuda"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="31e79d9e-72c0-4700-a6eb-7e6f795819b0" data-execution_count="63">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>prompt <span class="op">=</span> <span class="st">"The quick brown"</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>prompt</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="63">
+<pre><code>'The quick brown'</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="9f2a2d84-afdd-465d-b95e-583cd7a8860a" data-execution_count="64">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>input_ids, attention_mask <span class="op">=</span> tokenizer(prompt, return_tensors<span class="op">=</span><span class="st">"pt"</span>).to(<span class="st">"cuda"</span>).values()</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>input_ids.shape, attention_mask.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="64">
+<pre><code>(torch.Size([1, 3]), torch.Size([1, 3]))</code></pre>
+</div>
+</div>
+<p>By setting <code>return_dict_in_generate=True</code> we can retrieve <code>past_key_values</code>.</p>
+<div class="cell" data-outputid="8339ed0d-7ce1-45bd-8228-4e3a47f656af" data-execution_count="65">
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">5</span>)</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>outputs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="65">
+<pre><code>GenerateDecoderOnlyOutput(sequences=tensor([[  504,  2365,  6354, 16438, 27003,   690,   260, 23790]],
+       device='cuda:0'), scores=None, logits=None, attentions=None, hidden_states=None, past_key_values=&lt;transformers.cache_utils.DynamicCache object at 0x78c4f80c4f50&gt;)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="df742156-715e-4ca3-f32e-cacc3303d278" data-execution_count="66">
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>tokenizer.decode(outputs.sequences[<span class="dv">0</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="66">
+<pre><code>'The quick brown fox jumps over the lazy'</code></pre>
+</div>
+</div>
+<p>We have 8 total tokens—3 from the original prompt and 5 new tokens generated.</p>
+<div class="cell" data-outputid="4e26edc9-2958-47a7-eee0-7cc23ad3b7cd" data-execution_count="67">
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>outputs.sequences.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="67">
+<pre><code>torch.Size([1, 8])</code></pre>
+</div>
+</div>
+<p>Inspecting the values in the KV cache: there are 30 items in <code>key_cache</code> and <code>value_cache</code>, corresponding to the 30 layers in the model. For the last generated token (the 8th token) there were <code>7</code> <code>seen_tokens</code>.</p>
+<div class="cell" data-outputid="144271c6-c0d9-443f-b11c-537dd82f3a58" data-execution_count="68">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(outputs.past_key_values.key_cache), <span class="bu">len</span>(outputs.past_key_values.value_cache)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="68">
+<pre><code>(30, 30)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="d2af89b4-8842-46d2-c6b5-78e8ad4010d7" data-execution_count="69">
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>outputs.past_key_values.seen_tokens</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="69">
+<pre><code>7</code></pre>
+</div>
+</div>
+<p>The <code>key_cache</code> tensors all have the same shape: batch size, num_heads, seen_tokens, head_dim.</p>
+<div class="cell" data-outputid="df7616f9-08fe-4fa3-f527-615bf9f83a1c" data-execution_count="70">
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> k <span class="kw">in</span> outputs.past_key_values.key_cache: <span class="bu">print</span>(k.shape)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="b16b73c8-950b-4443-dcea-4701436d9749" data-execution_count="71">
+<div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>model.config.num_attention_heads, <span class="op">\</span></span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>model.config.num_hidden_layers, <span class="op">\</span></span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>model.config.num_key_value_heads</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="71">
+<pre><code>(9, 30, 3)</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="41b06ce8-7bfc-4bc6-8ade-8ce7084457ac" data-execution_count="72">
+<div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>model.model.layers[<span class="dv">0</span>].self_attn.k_proj.out_features</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="72">
+<pre><code>192</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="316d31cf-cf8b-49e7-ebc7-1cb061de1468" data-execution_count="73">
+<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="dv">3</span><span class="op">*</span><span class="dv">64</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="73">
+<pre><code>192</code></pre>
+</div>
+</div>
+<p>The <code>value_cache</code> is similarly structured.</p>
+<div class="cell" data-outputid="f772dcaa-63fe-4315-e142-0cebb1c9e260" data-execution_count="74">
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> v <span class="kw">in</span> outputs.past_key_values.value_cache: <span class="bu">print</span>(v.shape)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 7, 64])</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="c4db38cf-43f1-4172-ad94-706d347ecea2" data-execution_count="75">
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>init_k <span class="op">=</span> outputs.past_key_values.key_cache[<span class="dv">0</span>]</span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>init_k.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="75">
+<pre><code>torch.Size([1, 3, 7, 64])</code></pre>
+</div>
+</div>
+<p>While the shapes of the <code>key_cache</code> tensors across layers are the same, their contents are not. This is because each layer has its own self attention module with its own <code>k_proj</code> and <code>v_proj</code> layers with their own learned weights.</p>
+<div class="cell" data-outputid="09ec3082-2e2d-44ea-fa9a-1d7517d05b5f" data-execution_count="76">
+<div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> k <span class="kw">in</span> outputs.past_key_values.key_cache[<span class="dv">1</span>:]: <span class="cf">assert</span> torch.allclose(init_k, k)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-error">
+<pre><code>AssertionError: </code></pre>
+</div>
+</div>
+</section>
+<section id="inspecting-intermediate-keyvalue-cache-tensors-during-generation" class="level2">
+<h2 class="anchored" data-anchor-id="inspecting-intermediate-keyvalue-cache-tensors-during-generation">Inspecting Intermediate Key/Value Cache Tensors During Generation</h2>
+<p>Now to understand how KV cache is used during generation: I want to inspect the shape of the key and value cache tensors as the prompt increases by one token at a time.</p>
+<p>To achieve this, I’ll add a hook to the first layer’s self attention module’s forward pass using <code>register_forward_hook</code>. I came to an incorrect conclusion in a <a href="https://youtu.be/4OBQkESiL0M?feature=shared&amp;t=965">previous video</a> and <a href="https://vishalbakshi.github.io/blog/posts/2025-04-02-Composer-Callback-Logging-dtypes/#composer-callback-walkthrough:~:text=Self%20attention%20cannot%20utilize%20register_forward_hook%20because%20the%20LlamaDecoderLayer%20does%20not%20call%20self%20attention%20forward%20pass%20with%20any%20positional%20arguments%3A">blog post</a> that you can’t use <code>register_forward_hook</code> for the Llama attention module because it doesn’t capture keyword arguments. What I didn’t realize is that you can capture kwargs with <code>register_forward_hook</code> by setting <code>with_kwargs=True</code>, which I have done below.</p>
+<p>I wrapped <code>hook_fn</code> in <code>create_hook_fn</code> because I wanted to print out the <code>count</code> of total generated tokens.</p>
+<div class="cell" data-outputid="222ac421-f62f-444c-d90f-a65a283d8e7b" data-execution_count="77">
+<div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> create_hook_fn():</span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>    count <span class="op">=</span> <span class="dv">1</span></span>
+<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> hook_fn(module, args, kwargs, output):</span>
+<span id="cb49-4"><a href="#cb49-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">nonlocal</span> count</span>
+<span id="cb49-5"><a href="#cb49-5" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(count, kwargs[<span class="st">'past_key_value'</span>].key_cache[<span class="dv">0</span>].shape)</span>
+<span id="cb49-6"><a href="#cb49-6" aria-hidden="true" tabindex="-1"></a>        count <span class="op">+=</span> <span class="dv">1</span></span>
+<span id="cb49-7"><a href="#cb49-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> hook_fn</span>
+<span id="cb49-8"><a href="#cb49-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb49-9"><a href="#cb49-9" aria-hidden="true" tabindex="-1"></a>_hook_fn <span class="op">=</span> create_hook_fn()</span>
+<span id="cb49-10"><a href="#cb49-10" aria-hidden="true" tabindex="-1"></a>attn_layer <span class="op">=</span> model.model.layers[<span class="dv">0</span>].self_attn</span>
+<span id="cb49-11"><a href="#cb49-11" aria-hidden="true" tabindex="-1"></a>hook_handle <span class="op">=</span> attn_layer.register_forward_hook(_hook_fn, with_kwargs<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb49-12"><a href="#cb49-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb49-13"><a href="#cb49-13" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">5</span>)</span>
+<span id="cb49-14"><a href="#cb49-14" aria-hidden="true" tabindex="-1"></a>hook_handle.remove()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>1 torch.Size([1, 3, 3, 64])
+2 torch.Size([1, 3, 4, 64])
+3 torch.Size([1, 3, 5, 64])
+4 torch.Size([1, 3, 6, 64])
+5 torch.Size([1, 3, 7, 64])</code></pre>
+</div>
+</div>
+<p>Let’s parse this output:</p>
+<ul>
+<li>The first new token generated sees only the 3 tokens in the prompt. The KV cache subsequently has a third dimension of <code>3</code>.</li>
+<li>Each new token generated sees one more new token, so the third dimension (seen tokens) of <code>key_cache</code> and <code>value_cache</code> increases by <code>1</code></li>
+</ul>
+<p>I’ll slightly modify <code>hook_fn</code> so it prints out the first few shapes of <code>key_cache</code>, allowing us to see what all layers’ cache is storing from the perspective of <code>layer_idx=0</code>.</p>
+<div class="cell" data-outputid="779782e8-dc50-4d92-fc8a-0712826d3cf7" data-execution_count="78">
+<div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> create_hook_fn():</span>
+<span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>    count <span class="op">=</span> <span class="dv">1</span></span>
+<span id="cb51-3"><a href="#cb51-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> hook_fn(module, args, kwargs, output):</span>
+<span id="cb51-4"><a href="#cb51-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">nonlocal</span> count</span>
+<span id="cb51-5"><a href="#cb51-5" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(count)</span>
+<span id="cb51-6"><a href="#cb51-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> k <span class="kw">in</span> kwargs[<span class="st">'past_key_value'</span>].key_cache[:<span class="dv">5</span>]: <span class="bu">print</span>(k.shape)</span>
+<span id="cb51-7"><a href="#cb51-7" aria-hidden="true" tabindex="-1"></a>        count <span class="op">+=</span> <span class="dv">1</span></span>
+<span id="cb51-8"><a href="#cb51-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> hook_fn</span>
+<span id="cb51-9"><a href="#cb51-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb51-10"><a href="#cb51-10" aria-hidden="true" tabindex="-1"></a>_hook_fn <span class="op">=</span> create_hook_fn()</span>
+<span id="cb51-11"><a href="#cb51-11" aria-hidden="true" tabindex="-1"></a>attn_layer <span class="op">=</span> model.model.layers[<span class="dv">0</span>].self_attn</span>
+<span id="cb51-12"><a href="#cb51-12" aria-hidden="true" tabindex="-1"></a>hook_handle <span class="op">=</span> attn_layer.register_forward_hook(_hook_fn, with_kwargs<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb51-13"><a href="#cb51-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb51-14"><a href="#cb51-14" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">5</span>)</span>
+<span id="cb51-15"><a href="#cb51-15" aria-hidden="true" tabindex="-1"></a>hook_handle.remove()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>1
+torch.Size([1, 3, 3, 64])
+2
+torch.Size([1, 3, 4, 64])
+torch.Size([1, 3, 3, 64])
+torch.Size([1, 3, 3, 64])
+torch.Size([1, 3, 3, 64])
+torch.Size([1, 3, 3, 64])
+3
+torch.Size([1, 3, 5, 64])
+torch.Size([1, 3, 4, 64])
+torch.Size([1, 3, 4, 64])
+torch.Size([1, 3, 4, 64])
+torch.Size([1, 3, 4, 64])
+4
+torch.Size([1, 3, 6, 64])
+torch.Size([1, 3, 5, 64])
+torch.Size([1, 3, 5, 64])
+torch.Size([1, 3, 5, 64])
+torch.Size([1, 3, 5, 64])
+5
+torch.Size([1, 3, 7, 64])
+torch.Size([1, 3, 6, 64])
+torch.Size([1, 3, 6, 64])
+torch.Size([1, 3, 6, 64])
+torch.Size([1, 3, 6, 64])</code></pre>
+</div>
+</div>
+<p>Since we are capturing the <code>key_cache</code> shapes from the first layer (<code>layer_idx=0</code>), the other subsequent layer’s cache tensors are 1 token “behind”, since the new token’s hidden states have not passed through the model yet.</p>
+<p>Ultimately, I want to tie this all back to the <code>flash_attn_varlen_func</code>’s dostring’s causal mask example, so I’ll take a look at the <code>query_states</code> shape, copying code from the <a href="https://github.com/huggingface/transformers/blob/78d771c3c21922642fc9546ccb973cc7a182ab34/src/transformers/models/llama/modeling_llama.py#L232-L235"><code>LlamaAttention</code> forward pass</a>. I’ll also inspect the length of the <code>key_cache</code> and its shape, and the shape of <code>value_cache</code>.</p>
+<div class="cell" data-outputid="b70a2dd1-b26f-46f9-cf7e-311cccd3d82b" data-execution_count="79">
+<div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> create_hook_fn():</span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>    count <span class="op">=</span> <span class="dv">1</span></span>
+<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> hook_fn(module, args, kwargs, output):</span>
+<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">nonlocal</span> count</span>
+<span id="cb53-5"><a href="#cb53-5" aria-hidden="true" tabindex="-1"></a>        input_shape <span class="op">=</span> kwargs[<span class="st">'hidden_states'</span>].shape[:<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb53-6"><a href="#cb53-6" aria-hidden="true" tabindex="-1"></a>        hidden_shape <span class="op">=</span> (<span class="op">*</span>input_shape, <span class="op">-</span><span class="dv">1</span>, module.head_dim)</span>
+<span id="cb53-7"><a href="#cb53-7" aria-hidden="true" tabindex="-1"></a>        query_states <span class="op">=</span> module.q_proj(kwargs[<span class="st">'hidden_states'</span>]).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb53-8"><a href="#cb53-8" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(count, <span class="ss">f"len(past_key_value): </span><span class="sc">{</span><span class="bu">len</span>(kwargs[<span class="st">'past_key_value'</span>].key_cache)<span class="sc">}</span><span class="ss">,"</span>, <span class="ss">f"query_states.shape: </span><span class="sc">{</span>query_states<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">,"</span>, <span class="ss">f"k.shape: </span><span class="sc">{</span>kwargs[<span class="st">'past_key_value'</span>]<span class="sc">.</span>key_cache[<span class="dv">0</span>]<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">,"</span>, <span class="ss">f"v.shape: </span><span class="sc">{</span>kwargs[<span class="st">'past_key_value'</span>]<span class="sc">.</span>value_cache[<span class="dv">0</span>]<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb53-9"><a href="#cb53-9" aria-hidden="true" tabindex="-1"></a>        count <span class="op">+=</span> <span class="dv">1</span></span>
+<span id="cb53-10"><a href="#cb53-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> hook_fn</span>
+<span id="cb53-11"><a href="#cb53-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb53-12"><a href="#cb53-12" aria-hidden="true" tabindex="-1"></a>_hook_fn <span class="op">=</span> create_hook_fn()</span>
+<span id="cb53-13"><a href="#cb53-13" aria-hidden="true" tabindex="-1"></a>attn_layer <span class="op">=</span> model.model.layers[<span class="dv">0</span>].self_attn</span>
+<span id="cb53-14"><a href="#cb53-14" aria-hidden="true" tabindex="-1"></a>hook_handle <span class="op">=</span> attn_layer.register_forward_hook(_hook_fn, with_kwargs<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb53-15"><a href="#cb53-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb53-16"><a href="#cb53-16" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">5</span>)</span>
+<span id="cb53-17"><a href="#cb53-17" aria-hidden="true" tabindex="-1"></a>hook_handle.remove()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>1 len(past_key_value): 1, query_states.shape: torch.Size([1, 9, 3, 64]), k.shape: torch.Size([1, 3, 3, 64]), v.shape: torch.Size([1, 3, 3, 64])
+2 len(past_key_value): 30, query_states.shape: torch.Size([1, 9, 1, 64]), k.shape: torch.Size([1, 3, 4, 64]), v.shape: torch.Size([1, 3, 4, 64])
+3 len(past_key_value): 30, query_states.shape: torch.Size([1, 9, 1, 64]), k.shape: torch.Size([1, 3, 5, 64]), v.shape: torch.Size([1, 3, 5, 64])
+4 len(past_key_value): 30, query_states.shape: torch.Size([1, 9, 1, 64]), k.shape: torch.Size([1, 3, 6, 64]), v.shape: torch.Size([1, 3, 6, 64])
+5 len(past_key_value): 30, query_states.shape: torch.Size([1, 9, 1, 64]), k.shape: torch.Size([1, 3, 7, 64]), v.shape: torch.Size([1, 3, 7, 64])</code></pre>
+</div>
+</div>
+<p>We see that there are 9 query heads, and 3 KV heads. The total hidden dimension for Q, K and V layers is 3 x 64 = 192.</p>
+<p>When the first token is being the generated, the length of the <code>key_cache</code> for <code>layer_idx=0</code> is <code>1</code>, because this is the first attention module’s first forward pass. For subsequent tokens (2, 3, 4, 5) the length of the <code>key_cache</code> is <code>30</code>, as the cache has been instantiated for all 30 layers after the first token is generated.</p>
+<p>Finally, we see that the <code>key_cache</code> and <code>value_cache</code> shapes are equal, as expected.</p>
+</section>
+<section id="which-flash-attention-interface-is-used" class="level2">
+<h2 class="anchored" data-anchor-id="which-flash-attention-interface-is-used">Which Flash Attention Interface is Used?</h2>
+<p>Since this exercise is part of my journey to understand the <code>flash_attn_varlen_func</code>, I was curious to confirm by visual inspection which Flash Attention interface function was being used. To achieve this, I wrote a “debug” version for the following three functions:</p>
+<ul>
+<li><a href="https://github.com/huggingface/transformers/blob/78d771c3c21922642fc9546ccb973cc7a182ab34/src/transformers/models/llama/modeling_llama.py#L223"><code>LlamaAttention.forward</code></a></li>
+<li><a href="https://github.com/huggingface/transformers/blob/78d771c3c21922642fc9546ccb973cc7a182ab34/src/transformers/integrations/flash_attention.py#L14"><code>flash_attention_forward</code></a></li>
+<li><a href="https://github.com/huggingface/transformers/blob/78d771c3c21922642fc9546ccb973cc7a182ab34/src/transformers/modeling_flash_attention_utils.py#L284"><code>_flash_attention_forward</code></a></li>
+</ul>
+<p>How did I know which functions to modify? Well, largely because I <a href="https://vishalbakshi.github.io/blog/posts/2025-05-04-Understanding-Sequence-Packing/">have done this exercise before</a> when I was trying to understand what triggered the use of <code>flash_attn_varlen_func</code>.</p>
+<p>More concisely, I first inspected the forward pass of the attention module:</p>
+<div class="cell" data-outputid="fc396455-d320-43da-9491-a9555f6118a5" data-execution_count="80">
+<div class="sourceCode cell-code" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> inspect <span class="im">import</span> getsource</span>
+<span id="cb55-2"><a href="#cb55-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(getsource(model.model.layers[<span class="dv">0</span>].self_attn.forward))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.Tensor],
+        past_key_value: Optional[Cache] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        **kwargs: Unpack[FlashAttentionKwargs],
+    ) -&gt; Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        input_shape = hidden_states.shape[:-1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
+
+        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+        value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+
+        cos, sin = position_embeddings
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+        if past_key_value is not None:
+            # sin and cos are specific to RoPE models; cache_position needed for the static cache
+            cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
+            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+
+        attention_interface: Callable = eager_attention_forward
+
+        if self.config._attn_implementation != "eager":
+            if self.config._attn_implementation == "sdpa" and kwargs.get("output_attentions", False):
+                logger.warning_once(
+                    "`torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to "
+                    'eager attention. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'
+                )
+            else:
+                attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
+
+        attn_output, attn_weights = attention_interface(
+            self,
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            dropout=0.0 if not self.training else self.attention_dropout,
+            scaling=self.scaling,
+            **kwargs,
+        )
+
+        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+        attn_output = self.o_proj(attn_output)
+        return attn_output, attn_weights
+</code></pre>
+</div>
+</div>
+<p>In there I saw the following lines of interest:</p>
+<div class="sourceCode" id="cb57"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1"><a href="#cb57-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="va">self</span>.config._attn_implementation <span class="op">!=</span> <span class="st">"eager"</span>:</span>
+<span id="cb57-2"><a href="#cb57-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="va">self</span>.config._attn_implementation <span class="op">==</span> <span class="st">"sdpa"</span> <span class="kw">and</span> kwargs.get(<span class="st">"output_attentions"</span>, <span class="va">False</span>):</span>
+<span id="cb57-3"><a href="#cb57-3" aria-hidden="true" tabindex="-1"></a>        logger.warning_once(</span>
+<span id="cb57-4"><a href="#cb57-4" aria-hidden="true" tabindex="-1"></a>            <span class="st">"`torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to "</span></span>
+<span id="cb57-5"><a href="#cb57-5" aria-hidden="true" tabindex="-1"></a>            <span class="st">'eager attention. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'</span></span>
+<span id="cb57-6"><a href="#cb57-6" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb57-7"><a href="#cb57-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb57-8"><a href="#cb57-8" aria-hidden="true" tabindex="-1"></a>        attention_interface <span class="op">=</span> ALL_ATTENTION_FUNCTIONS[<span class="va">self</span>.config._attn_implementation]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>In our case, the <code>else</code> block would trigger and <code>ALL_ATTENTION_FUNCTIONS</code> would be accesssed. Looking at that constant directly we can see that for our model’s <code>_attn_implementation</code> (<code>'flash_attention_2'</code>) the attention interface funtion is <code>flash_attention_forward</code>.</p>
+<div class="cell" data-outputid="8d40574b-2e73-4ad6-a6b0-7490e87e4108" data-execution_count="81">
+<div class="sourceCode cell-code" id="cb58"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb58-1"><a href="#cb58-1" aria-hidden="true" tabindex="-1"></a>model.config._attn_implementation</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="81">
+<pre><code>'flash_attention_2'</code></pre>
+</div>
+</div>
+<div class="cell" data-outputid="fc2cd815-84be-44c3-8255-4b6a2f33e5c8" data-execution_count="82">
+<div class="sourceCode cell-code" id="cb60"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb60-1"><a href="#cb60-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.modeling_utils <span class="im">import</span> ALL_ATTENTION_FUNCTIONS</span>
+<span id="cb60-2"><a href="#cb60-2" aria-hidden="true" tabindex="-1"></a>ALL_ATTENTION_FUNCTIONS[model.config._attn_implementation]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="82">
+<div style="max-width:800px; border: 1px solid var(--colab-border-color);"><style>
+      pre.function-repr-contents {
+        overflow-x: auto;
+        padding: 8px 12px;
+        max-height: 500px;
+      }
+
+      pre.function-repr-contents.function-repr-contents-collapsed {
+        cursor: pointer;
+        max-height: 100px;
+      }
+    </style>
+    <pre style="white-space: initial; background:
+         var(--colab-secondary-surface-color); padding: 8px 12px;
+         border-bottom: 1px solid var(--colab-border-color);"><b>transformers.integrations.flash_attention.flash_attention_forward</b><br>def flash_attention_forward(module: torch.nn.Module, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, attention_mask: Optional[torch.Tensor], dropout: float=0.0, scaling: Optional[float]=None, sliding_window: Optional[int]=None, softcap: Optional[float]=None, **kwargs) -&gt; Tuple[torch.Tensor, None]</pre><pre class="function-repr-contents function-repr-contents-collapsed" style=""><a class="filepath" style="display:none" href="#">/usr/local/lib/python3.11/dist-packages/transformers/integrations/flash_attention.py</a>&lt;no docstring&gt;</pre>
+      <script>
+      if (google.colab.kernel.accessAllowed && google.colab.files && google.colab.files.view) {
+        for (const element of document.querySelectorAll('.filepath')) {
+          element.style.display = 'block'
+          element.onclick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            google.colab.files.view(element.textContent, 11);
+          };
+        }
+      }
+      for (const element of document.querySelectorAll('.function-repr-contents')) {
+        element.onclick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          element.classList.toggle('function-repr-contents-collapsed');
+        };
+      }
+      </script>
+      </div>
+</div>
+</div>
+<div class="cell" data-execution_count="85">
+<details>
+<summary>Show `_debug_flash_attention_forward</summary>
+<div class="sourceCode cell-code" id="cb61"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb61-1"><a href="#cb61-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> typing <span class="im">import</span> Optional, Tuple</span>
+<span id="cb61-2"><a href="#cb61-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> inspect</span>
+<span id="cb61-3"><a href="#cb61-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> flash_attn <span class="im">import</span> flash_attn_func, flash_attn_varlen_func</span>
+<span id="cb61-4"><a href="#cb61-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
+<span id="cb61-5"><a href="#cb61-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb61-6"><a href="#cb61-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.modeling_flash_attention_utils <span class="im">import</span> is_flash_attn_greater_or_equal, fa_peft_integration_check, _upad_input, pad_input, prepare_fa2_from_position_ids</span>
+<span id="cb61-7"><a href="#cb61-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-8"><a href="#cb61-8" aria-hidden="true" tabindex="-1"></a>_flash_supports_window_size <span class="op">=</span> <span class="st">"window_size"</span> <span class="kw">in</span> <span class="bu">list</span>(inspect.signature(flash_attn_func).parameters)</span>
+<span id="cb61-9"><a href="#cb61-9" aria-hidden="true" tabindex="-1"></a>flash_241 <span class="op">=</span> is_flash_attn_greater_or_equal(<span class="st">"2.4.1"</span>)</span>
+<span id="cb61-10"><a href="#cb61-10" aria-hidden="true" tabindex="-1"></a>deterministic_g <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb61-11"><a href="#cb61-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-12"><a href="#cb61-12" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _debug_flash_attention_forward(</span>
+<span id="cb61-13"><a href="#cb61-13" aria-hidden="true" tabindex="-1"></a>    query_states: torch.Tensor,</span>
+<span id="cb61-14"><a href="#cb61-14" aria-hidden="true" tabindex="-1"></a>    key_states: torch.Tensor,</span>
+<span id="cb61-15"><a href="#cb61-15" aria-hidden="true" tabindex="-1"></a>    value_states: torch.Tensor,</span>
+<span id="cb61-16"><a href="#cb61-16" aria-hidden="true" tabindex="-1"></a>    attention_mask: Optional[torch.Tensor],</span>
+<span id="cb61-17"><a href="#cb61-17" aria-hidden="true" tabindex="-1"></a>    query_length: <span class="bu">int</span>,</span>
+<span id="cb61-18"><a href="#cb61-18" aria-hidden="true" tabindex="-1"></a>    is_causal: <span class="bu">bool</span>,</span>
+<span id="cb61-19"><a href="#cb61-19" aria-hidden="true" tabindex="-1"></a>    dropout: <span class="bu">float</span> <span class="op">=</span> <span class="fl">0.0</span>,</span>
+<span id="cb61-20"><a href="#cb61-20" aria-hidden="true" tabindex="-1"></a>    position_ids: Optional[torch.Tensor] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb61-21"><a href="#cb61-21" aria-hidden="true" tabindex="-1"></a>    softmax_scale: Optional[<span class="bu">float</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb61-22"><a href="#cb61-22" aria-hidden="true" tabindex="-1"></a>    sliding_window: Optional[<span class="bu">int</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb61-23"><a href="#cb61-23" aria-hidden="true" tabindex="-1"></a>    use_top_left_mask: <span class="bu">bool</span> <span class="op">=</span> <span class="va">False</span>,</span>
+<span id="cb61-24"><a href="#cb61-24" aria-hidden="true" tabindex="-1"></a>    softcap: Optional[<span class="bu">float</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb61-25"><a href="#cb61-25" aria-hidden="true" tabindex="-1"></a>    deterministic: Optional[<span class="bu">bool</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb61-26"><a href="#cb61-26" aria-hidden="true" tabindex="-1"></a>    cu_seq_lens_q: Optional[torch.LongTensor] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb61-27"><a href="#cb61-27" aria-hidden="true" tabindex="-1"></a>    cu_seq_lens_k: Optional[torch.LongTensor] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb61-28"><a href="#cb61-28" aria-hidden="true" tabindex="-1"></a>    max_length_q: Optional[<span class="bu">int</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb61-29"><a href="#cb61-29" aria-hidden="true" tabindex="-1"></a>    max_length_k: Optional[<span class="bu">int</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb61-30"><a href="#cb61-30" aria-hidden="true" tabindex="-1"></a>    target_dtype: Optional[torch.dtype] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb61-31"><a href="#cb61-31" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
+<span id="cb61-32"><a href="#cb61-32" aria-hidden="true" tabindex="-1"></a>):</span>
+<span id="cb61-33"><a href="#cb61-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-34"><a href="#cb61-34" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="kw">not</span> use_top_left_mask:</span>
+<span id="cb61-35"><a href="#cb61-35" aria-hidden="true" tabindex="-1"></a>        causal <span class="op">=</span> is_causal</span>
+<span id="cb61-36"><a href="#cb61-36" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb61-37"><a href="#cb61-37" aria-hidden="true" tabindex="-1"></a>        <span class="co"># </span><span class="al">TODO</span><span class="co">: Remove the `query_length != 1` check once Flash Attention for RoCm is bumped to 2.1.</span></span>
+<span id="cb61-38"><a href="#cb61-38" aria-hidden="true" tabindex="-1"></a>        causal <span class="op">=</span> is_causal <span class="kw">and</span> query_length <span class="op">!=</span> <span class="dv">1</span></span>
+<span id="cb61-39"><a href="#cb61-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-40"><a href="#cb61-40" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Assuming 4D tensors, key_states.shape[1] is the key/value sequence length (source length).</span></span>
+<span id="cb61-41"><a href="#cb61-41" aria-hidden="true" tabindex="-1"></a>    use_sliding_windows <span class="op">=</span> (</span>
+<span id="cb61-42"><a href="#cb61-42" aria-hidden="true" tabindex="-1"></a>        _flash_supports_window_size <span class="kw">and</span> sliding_window <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">and</span> key_states.shape[<span class="dv">1</span>] <span class="op">&gt;</span> sliding_window</span>
+<span id="cb61-43"><a href="#cb61-43" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb61-44"><a href="#cb61-44" aria-hidden="true" tabindex="-1"></a>    flash_kwargs <span class="op">=</span> {<span class="st">"window_size"</span>: (sliding_window, sliding_window)} <span class="cf">if</span> use_sliding_windows <span class="cf">else</span> {}</span>
+<span id="cb61-45"><a href="#cb61-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-46"><a href="#cb61-46" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> flash_241:</span>
+<span id="cb61-47"><a href="#cb61-47" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> deterministic <span class="kw">is</span> <span class="va">None</span>:</span>
+<span id="cb61-48"><a href="#cb61-48" aria-hidden="true" tabindex="-1"></a>            <span class="kw">global</span> deterministic_g</span>
+<span id="cb61-49"><a href="#cb61-49" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> deterministic_g <span class="kw">is</span> <span class="va">None</span>:</span>
+<span id="cb61-50"><a href="#cb61-50" aria-hidden="true" tabindex="-1"></a>                deterministic_g <span class="op">=</span> os.environ.get(<span class="st">"FLASH_ATTENTION_DETERMINISTIC"</span>, <span class="st">"0"</span>) <span class="op">==</span> <span class="st">"1"</span></span>
+<span id="cb61-51"><a href="#cb61-51" aria-hidden="true" tabindex="-1"></a>            deterministic <span class="op">=</span> deterministic_g</span>
+<span id="cb61-52"><a href="#cb61-52" aria-hidden="true" tabindex="-1"></a>        flash_kwargs[<span class="st">"deterministic"</span>] <span class="op">=</span> deterministic</span>
+<span id="cb61-53"><a href="#cb61-53" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-54"><a href="#cb61-54" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> softcap <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb61-55"><a href="#cb61-55" aria-hidden="true" tabindex="-1"></a>        flash_kwargs[<span class="st">"softcap"</span>] <span class="op">=</span> softcap</span>
+<span id="cb61-56"><a href="#cb61-56" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-57"><a href="#cb61-57" aria-hidden="true" tabindex="-1"></a>    <span class="co"># PEFT possibly silently casts tensors to fp32, this potentially reconverts to correct dtype or is a no op</span></span>
+<span id="cb61-58"><a href="#cb61-58" aria-hidden="true" tabindex="-1"></a>    query_states, key_states, value_states <span class="op">=</span> fa_peft_integration_check(</span>
+<span id="cb61-59"><a href="#cb61-59" aria-hidden="true" tabindex="-1"></a>        query_states, key_states, value_states, target_dtype</span>
+<span id="cb61-60"><a href="#cb61-60" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb61-61"><a href="#cb61-61" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-62"><a href="#cb61-62" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Contains at least one padding token in the sequence</span></span>
+<span id="cb61-63"><a href="#cb61-63" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> attention_mask <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb61-64"><a href="#cb61-64" aria-hidden="true" tabindex="-1"></a>        batch_size <span class="op">=</span> query_states.shape[<span class="dv">0</span>]</span>
+<span id="cb61-65"><a href="#cb61-65" aria-hidden="true" tabindex="-1"></a>        query_states, key_states, value_states, indices_q, cu_seq_lens, max_seq_lens <span class="op">=</span> _upad_input(</span>
+<span id="cb61-66"><a href="#cb61-66" aria-hidden="true" tabindex="-1"></a>            query_states, key_states, value_states, attention_mask, query_length</span>
+<span id="cb61-67"><a href="#cb61-67" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb61-68"><a href="#cb61-68" aria-hidden="true" tabindex="-1"></a>        cu_seqlens_q, cu_seqlens_k <span class="op">=</span> cu_seq_lens</span>
+<span id="cb61-69"><a href="#cb61-69" aria-hidden="true" tabindex="-1"></a>        max_seqlen_in_batch_q, max_seqlen_in_batch_k <span class="op">=</span> max_seq_lens</span>
+<span id="cb61-70"><a href="#cb61-70" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"if attention_mask is not None: flash_attn_varlen_func is being used"</span>)</span>
+<span id="cb61-71"><a href="#cb61-71" aria-hidden="true" tabindex="-1"></a>        attn_output_unpad <span class="op">=</span> flash_attn_varlen_func(</span>
+<span id="cb61-72"><a href="#cb61-72" aria-hidden="true" tabindex="-1"></a>            query_states,</span>
+<span id="cb61-73"><a href="#cb61-73" aria-hidden="true" tabindex="-1"></a>            key_states,</span>
+<span id="cb61-74"><a href="#cb61-74" aria-hidden="true" tabindex="-1"></a>            value_states,</span>
+<span id="cb61-75"><a href="#cb61-75" aria-hidden="true" tabindex="-1"></a>            cu_seqlens_q<span class="op">=</span>cu_seqlens_q,</span>
+<span id="cb61-76"><a href="#cb61-76" aria-hidden="true" tabindex="-1"></a>            cu_seqlens_k<span class="op">=</span>cu_seqlens_k,</span>
+<span id="cb61-77"><a href="#cb61-77" aria-hidden="true" tabindex="-1"></a>            max_seqlen_q<span class="op">=</span>max_seqlen_in_batch_q,</span>
+<span id="cb61-78"><a href="#cb61-78" aria-hidden="true" tabindex="-1"></a>            max_seqlen_k<span class="op">=</span>max_seqlen_in_batch_k,</span>
+<span id="cb61-79"><a href="#cb61-79" aria-hidden="true" tabindex="-1"></a>            dropout_p<span class="op">=</span>dropout,</span>
+<span id="cb61-80"><a href="#cb61-80" aria-hidden="true" tabindex="-1"></a>            softmax_scale<span class="op">=</span>softmax_scale,</span>
+<span id="cb61-81"><a href="#cb61-81" aria-hidden="true" tabindex="-1"></a>            causal<span class="op">=</span>causal,</span>
+<span id="cb61-82"><a href="#cb61-82" aria-hidden="true" tabindex="-1"></a>            <span class="op">**</span>flash_kwargs,</span>
+<span id="cb61-83"><a href="#cb61-83" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb61-84"><a href="#cb61-84" aria-hidden="true" tabindex="-1"></a>        attn_output <span class="op">=</span> pad_input(attn_output_unpad, indices_q, batch_size, query_length)</span>
+<span id="cb61-85"><a href="#cb61-85" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-86"><a href="#cb61-86" aria-hidden="true" tabindex="-1"></a>    <span class="co"># If position_ids is provided and check all examples do not contain only 1 sequence, If tensor in increasing</span></span>
+<span id="cb61-87"><a href="#cb61-87" aria-hidden="true" tabindex="-1"></a>    <span class="co"># then we probably have one sequence, otherwise it is packed. Additionally check we are in pre-fill/training stage.</span></span>
+<span id="cb61-88"><a href="#cb61-88" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Use `flash_attn_varlen_func` to prevent cross-example attention and also allow padding free approach</span></span>
+<span id="cb61-89"><a href="#cb61-89" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> position_ids <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">and</span> (</span>
+<span id="cb61-90"><a href="#cb61-90" aria-hidden="true" tabindex="-1"></a>        max_length_q <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">or</span> (query_length <span class="op">!=</span> <span class="dv">1</span> <span class="kw">and</span> <span class="kw">not</span> (torch.diff(position_ids, dim<span class="op">=-</span><span class="dv">1</span>) <span class="op">&gt;=</span> <span class="dv">0</span>).<span class="bu">all</span>())</span>
+<span id="cb61-91"><a href="#cb61-91" aria-hidden="true" tabindex="-1"></a>    ):</span>
+<span id="cb61-92"><a href="#cb61-92" aria-hidden="true" tabindex="-1"></a>        batch_size <span class="op">=</span> query_states.size(<span class="dv">0</span>)</span>
+<span id="cb61-93"><a href="#cb61-93" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-94"><a href="#cb61-94" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> cu_seq_lens_q <span class="kw">is</span> <span class="va">None</span> <span class="kw">or</span> cu_seq_lens_k <span class="kw">is</span> <span class="va">None</span>:</span>
+<span id="cb61-95"><a href="#cb61-95" aria-hidden="true" tabindex="-1"></a>            query_states, key_states, value_states, indices_q, cu_seq_lens, max_seq_lens <span class="op">=</span> (</span>
+<span id="cb61-96"><a href="#cb61-96" aria-hidden="true" tabindex="-1"></a>                prepare_fa2_from_position_ids(query_states, key_states, value_states, position_ids)</span>
+<span id="cb61-97"><a href="#cb61-97" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb61-98"><a href="#cb61-98" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-99"><a href="#cb61-99" aria-hidden="true" tabindex="-1"></a>            cu_seq_lens_q, cu_seq_lens_k <span class="op">=</span> cu_seq_lens</span>
+<span id="cb61-100"><a href="#cb61-100" aria-hidden="true" tabindex="-1"></a>            max_length_q, max_length_k <span class="op">=</span> max_seq_lens</span>
+<span id="cb61-101"><a href="#cb61-101" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-102"><a href="#cb61-102" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
+<span id="cb61-103"><a href="#cb61-103" aria-hidden="true" tabindex="-1"></a>            query_states <span class="op">=</span> query_states.reshape(<span class="op">-</span><span class="dv">1</span>, query_states.size(<span class="op">-</span><span class="dv">2</span>), query_states.size(<span class="op">-</span><span class="dv">1</span>))</span>
+<span id="cb61-104"><a href="#cb61-104" aria-hidden="true" tabindex="-1"></a>            key_states <span class="op">=</span> key_states.reshape(<span class="op">-</span><span class="dv">1</span>, key_states.size(<span class="op">-</span><span class="dv">2</span>), key_states.size(<span class="op">-</span><span class="dv">1</span>))</span>
+<span id="cb61-105"><a href="#cb61-105" aria-hidden="true" tabindex="-1"></a>            value_states <span class="op">=</span> value_states.reshape(<span class="op">-</span><span class="dv">1</span>, value_states.size(<span class="op">-</span><span class="dv">2</span>), value_states.size(<span class="op">-</span><span class="dv">1</span>))</span>
+<span id="cb61-106"><a href="#cb61-106" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-107"><a href="#cb61-107" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"position_ids is not None: flash_attn_varlen_func is being used"</span>)</span>
+<span id="cb61-108"><a href="#cb61-108" aria-hidden="true" tabindex="-1"></a>        attn_output <span class="op">=</span> flash_attn_varlen_func(</span>
+<span id="cb61-109"><a href="#cb61-109" aria-hidden="true" tabindex="-1"></a>            query_states,</span>
+<span id="cb61-110"><a href="#cb61-110" aria-hidden="true" tabindex="-1"></a>            key_states,</span>
+<span id="cb61-111"><a href="#cb61-111" aria-hidden="true" tabindex="-1"></a>            value_states,</span>
+<span id="cb61-112"><a href="#cb61-112" aria-hidden="true" tabindex="-1"></a>            cu_seqlens_q<span class="op">=</span>cu_seq_lens_q,</span>
+<span id="cb61-113"><a href="#cb61-113" aria-hidden="true" tabindex="-1"></a>            cu_seqlens_k<span class="op">=</span>cu_seq_lens_k,</span>
+<span id="cb61-114"><a href="#cb61-114" aria-hidden="true" tabindex="-1"></a>            max_seqlen_q<span class="op">=</span>max_length_q,</span>
+<span id="cb61-115"><a href="#cb61-115" aria-hidden="true" tabindex="-1"></a>            max_seqlen_k<span class="op">=</span>max_length_k,</span>
+<span id="cb61-116"><a href="#cb61-116" aria-hidden="true" tabindex="-1"></a>            dropout_p<span class="op">=</span>dropout,</span>
+<span id="cb61-117"><a href="#cb61-117" aria-hidden="true" tabindex="-1"></a>            softmax_scale<span class="op">=</span>softmax_scale,</span>
+<span id="cb61-118"><a href="#cb61-118" aria-hidden="true" tabindex="-1"></a>            causal<span class="op">=</span>causal,</span>
+<span id="cb61-119"><a href="#cb61-119" aria-hidden="true" tabindex="-1"></a>            <span class="op">**</span>flash_kwargs,</span>
+<span id="cb61-120"><a href="#cb61-120" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb61-121"><a href="#cb61-121" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-122"><a href="#cb61-122" aria-hidden="true" tabindex="-1"></a>        attn_output <span class="op">=</span> attn_output.view(batch_size, <span class="op">-</span><span class="dv">1</span>, attn_output.size(<span class="op">-</span><span class="dv">2</span>), attn_output.size(<span class="op">-</span><span class="dv">1</span>))</span>
+<span id="cb61-123"><a href="#cb61-123" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-124"><a href="#cb61-124" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb61-125"><a href="#cb61-125" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"flash_attn_func is being used"</span>)</span>
+<span id="cb61-126"><a href="#cb61-126" aria-hidden="true" tabindex="-1"></a>        attn_output <span class="op">=</span> flash_attn_func(</span>
+<span id="cb61-127"><a href="#cb61-127" aria-hidden="true" tabindex="-1"></a>            query_states, key_states, value_states, dropout, softmax_scale<span class="op">=</span>softmax_scale, causal<span class="op">=</span>causal, <span class="op">**</span>flash_kwargs</span>
+<span id="cb61-128"><a href="#cb61-128" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb61-129"><a href="#cb61-129" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-130"><a href="#cb61-130" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> attn_output</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution_count="86">
+<details>
+<summary>Show `debug_flash_attention_forward</summary>
+<div class="sourceCode cell-code" id="cb62"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> typing <span class="im">import</span> Optional, Tuple</span>
+<span id="cb62-2"><a href="#cb62-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
+<span id="cb62-3"><a href="#cb62-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.modeling_flash_attention_utils <span class="im">import</span> _flash_attention_forward, flash_attn_supports_top_left_mask</span>
+<span id="cb62-4"><a href="#cb62-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-5"><a href="#cb62-5" aria-hidden="true" tabindex="-1"></a>_use_top_left_mask <span class="op">=</span> flash_attn_supports_top_left_mask()</span>
+<span id="cb62-6"><a href="#cb62-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-7"><a href="#cb62-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-8"><a href="#cb62-8" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> debug_flash_attention_forward(</span>
+<span id="cb62-9"><a href="#cb62-9" aria-hidden="true" tabindex="-1"></a>    module: torch.nn.Module,</span>
+<span id="cb62-10"><a href="#cb62-10" aria-hidden="true" tabindex="-1"></a>    query: torch.Tensor,</span>
+<span id="cb62-11"><a href="#cb62-11" aria-hidden="true" tabindex="-1"></a>    key: torch.Tensor,</span>
+<span id="cb62-12"><a href="#cb62-12" aria-hidden="true" tabindex="-1"></a>    value: torch.Tensor,</span>
+<span id="cb62-13"><a href="#cb62-13" aria-hidden="true" tabindex="-1"></a>    attention_mask: Optional[torch.Tensor],</span>
+<span id="cb62-14"><a href="#cb62-14" aria-hidden="true" tabindex="-1"></a>    dropout: <span class="bu">float</span> <span class="op">=</span> <span class="fl">0.0</span>,</span>
+<span id="cb62-15"><a href="#cb62-15" aria-hidden="true" tabindex="-1"></a>    scaling: Optional[<span class="bu">float</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb62-16"><a href="#cb62-16" aria-hidden="true" tabindex="-1"></a>    sliding_window: Optional[<span class="bu">int</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb62-17"><a href="#cb62-17" aria-hidden="true" tabindex="-1"></a>    softcap: Optional[<span class="bu">float</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb62-18"><a href="#cb62-18" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
+<span id="cb62-19"><a href="#cb62-19" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> Tuple[torch.Tensor, <span class="va">None</span>]:</span>
+<span id="cb62-20"><a href="#cb62-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> kwargs.get(<span class="st">"output_attentions"</span>, <span class="va">False</span>) <span class="kw">or</span> kwargs.get(<span class="st">"head_mask"</span>, <span class="va">None</span>) <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb62-21"><a href="#cb62-21" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(</span>
+<span id="cb62-22"><a href="#cb62-22" aria-hidden="true" tabindex="-1"></a>            <span class="st">"`flash_attention_2` does not support `output_attentions=True` or `head_mask`."</span></span>
+<span id="cb62-23"><a href="#cb62-23" aria-hidden="true" tabindex="-1"></a>            <span class="st">" Please set your attention to `eager` if you want any of these features."</span></span>
+<span id="cb62-24"><a href="#cb62-24" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb62-25"><a href="#cb62-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-26"><a href="#cb62-26" aria-hidden="true" tabindex="-1"></a>    <span class="co"># This is before the transpose</span></span>
+<span id="cb62-27"><a href="#cb62-27" aria-hidden="true" tabindex="-1"></a>    seq_len <span class="op">=</span> query.shape[<span class="dv">2</span>]</span>
+<span id="cb62-28"><a href="#cb62-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-29"><a href="#cb62-29" aria-hidden="true" tabindex="-1"></a>    <span class="co"># FA2 uses non-transposed inputs</span></span>
+<span id="cb62-30"><a href="#cb62-30" aria-hidden="true" tabindex="-1"></a>    query <span class="op">=</span> query.transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb62-31"><a href="#cb62-31" aria-hidden="true" tabindex="-1"></a>    key <span class="op">=</span> key.transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb62-32"><a href="#cb62-32" aria-hidden="true" tabindex="-1"></a>    value <span class="op">=</span> value.transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb62-33"><a href="#cb62-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-34"><a href="#cb62-34" aria-hidden="true" tabindex="-1"></a>    <span class="co"># In PEFT, usually we cast the layer norms in float32 for training stability reasons</span></span>
+<span id="cb62-35"><a href="#cb62-35" aria-hidden="true" tabindex="-1"></a>    <span class="co"># therefore the input hidden states gets silently casted in float32. Hence, we need</span></span>
+<span id="cb62-36"><a href="#cb62-36" aria-hidden="true" tabindex="-1"></a>    <span class="co"># cast them back in the correct dtype just to be sure everything works as expected.</span></span>
+<span id="cb62-37"><a href="#cb62-37" aria-hidden="true" tabindex="-1"></a>    <span class="co"># This might slowdown training &amp; inference so it is recommended to not cast the LayerNorms</span></span>
+<span id="cb62-38"><a href="#cb62-38" aria-hidden="true" tabindex="-1"></a>    <span class="co"># in fp32. (usually our RMSNorm modules handle it correctly)</span></span>
+<span id="cb62-39"><a href="#cb62-39" aria-hidden="true" tabindex="-1"></a>    target_dtype <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb62-40"><a href="#cb62-40" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> query.dtype <span class="op">==</span> torch.float32:</span>
+<span id="cb62-41"><a href="#cb62-41" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> torch.is_autocast_enabled():</span>
+<span id="cb62-42"><a href="#cb62-42" aria-hidden="true" tabindex="-1"></a>            target_dtype <span class="op">=</span> torch.get_autocast_gpu_dtype()</span>
+<span id="cb62-43"><a href="#cb62-43" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Handle the case where the model is quantized</span></span>
+<span id="cb62-44"><a href="#cb62-44" aria-hidden="true" tabindex="-1"></a>        <span class="cf">elif</span> <span class="bu">hasattr</span>(module.config, <span class="st">"_pre_quantization_dtype"</span>):</span>
+<span id="cb62-45"><a href="#cb62-45" aria-hidden="true" tabindex="-1"></a>            target_dtype <span class="op">=</span> module.config._pre_quantization_dtype</span>
+<span id="cb62-46"><a href="#cb62-46" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
+<span id="cb62-47"><a href="#cb62-47" aria-hidden="true" tabindex="-1"></a>            target_dtype <span class="op">=</span> <span class="bu">next</span>(layer <span class="cf">for</span> layer <span class="kw">in</span> module.modules() <span class="cf">if</span> <span class="bu">isinstance</span>(layer, torch.nn.Linear)).weight.dtype</span>
+<span id="cb62-48"><a href="#cb62-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-49"><a href="#cb62-49" aria-hidden="true" tabindex="-1"></a>    <span class="co"># FA2 always relies on the value set in the module, so remove it if present in kwargs to avoid passing it twice</span></span>
+<span id="cb62-50"><a href="#cb62-50" aria-hidden="true" tabindex="-1"></a>    kwargs.pop(<span class="st">"is_causal"</span>, <span class="va">None</span>)</span>
+<span id="cb62-51"><a href="#cb62-51" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-52"><a href="#cb62-52" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"DEBUG: calling _flash_attention_forward"</span>)</span>
+<span id="cb62-53"><a href="#cb62-53" aria-hidden="true" tabindex="-1"></a>    attn_output <span class="op">=</span> _debug_flash_attention_forward(</span>
+<span id="cb62-54"><a href="#cb62-54" aria-hidden="true" tabindex="-1"></a>        query,</span>
+<span id="cb62-55"><a href="#cb62-55" aria-hidden="true" tabindex="-1"></a>        key,</span>
+<span id="cb62-56"><a href="#cb62-56" aria-hidden="true" tabindex="-1"></a>        value,</span>
+<span id="cb62-57"><a href="#cb62-57" aria-hidden="true" tabindex="-1"></a>        attention_mask,</span>
+<span id="cb62-58"><a href="#cb62-58" aria-hidden="true" tabindex="-1"></a>        query_length<span class="op">=</span>seq_len,</span>
+<span id="cb62-59"><a href="#cb62-59" aria-hidden="true" tabindex="-1"></a>        is_causal<span class="op">=</span>module.is_causal,</span>
+<span id="cb62-60"><a href="#cb62-60" aria-hidden="true" tabindex="-1"></a>        dropout<span class="op">=</span>dropout,</span>
+<span id="cb62-61"><a href="#cb62-61" aria-hidden="true" tabindex="-1"></a>        softmax_scale<span class="op">=</span>scaling,</span>
+<span id="cb62-62"><a href="#cb62-62" aria-hidden="true" tabindex="-1"></a>        sliding_window<span class="op">=</span>sliding_window,</span>
+<span id="cb62-63"><a href="#cb62-63" aria-hidden="true" tabindex="-1"></a>        softcap<span class="op">=</span>softcap,</span>
+<span id="cb62-64"><a href="#cb62-64" aria-hidden="true" tabindex="-1"></a>        use_top_left_mask<span class="op">=</span>_use_top_left_mask,</span>
+<span id="cb62-65"><a href="#cb62-65" aria-hidden="true" tabindex="-1"></a>        target_dtype<span class="op">=</span>target_dtype,</span>
+<span id="cb62-66"><a href="#cb62-66" aria-hidden="true" tabindex="-1"></a>        <span class="op">**</span>kwargs,</span>
+<span id="cb62-67"><a href="#cb62-67" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb62-68"><a href="#cb62-68" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-69"><a href="#cb62-69" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> attn_output, <span class="va">None</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell" data-execution_count="87">
+<details>
+<summary>Show `debug_forward</summary>
+<div class="sourceCode cell-code" id="cb63"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1"><a href="#cb63-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> typing <span class="im">import</span> Callable, Optional, Tuple, Union</span>
+<span id="cb63-2"><a href="#cb63-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.modeling_flash_attention_utils <span class="im">import</span> FlashAttentionKwargs</span>
+<span id="cb63-3"><a href="#cb63-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.cache_utils <span class="im">import</span> Cache, DynamicCache</span>
+<span id="cb63-4"><a href="#cb63-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.processing_utils <span class="im">import</span> Unpack</span>
+<span id="cb63-5"><a href="#cb63-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.models.llama.modeling_llama <span class="im">import</span> apply_rotary_pos_emb</span>
+<span id="cb63-6"><a href="#cb63-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.models.llama.modeling_llama <span class="im">import</span> eager_attention_forward</span>
+<span id="cb63-7"><a href="#cb63-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.modeling_utils <span class="im">import</span> ALL_ATTENTION_FUNCTIONS</span>
+<span id="cb63-8"><a href="#cb63-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb63-9"><a href="#cb63-9" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> debug_forward(</span>
+<span id="cb63-10"><a href="#cb63-10" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>,</span>
+<span id="cb63-11"><a href="#cb63-11" aria-hidden="true" tabindex="-1"></a>    hidden_states: torch.Tensor,</span>
+<span id="cb63-12"><a href="#cb63-12" aria-hidden="true" tabindex="-1"></a>    position_embeddings: Tuple[torch.Tensor, torch.Tensor],</span>
+<span id="cb63-13"><a href="#cb63-13" aria-hidden="true" tabindex="-1"></a>    attention_mask: Optional[torch.Tensor],</span>
+<span id="cb63-14"><a href="#cb63-14" aria-hidden="true" tabindex="-1"></a>    past_key_value: Optional[Cache] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb63-15"><a href="#cb63-15" aria-hidden="true" tabindex="-1"></a>    cache_position: Optional[torch.LongTensor] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb63-16"><a href="#cb63-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs: Unpack[FlashAttentionKwargs],</span>
+<span id="cb63-17"><a href="#cb63-17" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:</span>
+<span id="cb63-18"><a href="#cb63-18" aria-hidden="true" tabindex="-1"></a>    input_shape <span class="op">=</span> hidden_states.shape[:<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb63-19"><a href="#cb63-19" aria-hidden="true" tabindex="-1"></a>    hidden_shape <span class="op">=</span> (<span class="op">*</span>input_shape, <span class="op">-</span><span class="dv">1</span>, <span class="va">self</span>.head_dim)</span>
+<span id="cb63-20"><a href="#cb63-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb63-21"><a href="#cb63-21" aria-hidden="true" tabindex="-1"></a>    query_states <span class="op">=</span> <span class="va">self</span>.q_proj(hidden_states).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb63-22"><a href="#cb63-22" aria-hidden="true" tabindex="-1"></a>    key_states <span class="op">=</span> <span class="va">self</span>.k_proj(hidden_states).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb63-23"><a href="#cb63-23" aria-hidden="true" tabindex="-1"></a>    value_states <span class="op">=</span> <span class="va">self</span>.v_proj(hidden_states).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb63-24"><a href="#cb63-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb63-25"><a href="#cb63-25" aria-hidden="true" tabindex="-1"></a>    cos, sin <span class="op">=</span> position_embeddings</span>
+<span id="cb63-26"><a href="#cb63-26" aria-hidden="true" tabindex="-1"></a>    query_states, key_states <span class="op">=</span> apply_rotary_pos_emb(query_states, key_states, cos, sin)</span>
+<span id="cb63-27"><a href="#cb63-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb63-28"><a href="#cb63-28" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> past_key_value <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb63-29"><a href="#cb63-29" aria-hidden="true" tabindex="-1"></a>        <span class="co"># sin and cos are specific to RoPE models; cache_position needed for the static cache</span></span>
+<span id="cb63-30"><a href="#cb63-30" aria-hidden="true" tabindex="-1"></a>        cache_kwargs <span class="op">=</span> {<span class="st">"sin"</span>: sin, <span class="st">"cos"</span>: cos, <span class="st">"cache_position"</span>: cache_position}</span>
+<span id="cb63-31"><a href="#cb63-31" aria-hidden="true" tabindex="-1"></a>        key_states, value_states <span class="op">=</span> past_key_value.update(key_states, value_states, <span class="va">self</span>.layer_idx, cache_kwargs)</span>
+<span id="cb63-32"><a href="#cb63-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb63-33"><a href="#cb63-33" aria-hidden="true" tabindex="-1"></a>    attention_interface: Callable <span class="op">=</span> eager_attention_forward</span>
+<span id="cb63-34"><a href="#cb63-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb63-35"><a href="#cb63-35" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="va">self</span>.config._attn_implementation <span class="op">!=</span> <span class="st">"eager"</span>:</span>
+<span id="cb63-36"><a href="#cb63-36" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="va">self</span>.config._attn_implementation <span class="op">==</span> <span class="st">"sdpa"</span> <span class="kw">and</span> kwargs.get(<span class="st">"output_attentions"</span>, <span class="va">False</span>):</span>
+<span id="cb63-37"><a href="#cb63-37" aria-hidden="true" tabindex="-1"></a>            <span class="bu">print</span>(</span>
+<span id="cb63-38"><a href="#cb63-38" aria-hidden="true" tabindex="-1"></a>                <span class="st">"`torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to "</span></span>
+<span id="cb63-39"><a href="#cb63-39" aria-hidden="true" tabindex="-1"></a>                <span class="st">'eager attention. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'</span></span>
+<span id="cb63-40"><a href="#cb63-40" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb63-41"><a href="#cb63-41" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
+<span id="cb63-42"><a href="#cb63-42" aria-hidden="true" tabindex="-1"></a>            <span class="co">#attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]</span></span>
+<span id="cb63-43"><a href="#cb63-43" aria-hidden="true" tabindex="-1"></a>            attention_interface <span class="op">=</span> debug_flash_attention_forward</span>
+<span id="cb63-44"><a href="#cb63-44" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb63-45"><a href="#cb63-45" aria-hidden="true" tabindex="-1"></a>    attn_output, attn_weights <span class="op">=</span> attention_interface(</span>
+<span id="cb63-46"><a href="#cb63-46" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>,</span>
+<span id="cb63-47"><a href="#cb63-47" aria-hidden="true" tabindex="-1"></a>        query_states,</span>
+<span id="cb63-48"><a href="#cb63-48" aria-hidden="true" tabindex="-1"></a>        key_states,</span>
+<span id="cb63-49"><a href="#cb63-49" aria-hidden="true" tabindex="-1"></a>        value_states,</span>
+<span id="cb63-50"><a href="#cb63-50" aria-hidden="true" tabindex="-1"></a>        attention_mask,</span>
+<span id="cb63-51"><a href="#cb63-51" aria-hidden="true" tabindex="-1"></a>        dropout<span class="op">=</span><span class="fl">0.0</span> <span class="cf">if</span> <span class="kw">not</span> <span class="va">self</span>.training <span class="cf">else</span> <span class="va">self</span>.attention_dropout,</span>
+<span id="cb63-52"><a href="#cb63-52" aria-hidden="true" tabindex="-1"></a>        scaling<span class="op">=</span><span class="va">self</span>.scaling,</span>
+<span id="cb63-53"><a href="#cb63-53" aria-hidden="true" tabindex="-1"></a>        <span class="op">**</span>kwargs,</span>
+<span id="cb63-54"><a href="#cb63-54" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb63-55"><a href="#cb63-55" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb63-56"><a href="#cb63-56" aria-hidden="true" tabindex="-1"></a>    attn_output <span class="op">=</span> attn_output.reshape(<span class="op">*</span>input_shape, <span class="op">-</span><span class="dv">1</span>).contiguous()</span>
+<span id="cb63-57"><a href="#cb63-57" aria-hidden="true" tabindex="-1"></a>    attn_output <span class="op">=</span> <span class="va">self</span>.o_proj(attn_output)</span>
+<span id="cb63-58"><a href="#cb63-58" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> attn_output, attn_weights</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a>tokenizer <span class="op">=</span> AutoTokenizer.from_pretrained(<span class="st">"HuggingFaceTB/SmolLM2-135M"</span>)</span>
+<span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> AutoModelForCausalLM.from_pretrained(<span class="st">"HuggingFaceTB/SmolLM2-135M"</span>, attn_implementation<span class="op">=</span><span class="st">"flash_attention_2"</span>, torch_dtype<span class="op">=</span>torch.bfloat16).to(<span class="st">"cuda"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p><code>types.MethodType</code> binds a function (<code>debug_forward</code>) as a method for a class (<code>attn_layer_instance</code>).</p>
+<div class="cell" data-execution_count="89">
+<div class="sourceCode cell-code" id="cb65"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> types</span>
+<span id="cb65-2"><a href="#cb65-2" aria-hidden="true" tabindex="-1"></a>types.MethodType??</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<pre><code>Init signature: types.MethodType(self, /, *args, **kwargs)
+Docstring:      Create a bound instance method object.
+Type:           type
+Subclasses:    </code></pre>
+<div class="cell" data-execution_count="90">
+<div class="sourceCode cell-code" id="cb67"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb67-1"><a href="#cb67-1" aria-hidden="true" tabindex="-1"></a>attn_layer_instance <span class="op">=</span> model.model.layers[<span class="dv">0</span>].self_attn</span>
+<span id="cb67-2"><a href="#cb67-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb67-3"><a href="#cb67-3" aria-hidden="true" tabindex="-1"></a>original_layer_forward <span class="op">=</span> attn_layer_instance.forward</span>
+<span id="cb67-4"><a href="#cb67-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb67-5"><a href="#cb67-5" aria-hidden="true" tabindex="-1"></a>attn_layer_instance.forward <span class="op">=</span> types.MethodType(debug_forward, attn_layer_instance)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell" data-outputid="f9c3e320-4cc7-4467-bd12-727167ceb4b9" data-execution_count="91">
+<div class="sourceCode cell-code" id="cb68"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb68-1"><a href="#cb68-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> create_hook_fn():</span>
+<span id="cb68-2"><a href="#cb68-2" aria-hidden="true" tabindex="-1"></a>    count <span class="op">=</span> <span class="dv">1</span></span>
+<span id="cb68-3"><a href="#cb68-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> hook_fn(module, args, kwargs, output):</span>
+<span id="cb68-4"><a href="#cb68-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">nonlocal</span> count</span>
+<span id="cb68-5"><a href="#cb68-5" aria-hidden="true" tabindex="-1"></a>        input_shape <span class="op">=</span> kwargs[<span class="st">'hidden_states'</span>].shape[:<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb68-6"><a href="#cb68-6" aria-hidden="true" tabindex="-1"></a>        hidden_shape <span class="op">=</span> (<span class="op">*</span>input_shape, <span class="op">-</span><span class="dv">1</span>, module.head_dim)</span>
+<span id="cb68-7"><a href="#cb68-7" aria-hidden="true" tabindex="-1"></a>        query_states <span class="op">=</span> module.q_proj(kwargs[<span class="st">'hidden_states'</span>]).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb68-8"><a href="#cb68-8" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(count, <span class="bu">len</span>(kwargs[<span class="st">'past_key_value'</span>].key_cache), <span class="ss">f"query_states.shape: </span><span class="sc">{</span>query_states<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">"</span>, <span class="ss">f"k.shape: </span><span class="sc">{</span>kwargs[<span class="st">'past_key_value'</span>]<span class="sc">.</span>key_cache[<span class="dv">0</span>]<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb68-9"><a href="#cb68-9" aria-hidden="true" tabindex="-1"></a>        <span class="co"># for k in kwargs['past_key_value'].key_cache: print(k.shape) # do this for v as well</span></span>
+<span id="cb68-10"><a href="#cb68-10" aria-hidden="true" tabindex="-1"></a>        count <span class="op">+=</span> <span class="dv">1</span></span>
+<span id="cb68-11"><a href="#cb68-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> hook_fn</span>
+<span id="cb68-12"><a href="#cb68-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb68-13"><a href="#cb68-13" aria-hidden="true" tabindex="-1"></a>_hook_fn <span class="op">=</span> create_hook_fn()</span>
+<span id="cb68-14"><a href="#cb68-14" aria-hidden="true" tabindex="-1"></a>attn_layer <span class="op">=</span> model.model.layers[<span class="dv">0</span>].self_attn</span>
+<span id="cb68-15"><a href="#cb68-15" aria-hidden="true" tabindex="-1"></a>hook_handle <span class="op">=</span> attn_layer.register_forward_hook(_hook_fn, with_kwargs<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb68-16"><a href="#cb68-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb68-17"><a href="#cb68-17" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">5</span>)</span>
+<span id="cb68-18"><a href="#cb68-18" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(outputs.sequences[<span class="dv">0</span>].shape)</span>
+<span id="cb68-19"><a href="#cb68-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb68-20"><a href="#cb68-20" aria-hidden="true" tabindex="-1"></a>hook_handle.remove()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>DEBUG: calling _flash_attention_forward
+flash_attn_func is being used
+1 1 query_states.shape: torch.Size([1, 9, 3, 64]) k.shape: torch.Size([1, 3, 3, 64])
+DEBUG: calling _flash_attention_forward
+flash_attn_func is being used
+2 30 query_states.shape: torch.Size([1, 9, 1, 64]) k.shape: torch.Size([1, 3, 4, 64])
+DEBUG: calling _flash_attention_forward
+flash_attn_func is being used
+3 30 query_states.shape: torch.Size([1, 9, 1, 64]) k.shape: torch.Size([1, 3, 5, 64])
+DEBUG: calling _flash_attention_forward
+flash_attn_func is being used
+4 30 query_states.shape: torch.Size([1, 9, 1, 64]) k.shape: torch.Size([1, 3, 6, 64])
+DEBUG: calling _flash_attention_forward
+flash_attn_func is being used
+5 30 query_states.shape: torch.Size([1, 9, 1, 64]) k.shape: torch.Size([1, 3, 7, 64])
+torch.Size([8])</code></pre>
+</div>
+</div>
+<p>From the print statements in my <code>_debug_flash_attention_forward</code> function, I can see that <code>flash_attn_func</code>, the non-variable-length interface, is being used for this generation. That makes sense because I only have 1 item in the batch.</p>
+</section>
+<section id="understanding-the-flash_attn_varlen_func-causal-mask-docstring" class="level2">
+<h2 class="anchored" data-anchor-id="understanding-the-flash_attn_varlen_func-causal-mask-docstring">Understanding the <code>flash_attn_varlen_func</code> Causal Mask Docstring</h2>
+<p>A quick recap of what we’ve learned so far:</p>
+<ul>
+<li>HuggingFace’s <code>model.generate</code> uses KV cache by default (<code>DynamicCache</code>) stored as <code>past_key_values</code>.</li>
+<li>For most scenarios, the <code>DynamicCache</code> is updated by concatenating the previous token’s <code>key_cache</code> and <code>value_cache</code> with the <code>key_states</code> and <code>value_states</code> generated for the current new token.</li>
+<li>As the next token is generated for a given prompt, <code>query_states</code> has a sequence length of <code>1</code>, whereas <code>key_cache</code> and <code>value_cache</code> tensors’ sequence dimension increases by 1. This is directly relates to the <code>flash_attn_varlen_func</code> causal mask docstring example.</li>
+<li><code>model.generate</code> utilized the <code>flash_attn_func</code> interface.</li>
+</ul>
+<p>Let’s look at the <code>flash_attn_varlen_func</code> docstring snippet again:</p>
+<pre><code>If causal=True, the causal mask is aligned to the bottom right corner of the attention matrix.
+For example, if seqlen_q = 2 and seqlen_k = 5, the causal mask (1 = keep, 0 = masked out) is:
+    1 1 1 1 0
+    1 1 1 1 1
+If seqlen_q = 5 and seqlen_k = 2, the causal mask is:
+    0 0
+    0 0
+    0 0
+    1 0
+    1 1
+If the row of the mask is all zero, the output will be zero.</code></pre>
+<p>I’ll annotate the causal mask examples a bit:</p>
+<section id="seqlen_q2-and-seqlen_k5" class="level3">
+<h3 class="anchored" data-anchor-id="seqlen_q2-and-seqlen_k5"><code>seqlen_q=2</code> and <code>seqlen_k=5</code></h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;"></th>
+<th style="text-align: center;">k_0</th>
+<th style="text-align: center;">k_1</th>
+<th style="text-align: center;">k_2</th>
+<th style="text-align: center;">k_3</th>
+<th style="text-align: center;">k_4</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><strong>q_0</strong></td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><strong>q_1</strong></td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+</tr>
+</tbody>
+</table>
+<p>The final query token (<code>q_1</code>) sees all 5 key tokens. The first query token (<code>q_0</code>) only sees the first four key tokens.</p>
+</section>
+<section id="seqlen_q5-and-seqlen_k2" class="level3">
+<h3 class="anchored" data-anchor-id="seqlen_q5-and-seqlen_k2"><code>seqlen_q=5</code> and <code>seqlen_k=2</code></h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;"></th>
+<th style="text-align: center;">k_0</th>
+<th style="text-align: center;">k_1</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><strong>q_0</strong></td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><strong>q_1</strong></td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><strong>q_2</strong></td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><strong>q_3</strong></td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><strong>q_4</strong></td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+</tr>
+</tbody>
+</table>
+<p>Again, the final query token (<code>q_4</code>) sees all key tokens. As a consequence, since there are only two key tokens, the first three query tokens do not see any key tokens.</p>
+<p>In each example, we are offsetting the shorter sequence so that its last token aligns with the other sequences’s last token. This is what the <code>flash_attn_varlen_func</code> docstring means by</p>
+<blockquote class="blockquote">
+<p><code>the causal mask is aligned to the bottom right corner of the attention matrix</code></p>
+</blockquote>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="Annotated casual masks"><img src="1.png" class="img-fluid figure-img"></a></p>
+<p></p><figcaption class="figure-caption">Annotated casual masks</figcaption><p></p>
+</figure>
+</div>
+<p>In the first case, the query sequence is shorter so we offset it by 3 positions to align with the last two tokens of the key sequence. The “offset” positions are 1s (this satisfies the rule of causality <code>j &lt;= i</code>, query tokens can look back). In the second case, the key sequence is shorter so we offset it by 3 positions to align with the last two tokens of the query sequence. The offset positions are 0s (again, this satisfies causality, the query tokens have nothing to look back to).</p>
+<p>The <code>model.generate</code> examples above are like the first case, where there are more key positions than query positions. The query token (the next-token being predicted) can look back at all key tokens.</p>
+</section>
+<section id="a-math-y-way-to-think-about-it" class="level3">
+<h3 class="anchored" data-anchor-id="a-math-y-way-to-think-about-it">A Math-y Way to think About It</h3>
+<p>For those of you who like to think through things with math.</p>
+<p>Causality (in language modeling) means that a query token vector at the i-th position can only see its own and previous tokens’ key vectors. Having different sequence lengths for Q and K (5 and 2 or 2 and 5 in the <code>flash_attn_varlen_func</code> docstring example or 1 and 3-7 in my inspections above) requires you to pick <em>how</em> Q and K are aligned. In the case of <code>flash_attn_varlen_func</code> they choose to align Q and K such as <em>the last Q token vector is aligned with the last K token vector</em>. This becomes our “present moment” <code>P</code> with causality allowing access to previous tokens only.</p>
+<p>Let’s define <code>i</code> as the position of query tokens and <code>j</code> as the position of key tokens. Causality is defined as token pairs that follow the inequality: <code>j &lt;= i + (seqlen_k - seqlen_q)</code>.</p>
+<p>For the first causal mask example:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;"><code>j</code></th>
+<th style="text-align: center;"><code>i</code></th>
+<th style="text-align: center;"><code>j &lt;= i + (seqlen_k - seqlen_q)</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0 &lt;= 0 + 3 (<code>True</code>)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">1 &lt;= 0 + 3 (<code>True</code>)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">2</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">2 &lt;= 0 + 3 (<code>True</code>)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">3</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">3 &lt;= 0 + 3 (<code>True</code>)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">4</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">4 &lt;= 0 + 3 (<code>False</code>)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">0 &lt;= 1 + 3 (<code>True</code>)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1 &lt;= 1 + 3 (<code>True</code>)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">2 &lt;= 1 + 3 (<code>True</code>)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">3</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">3 &lt;= 1 + 3 (<code>True</code>)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">4</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">4 &lt;= 1 + 3 (<code>True</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Where does <code>j &lt;= i + (seqlen_k - seqlen_q)</code> come from?</p>
+<p>Let <code>q_i</code> be a query that is <code>seqlen_q - 1 - i</code> steps before the end of the query sequence, and <code>k_j</code> be a key that is <code>seqlen_k - 1 - j</code> steps before the end of the key sequence. More concretely, for the example where <code>seqlen_q = 2</code> and <code>seqlen_k=5</code>:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">q_i</th>
+<th style="text-align: center;">Steps before end</th>
+<th style="text-align: center;"><code>seqlen_q - 1 - i</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">q_0</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">2 - 1 - 0</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">q_1</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">2 - 1 - 1</td>
+</tr>
+</tbody>
+</table>
+<p><br></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">k_j</th>
+<th style="text-align: center;">Steps before end</th>
+<th style="text-align: center;"><code>seqlen_k - 1 - j</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">k_0</td>
+<td style="text-align: center;">4</td>
+<td style="text-align: center;">5 - 1 - 0</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">k_1</td>
+<td style="text-align: center;">3</td>
+<td style="text-align: center;">5 - 1 - 1</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">k_2</td>
+<td style="text-align: center;">2</td>
+<td style="text-align: center;">5 - 2 - 1</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">k_3</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">5 - 3 - 1</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">k_4</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">5 - 4 - 1</td>
+</tr>
+</tbody>
+</table>
+<p>By picking a “present moment” <code>P</code> (the last token in each sequence) have a unified timeline <code>p</code> such that causality is defined as: <code>p_j &lt;= p_i</code>. <code>k_j</code> has a position on the timeline <code>p_j = P - (seqlen_k - 1 - j)</code> and <code>q_i</code> has a position on the timeline <code>p_i = P - (seqlen_q - 1 - i)</code>. Causality requires that <code>p_j &lt;= p_i</code> on our “unified timeline”. Writing that out:</p>
+<p><code>P - (seqlen_k - 1 - j) &lt;= P - (seqlen_q - 1 - i)</code></p>
+<p>Cancelling out the <code>P</code>s and distributing the minus sign:</p>
+<p><code>-seqlen_k + 1 + j &lt;= -seqlen_q + 1 + i</code></p>
+<p>Isolating <code>j</code> on the lefthand side:</p>
+<p><code>j &lt;= -seqlen_q + 1 + i + seqlen_k - 1</code></p>
+<p>Simplifying + reordering:</p>
+<p><code>j &lt;= i + (seqlen_k - seqlen_q)</code></p>
+<p>We can think of this <code>(seqlen_k - seqlen_q)</code> to be an “offset” term between the two sequences.</p>
+<p>Looking at this concretely for the second causal mask:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;"></th>
+<th style="text-align: center;">k_0</th>
+<th style="text-align: center;">k_1</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><strong>q_0</strong></td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><strong>q_1</strong></td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><strong>q_2</strong></td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><strong>q_3</strong></td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">0</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><strong>q_4</strong></td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+</tr>
+</tbody>
+</table>
+<p><br></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: center;"><code>j</code></th>
+<th style="text-align: center;"><code>i</code></th>
+<th style="text-align: center;"><code>j &lt;= i + (seqlen_k - seqlen_q)</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0 &lt;= 0 - 3 (<code>False</code>)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">0 &lt;= 1 - 3 (<code>False</code>)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">2</td>
+<td style="text-align: center;">0 &lt;= 2 - 3 (<code>False</code>)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">3</td>
+<td style="text-align: center;">0 &lt;= 3 - 3 (<code>True</code>)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">4</td>
+<td style="text-align: center;">0 &lt;= 4 - 3 (<code>True</code>)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">1 &lt;= 0 - 3 (<code>False</code>)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1 &lt;= 1 - 3 (<code>False</code>)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">2</td>
+<td style="text-align: center;">1 &lt;= 2 - 3 (<code>False</code>)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">3</td>
+<td style="text-align: center;">1 &lt;= 3 - 3 (<code>False</code>)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">4</td>
+<td style="text-align: center;">1 &lt;= 4 - 3 (<code>True</code>)</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="closing-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="closing-thoughts">Closing Thoughts</h2>
+<p>Understanding <code>flash_attn_varlen_func</code> is going to require a sequence (pun intended) of such deep dives. It took me hours to just get through the docstring!! I’m also working on understanding ModernBERT’s sequence packing implementation (to the point of explaining it with visuals) and I expect it to interweave with my Flash Attention study, especially when understanding how ModernBERT prepares and packs sequences and related artifacts in preparation of passing it through the attention mechanism, utilizing <code>flash_attn_varlen_func</code>. It’s an exciting one-two punch for sure! I’m glad I’m working on them together.</p>
+<p>I’ll end with listing out again what I’ve learned in this notebook/exercise, with a couple points added about the causal mask:</p>
+<ul>
+<li>HuggingFace’s <code>model.generate</code> uses KV cache by default (<code>DynamicCache</code>) stored as <code>past_key_values</code>.</li>
+<li>For most scenarios, the <code>DynamicCache</code> is updated by concatenating the previous token’s <code>key_cache</code> and <code>value_cache</code> with the <code>key_states</code> and <code>value_states</code> generated for the current new token.</li>
+<li>As the next token is generated for a given prompt, <code>query_states</code> has a sequence length of <code>1</code>, whereas <code>key_cache</code> and <code>value_cache</code> tensors’ sequence dimension increases by 1. This is directly relates to the <code>flash_attn_varlen_func</code> causal mask docstring example.</li>
+<li><code>model.generate</code> utilized the <code>flash_attn_func</code> interface.</li>
+<li>The causal mask is aligned to the bottom-right of the attention matrix (the last tokens of the Q and K sequence are aligned).</li>
+<li>Causality, when <span class="math inline">\(Q_i\)</span> and <span class="math inline">\(K_j\)</span> sequences are of different length, is satisfied by the equation <code>j &lt;= i + (seqlen_k - seqlen_q)</code>.</li>
+<li>When there are more query tokens than key tokens, the “offset” (needed to align the last token of each sequence) results in 0s in the mask as there are no key tokens to “look back at”.</li>
+<li>When there are more key tokens than query tokens, the “offset” results in 1s as the query tokens can look back at more key tokens.</li>
+</ul>
+<p>I’m trying to grow my YouTube channel this year so if you enjoyed this blog post, <a href="https://www.youtube.com/@vishal_learner">please subscribe!</a></p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<script>var lightboxQuarto = GLightbox({"selector":".lightbox","descPosition":"bottom","loop":true,"closeEffect":"zoom","openEffect":"zoom"});</script>
+
+
+
+</body></html>
