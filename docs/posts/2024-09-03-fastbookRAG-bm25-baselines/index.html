@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.2.335">
+<meta name="generator" content="quarto-1.7.32">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -10,7 +10,7 @@
 <meta name="dcterms.date" content="2024-09-03">
 <meta name="description" content="In this blog post, I experiment with 6 chunking/retrieval strategies to retrieve context from a sqlite database sufficient to answer 76.7% of the 202 fastbook end-of-chapter questions from Part 1 of the course.">
 
-<title>Vishal Bakshi’s Blog - Establishing a Full Text Search (BM25) Baseline for My fastbookRAG Project</title>
+<title>Establishing a Full Text Search (BM25) Baseline for My fastbookRAG Project – Vishal Bakshi’s Blog</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -20,9 +20,11 @@ div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
 ul.task-list{list-style: none;}
 ul.task-list li input[type="checkbox"] {
   width: 0.8em;
-  margin: 0 0.8em 0.2em -1.6em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
 pre > code.sourceCode { white-space: pre; position: relative; }
 pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
 pre > code.sourceCode > span:empty { height: 1.2em; }
@@ -49,62 +51,33 @@ pre.numberSource code > span > a:first-child::before
     -khtml-user-select: none; -moz-user-select: none;
     -ms-user-select: none; user-select: none;
     padding: 0 4px; width: 4em;
-    color: #aaaaaa;
   }
-pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
 div.sourceCode
   {   }
 @media screen {
 pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
-code span.al { color: #ff0000; font-weight: bold; } /* Alert */
-code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
-code span.at { color: #7d9029; } /* Attribute */
-code span.bn { color: #40a070; } /* BaseN */
-code span.bu { color: #008000; } /* BuiltIn */
-code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
-code span.ch { color: #4070a0; } /* Char */
-code span.cn { color: #880000; } /* Constant */
-code span.co { color: #60a0b0; font-style: italic; } /* Comment */
-code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
-code span.do { color: #ba2121; font-style: italic; } /* Documentation */
-code span.dt { color: #902000; } /* DataType */
-code span.dv { color: #40a070; } /* DecVal */
-code span.er { color: #ff0000; font-weight: bold; } /* Error */
-code span.ex { } /* Extension */
-code span.fl { color: #40a070; } /* Float */
-code span.fu { color: #06287e; } /* Function */
-code span.im { color: #008000; font-weight: bold; } /* Import */
-code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
-code span.kw { color: #007020; font-weight: bold; } /* Keyword */
-code span.op { color: #666666; } /* Operator */
-code span.ot { color: #007020; } /* Other */
-code span.pp { color: #bc7a00; } /* Preprocessor */
-code span.sc { color: #4070a0; } /* SpecialChar */
-code span.ss { color: #bb6688; } /* SpecialString */
-code span.st { color: #4070a0; } /* String */
-code span.va { color: #19177c; } /* Variable */
-code span.vs { color: #4070a0; } /* VerbatimString */
-code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
 </style>
 
 
-<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="../../site_libs/quarto-nav/headroom.min.js"></script>
 <script src="../../site_libs/clipboard/clipboard.min.js"></script>
 <script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
 <script src="../../site_libs/quarto-search/fuse.min.js"></script>
 <script src="../../site_libs/quarto-search/quarto-search.js"></script>
 <meta name="quarto:offset" content="../../">
-<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
 <script src="../../site_libs/quarto-html/popper.min.js"></script>
 <script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-37eea08aefeeee20ff55810ff984fec1.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-9c1ae87ad5063dce4f793ccd314a7566.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
 <link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
 <link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
@@ -114,7 +87,13 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   "collapse-after": 3,
   "panel-placement": "end",
   "type": "overlay",
-  "limit": 20,
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
   "language": {
     "search-no-results-text": "No results",
     "search-matching-documents-text": "matching documents",
@@ -123,52 +102,56 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     "search-more-match-text": "more match in this document",
     "search-more-matches-text": "more matches in this document",
     "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
     "search-detached-cancel-button-title": "Cancel",
-    "search-submit-button-title": "Submit"
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
   }
 }</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+
 <script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
 
 
 <link rel="stylesheet" href="../../styles.css">
 </head>
 
-<body class="nav-fixed">
+<body class="nav-fixed quarto-light">
 
 <div id="quarto-search-results"></div>
   <header id="quarto-header" class="headroom fixed-top">
-    <nav class="navbar navbar-expand-lg navbar-dark ">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
-      <div class="navbar-brand-container">
+      <div class="navbar-brand-container mx-auto">
     <a class="navbar-brand" href="../../index.html">
     <span class="navbar-title">Vishal Bakshi’s Blog</span>
     </a>
   </div>
-          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
   <span class="navbar-toggler-icon"></span>
 </button>
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll me-auto">
   <li class="nav-item">
-    <a class="nav-link" href="../../index.html">
- <span class="menu-text">Home</span></a>
+    <a class="nav-link" href="../../index.html"> 
+<span class="menu-text">Home</span></a>
   </li>  
   <li class="nav-item">
-    <a class="nav-link" href="../../about.html">
- <span class="menu-text">About</span></a>
+    <a class="nav-link" href="../../about.html"> 
+<span class="menu-text">About</span></a>
   </li>  
 </ul>
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
   <li class="nav-item compact">
-    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+    <a class="nav-link" href="../../index.xml"> <i class="bi bi-rss" role="img">
 </i> 
- <span class="menu-text"></span></a>
+<span class="menu-text"></span></a>
   </li>  
 </ul>
-              <div id="quarto-search" class="" title="Search"></div>
           </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
       </div> <!-- /container-fluid -->
     </nav>
 </header>
@@ -262,15 +245,17 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   </div>
   
 
+
 </header>
+
 
 <section id="introduction" class="level2">
 <h2 class="anchored" data-anchor-id="introduction">Introduction</h2>
 <p>This notebook is a part of <a href="https://vishalbakshi.github.io/blog/#category=fastbookRAG">series of blog posts</a> for a project I’m calling <strong>fastbookRAG</strong> where I’m trying to answer questions from the <a href="https://github.com/fastai/fastbook/tree/master">fastbook</a> end-of-chapter Questionnaires using the following pipeline:</p>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><a href="1.png" class="lightbox" title="fastbookRAG diagram" data-gallery="quarto-lightbox-gallery-1"><img src="1.png" class="img-fluid figure-img"></a></p>
-<p></p><figcaption class="figure-caption">fastbookRAG diagram</figcaption><p></p>
+<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="fastbookRAG diagram"><img src="1.png" class="img-fluid figure-img" alt="fastbookRAG diagram"></a></p>
+<figcaption>fastbookRAG diagram</figcaption>
 </figure>
 </div>
 <p>This notebook establishes a baseline using BM25 for keyword-based retrieval on chunks of the fastbook chapters covered in <a href="https://course.fast.ai/">Part 1 of the fastai course</a> (1, 2, 4, 8, 9, 10, and 13). I generate keywords (for full text search) for each question <a href="https://vishalbakshi.github.io/blog/posts/2024-08-27-fastbookRAG-claude-keywords/">using the Claude-3.5-Sonnet API (using the Answer.AI library <code>claudette</code>)</a>.</p>
@@ -280,7 +265,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="summary-of-results" class="level2">
 <h2 class="anchored" data-anchor-id="summary-of-results">Summary of Results</h2>
 <p>Here are the results from my experiments in this notebook—in general, the best performing full text search method (76.7% Answer Rate overall) was retrieving the top-5 (BM25 score) 3-paragraph chunks based on the given set of keywords using FTS5 in sqlite:</p>
-<table class="table">
+<table class="caption-top table">
 <colgroup>
 <col style="width: 14%">
 <col style="width: 14%">
@@ -410,20 +395,20 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <p>Key inspirations for why I chose to establish a BM25 baseline:</p>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><a href="eugeneyan_bm25.png" class="lightbox" title="Eugene Yan Tweet" data-gallery="quarto-lightbox-gallery-2"><img src="eugeneyan_bm25.png" class="img-fluid figure-img"></a></p>
-<p></p><figcaption class="figure-caption">Eugene Yan Tweet</figcaption><p></p>
+<p><a href="eugeneyan_bm25.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2" title="Eugene Yan Tweet"><img src="eugeneyan_bm25.png" class="img-fluid figure-img" alt="Eugene Yan Tweet"></a></p>
+<figcaption>Eugene Yan Tweet</figcaption>
 </figure>
 </div>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><a href="simonw_bm25.png" class="lightbox" title="Simon Willison Tweet" data-gallery="quarto-lightbox-gallery-3"><img src="simonw_bm25.png" class="img-fluid figure-img"></a></p>
-<p></p><figcaption class="figure-caption">Simon Willison Tweet</figcaption><p></p>
+<p><a href="simonw_bm25.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3" title="Simon Willison Tweet"><img src="simonw_bm25.png" class="img-fluid figure-img" alt="Simon Willison Tweet"></a></p>
+<figcaption>Simon Willison Tweet</figcaption>
 </figure>
 </div>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><a href="sh_reya_bm25.png" class="lightbox" title="Shreya Shankar Tweet" data-gallery="quarto-lightbox-gallery-4"><img src="sh_reya_bm25.png" class="img-fluid figure-img"></a></p>
-<p></p><figcaption class="figure-caption">Shreya Shankar Tweet</figcaption><p></p>
+<p><a href="sh_reya_bm25.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4" title="Shreya Shankar Tweet"><img src="sh_reya_bm25.png" class="img-fluid figure-img" alt="Shreya Shankar Tweet"></a></p>
+<figcaption>Shreya Shankar Tweet</figcaption>
 </figure>
 </div>
 <p><br></p>
@@ -453,7 +438,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="results" class="level2">
 <h2 class="anchored" data-anchor-id="results">Results</h2>
 <p>Here are the names and descriptions of each full text search approach explored in this notebook. Top-n means the chunk(s) with the n-highest BM25 score(s).</p>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;">Name</th>
@@ -490,7 +475,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="best-approach-per-chapter" class="level3">
 <h3 class="anchored" data-anchor-id="best-approach-per-chapter">Best Approach per Chapter</h3>
 <p>The following table shows name, description and <strong>Answer Rate</strong> for the best BM25 approach for each Chapter. BM25_F (Top-5 3-paragraph Chunks) was the best performing approach for each chapter and overall. For Chapter 2, BM25_E (Top-3 3-paragraph Chunks) had the same Answer Rate as BM25_F. For Chapter 10, BM25_C (Top-5 1-paragraph Chunks) had the same Answer Rate as BM25_F.</p>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;">Chapter</th>
@@ -554,7 +539,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="all-approaches-for-all-chapters" class="level3">
 <h3 class="anchored" data-anchor-id="all-approaches-for-all-chapters">All Approaches for All Chapters</h3>
 <p>The following table shows the <strong>Answer Rate</strong> for all BM25 approaches for each chapter (where in the header, 1p = 1-paragraph chunks and 3p = 3-paragraph chunks).</p>
-<table class="table">
+<table class="caption-top table">
 <colgroup>
 <col style="width: 14%">
 <col style="width: 14%">
@@ -686,7 +671,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="question-level-analysis" class="level3">
 <h3 class="anchored" data-anchor-id="question-level-analysis">Question-Level Analysis</h3>
 <p>Looking at the question-level data offers some additional insights.</p>
-<div class="cell" data-execution_count="75">
+<div id="cell-33" class="cell" data-execution_count="75">
 <div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>url <span class="op">=</span> <span class="st">'https://gist.githubusercontent.com/vishalbakshi/4379c92665695b8bd9ab83a1f3ab6b55/raw/97a22f0736b5e179efb8c9d70e5ec80a5b8f4817/fastbookRAG_bm25_all.csv'</span></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pd.read_csv(url)</span>
@@ -711,7 +696,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <li>Only 10 questions were answered by just one method, making this the least frequent result.</li>
 </ul></li>
 </ul>
-<div class="cell" data-outputid="9d61fa57-78d5-4df6-d248-7ff810898ef5" data-execution_count="58">
+<div id="cell-36" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:564}}" data-outputid="9d61fa57-78d5-4df6-d248-7ff810898ef5" data-execution_count="58">
 <div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>plt.figure(figsize<span class="op">=</span>(<span class="dv">10</span>, <span class="dv">6</span>))</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -721,7 +706,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>plt.xlabel(<span class="st">'Total Score'</span>)</span>
 <span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>plt.ylabel(<span class="st">'Number of Questions'</span>)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
-<div class="quarto-figure quarto-figure-center">
+<div>
 <figure class="figure">
 <p><a href="index_files/figure-html/cell-3-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-5"><img src="index_files/figure-html/cell-3-output-1.png" class="img-fluid figure-img"></a></p>
 </figure>
@@ -732,54 +717,55 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="average-score-per-question" class="level4">
 <h4 class="anchored" data-anchor-id="average-score-per-question">Average Score Per Question</h4>
 <p>On average, each question was answered by 3 to 4 full text search methods.</p>
-<div class="cell" data-outputid="2b7739eb-e4bb-45ee-e0bb-757e3137b1fe" data-execution_count="9">
+<div id="cell-39" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:335}}" data-outputid="2b7739eb-e4bb-45ee-e0bb-757e3137b1fe" data-execution_count="9">
 <div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>df[<span class="st">'total_score'</span>].describe()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="9">
-
 <div>
 
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>total_score</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>count</th>
-      <td>202.000000</td>
-    </tr>
-    <tr>
-      <th>mean</th>
-      <td>3.326733</td>
-    </tr>
-    <tr>
-      <th>std</th>
-      <td>2.190476</td>
-    </tr>
-    <tr>
-      <th>min</th>
-      <td>0.000000</td>
-    </tr>
-    <tr>
-      <th>25%</th>
-      <td>2.000000</td>
-    </tr>
-    <tr>
-      <th>50%</th>
-      <td>4.000000</td>
-    </tr>
-    <tr>
-      <th>75%</th>
-      <td>5.000000</td>
-    </tr>
-    <tr>
-      <th>max</th>
-      <td>6.000000</td>
-    </tr>
-  </tbody>
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">total_score</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">count</td>
+<td>202.000000</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">mean</td>
+<td>3.326733</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">std</td>
+<td>2.190476</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">min</td>
+<td>0.000000</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">25%</td>
+<td>2.000000</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">50%</td>
+<td>4.000000</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">75%</td>
+<td>5.000000</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">max</td>
+<td>6.000000</td>
+</tr>
+</tbody>
 </table>
+
 </div><br><label><b>dtype:</b> float64</label>
 </div>
 </div>
@@ -787,7 +773,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="unanswered-questions" class="level4">
 <h4 class="anchored" data-anchor-id="unanswered-questions">Unanswered Questions</h4>
 <p>There were 39 questions for which none of the full text search approaches retrieved the context needed to answer them:</p>
-<div class="cell" data-outputid="36a199d9-451d-46a2-b1c9-22300d5109f1" data-execution_count="83">
+<div id="cell-42" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="36a199d9-451d-46a2-b1c9-22300d5109f1" data-execution_count="83">
 <div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>no_answer <span class="op">=</span> df.query(<span class="st">"total_score == 0"</span>)[[<span class="st">'chapter'</span>, <span class="st">'question_number'</span>, <span class="st">'question_text'</span>, <span class="st">'answer'</span>, <span class="st">'keywords'</span>]].drop_duplicates()</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>no_answer.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="83">
@@ -795,7 +781,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </div>
 </div>
 <p>For example, the following question never was fully answered by any of the contexts retrieved by the full text search methods.</p>
-<div class="cell" data-outputid="22ec53ce-8206-4feb-fb44-f6bbf7544425" data-execution_count="84">
+<div id="cell-44" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="22ec53ce-8206-4feb-fb44-f6bbf7544425" data-execution_count="84">
 <div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(no_answer.iloc[<span class="dv">0</span>][<span class="st">'question_text'</span>])</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(no_answer.iloc[<span class="dv">0</span>][<span class="st">'answer'</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
@@ -812,7 +798,7 @@ In the 1980's, models with two layers were being explored. Theoretically, it is 
 <p>In the 1980’s most models were built with a second layer of neurons, thus avoiding the problem that had been identified by Minsky and Papert (this was their “pattern of connectivity among units,” to use the framework above). And indeed, neural networks were widely used during the ’80s and ’90s for real, practical projects. <strong>However, again a misunderstanding of the theoretical issues held back the field. In theory, adding just one extra layer of neurons was enough to allow any mathematical function to be approximated with these neural networks, but in practice such networks were often too big and too slow to be useful.</strong></p>
 </blockquote>
 <p>Some questions were not so straightforward to answer. For example, the following question:</p>
-<div class="cell" data-outputid="1fa38eee-e985-4f75-ab6d-329aceddefe4" data-execution_count="81">
+<div id="cell-47" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="1fa38eee-e985-4f75-ab6d-329aceddefe4" data-execution_count="81">
 <div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(no_answer.iloc[<span class="op">-</span><span class="dv">1</span>][<span class="st">'question_text'</span>])</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(no_answer.iloc[<span class="op">-</span><span class="dv">1</span>][<span class="st">'answer'</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
@@ -826,7 +812,7 @@ In the 1980's, models with two layers were being explored. Theoretically, it is 
 </blockquote>
 <p>The second part of the question (<em>What does the x-axis represent?</em>) is not explicitly answered in the fastbook. I will consider removing this question from my evals.</p>
 <p>For some questions the full text search methods simply did not retrieve the necessary paragraph. For example:</p>
-<div class="cell" data-outputid="b9a65bda-253c-4267-f564-29dcdcc59803" data-execution_count="80">
+<div id="cell-50" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="b9a65bda-253c-4267-f564-29dcdcc59803" data-execution_count="80">
 <div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(no_answer.iloc[<span class="dv">10</span>][<span class="st">'question_text'</span>])</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(no_answer.iloc[<span class="dv">10</span>][<span class="st">'answer'</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
@@ -841,7 +827,7 @@ In the 1980's, models with two layers were being explored. Theoretically, it is 
 <p><strong>This is known as stepping your parameters, using an optimizer step.</strong></p>
 </blockquote>
 <p>For some of the questions, I’m not quite sure why the associated keywords didn’t allow the correct chunk retrieval. I would assume the reason is that other chunks had a higher frequency of those keywords than these chunks. Something I’ll look into when I do a deeper dive into error analysis in my next notebook.</p>
-<div class="cell" data-outputid="af90a9eb-d899-4941-e35b-21780f4b757c" data-execution_count="85">
+<div id="cell-53" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="af90a9eb-d899-4941-e35b-21780f4b757c" data-execution_count="85">
 <div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(no_answer.iloc[<span class="dv">5</span>][<span class="st">'question_text'</span>])</span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(no_answer.iloc[<span class="dv">5</span>][<span class="st">'answer'</span>])</span>
 <span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(no_answer.iloc[<span class="dv">5</span>][<span class="st">'keywords'</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
@@ -863,7 +849,7 @@ Gradual expansion - The model scope is gradually increased, while good reporting
 <section id="questions-with-100-answer-rate" class="level4">
 <h4 class="anchored" data-anchor-id="questions-with-100-answer-rate">Questions with 100% Answer Rate</h4>
 <p>There were 49 questions that were answered by all 6 full text search methods.</p>
-<div class="cell" data-outputid="1b3c732e-4740-437c-a08a-7bb2a4106fdf" data-execution_count="51">
+<div id="cell-57" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="1b3c732e-4740-437c-a08a-7bb2a4106fdf" data-execution_count="51">
 <div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>all_answer <span class="op">=</span> df.query(<span class="st">"total_score == 6"</span>)[[<span class="st">'chapter'</span>, <span class="st">'question_number'</span>, <span class="st">'question_text'</span>, <span class="st">'keywords'</span>]].drop_duplicates()</span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>all_answer.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="51">
@@ -871,38 +857,38 @@ Gradual expansion - The model scope is gradually increased, while good reporting
 </div>
 </div>
 <p>Many of these questions involved a keyword or its definition—a perfect use case for full text search:</p>
-<div class="cell" data-outputid="d995b9b8-f974-4784-bd38-a5f0ab62564c" data-execution_count="52">
+<div id="cell-59" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:35}}" data-outputid="d995b9b8-f974-4784-bd38-a5f0ab62564c" data-execution_count="52">
 <div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>all_answer.iloc[<span class="dv">1</span>][<span class="st">'question_text'</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="52">
 <pre><code>'""What is a GPU?""'</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="fc21368f-da92-4e88-d7cd-42001691a7f2" data-execution_count="30">
+<div id="cell-60" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:35}}" data-outputid="fc21368f-da92-4e88-d7cd-42001691a7f2" data-execution_count="30">
 <div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>all_answer.iloc[<span class="dv">2</span>][<span class="st">'question_text'</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="30">
 <pre><code>'""What term do we normally use in deep learning for what Samuel called ""weights""?""'</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="e0cb882e-1a8b-4b86-f997-73817cc3d0bd" data-execution_count="32">
+<div id="cell-61" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:35}}" data-outputid="e0cb882e-1a8b-4b86-f997-73817cc3d0bd" data-execution_count="32">
 <div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>all_answer.iloc[<span class="dv">15</span>][<span class="st">'question_text'</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="32">
 <pre><code>'""What are IPython widgets?""'</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="a868b7e0-de6e-432a-88fd-af22c5739567" data-execution_count="41">
+<div id="cell-62" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:35}}" data-outputid="a868b7e0-de6e-432a-88fd-af22c5739567" data-execution_count="41">
 <div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>all_answer.iloc[<span class="dv">3</span>][<span class="st">'question_text'</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="41">
 <pre><code>'""What is the name of the theorem that shows that a neural network can solve any mathematical problem to any level of accuracy?""'</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="fc3739af-0c1b-4e34-dd04-2e80b81a0fab" data-execution_count="49">
+<div id="cell-63" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:35}}" data-outputid="fc3739af-0c1b-4e34-dd04-2e80b81a0fab" data-execution_count="49">
 <div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>all_answer.iloc[<span class="dv">9</span>][<span class="st">'question_text'</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="49">
 <pre><code>'""What is y_range used for? When do we need it?""'</code></pre>
 </div>
 </div>
 <p>Some of these questions were more open-ended, but involved certain keywords that were used verbatim in the fastbook chunk that answered the question, such as “AI”, “organizations” and “failures”:</p>
-<div class="cell" data-outputid="1e166dc5-56d1-4882-f5c6-c58d6f1e582c" data-execution_count="53">
+<div id="cell-65" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="1e166dc5-56d1-4882-f5c6-c58d6f1e582c" data-execution_count="53">
 <div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>all_answer.iloc[<span class="dv">10</span>][<span class="st">'question_text'</span>], all_answer.iloc[<span class="dv">10</span>][<span class="st">'keywords'</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="53">
 <pre><code>('""What\'s the best way to avoid failures when using AI in an organization?""',
@@ -917,7 +903,7 @@ Gradual expansion - The model scope is gradually increased, while good reporting
 <p>To put it bluntly, if you’re a senior decision maker in your <strong>organization</strong> (or you’re advising senior decision makers), the most important takeaway is this: if you ensure that you really understand what test and validation sets are and why they’re important, then you’ll avoid the single biggest source of <strong>failures</strong> we’ve seen when <strong>organizations</strong> decide to use <strong>AI</strong>. For instance, if you’re considering bringing in an external vendor or service, make sure that you hold out some test data that the vendor never gets to see. Then you check their model on your test data, using a metric that you choose based on what actually matters to you in practice, and you decide what level of performance is adequate. (It’s also a good idea for you to try out some simple baseline yourself, so you know what a really simple model can achieve. Often it’ll turn out that your simple model performs just as well as one produced by an external “expert”!)</p>
 </blockquote>
 <p>The following question has the terms “batch”, “normalization”, “layers” and “generalize”:</p>
-<div class="cell" data-outputid="558b4479-fa96-47e5-99d4-d1c32e595ca1" data-execution_count="54">
+<div id="cell-69" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="558b4479-fa96-47e5-99d4-d1c32e595ca1" data-execution_count="54">
 <div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>all_answer.iloc[<span class="op">-</span><span class="dv">1</span>][<span class="st">'question_text'</span>], all_answer.iloc[<span class="op">-</span><span class="dv">1</span>][<span class="st">'keywords'</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="54">
 <pre><code>('""Why do models with batch normalization layers generalize better?""',
@@ -929,7 +915,7 @@ Gradual expansion - The model scope is gradually increased, while good reporting
 <p>An interesting observation about models containing <strong>batch normalization layers</strong> is that they tend to <strong>generalize</strong> better than models that don’t contain them. Although we haven’t as yet seen a rigorous analysis of what’s going on here, most researchers believe that the reason for this is that batch normalization adds some extra randomness to the training process.</p>
 </blockquote>
 <p>The following question has the keywords “statistics”, “normalize”, “batch”, “training” and “validation” that are all contained in the corresponding fastbook chunk, some multiple times:</p>
-<div class="cell" data-outputid="aeb8f7d1-b9ce-4850-b9bd-55bedb6cc394" data-execution_count="55">
+<div id="cell-72" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="aeb8f7d1-b9ce-4850-b9bd-55bedb6cc394" data-execution_count="55">
 <div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>all_answer.iloc[<span class="op">-</span><span class="dv">2</span>][<span class="st">'question_text'</span>], all_answer.iloc[<span class="op">-</span><span class="dv">2</span>][<span class="st">'keywords'</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="55">
 <pre><code>('""What statistics are used to normalize in batch normalization during training? How about during validation?""',
@@ -977,8 +963,8 @@ Gradual expansion - The model scope is gradually increased, while good reporting
 <p>Expand the following cells to view the code used for each experiment.</p>
 <section id="helper-functions" class="level3">
 <h3 class="anchored" data-anchor-id="helper-functions">Helper Functions</h3>
-<div class="cell" data-execution_count="69">
-<details>
+<div id="cell-83" class="cell" data-execution_count="69">
+<details class="code-fold">
 <summary>Show imports</summary>
 <div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> sqlite3</span>
 <span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> json</span>
@@ -988,8 +974,8 @@ Gradual expansion - The model scope is gradually increased, while good reporting
 <span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> requests</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-execution_count="70">
-<details>
+<div id="cell-84" class="cell" data-execution_count="70">
+<details class="code-fold">
 <summary>Show chunking code</summary>
 <div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_chunks(notebook_path):</span>
 <span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> <span class="bu">open</span>(notebook_path, <span class="st">'r'</span>, encoding<span class="op">=</span><span class="st">'utf-8'</span>) <span class="im">as</span> <span class="bu">file</span>:</span>
@@ -1006,7 +992,7 @@ Gradual expansion - The model scope is gradually increased, while good reporting
 <span id="cb34-13"><a href="#cb34-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> cell[<span class="st">'cell_type'</span>] <span class="op">==</span> <span class="st">'markdown'</span>:</span>
 <span id="cb34-14"><a href="#cb34-14" aria-hidden="true" tabindex="-1"></a>            content <span class="op">=</span> <span class="st">''</span>.join(cell[<span class="st">'source'</span>])</span>
 <span id="cb34-15"><a href="#cb34-15" aria-hidden="true" tabindex="-1"></a>            <span class="co"># see if the cell starts with a markdown header</span></span>
-<span id="cb34-16"><a href="#cb34-16" aria-hidden="true" tabindex="-1"></a>            header_match <span class="op">=</span> re.match(<span class="vs">r'^(#+\s+.*?)$'</span>, content, re.MULTILINE)</span>
+<span id="cb34-16"><a href="#cb34-16" aria-hidden="true" tabindex="-1"></a>            header_match <span class="op">=</span> re.match(<span class="vs">r'</span><span class="dv">^</span><span class="kw">(</span><span class="vs">#</span><span class="op">+</span><span class="dv">\s</span><span class="op">+</span><span class="dv">.</span><span class="op">*?</span><span class="kw">)</span><span class="dv">$</span><span class="vs">'</span>, content, re.MULTILINE)</span>
 <span id="cb34-17"><a href="#cb34-17" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> header_match:</span>
 <span id="cb34-18"><a href="#cb34-18" aria-hidden="true" tabindex="-1"></a>                <span class="co"># grab the header</span></span>
 <span id="cb34-19"><a href="#cb34-19" aria-hidden="true" tabindex="-1"></a>                current_header <span class="op">=</span> header_match.group(<span class="dv">1</span>)</span>
@@ -1014,13 +1000,13 @@ Gradual expansion - The model scope is gradually increased, while good reporting
 <span id="cb34-21"><a href="#cb34-21" aria-hidden="true" tabindex="-1"></a>                remaining_content <span class="op">=</span> content[<span class="bu">len</span>(current_header):].strip()</span>
 <span id="cb34-22"><a href="#cb34-22" aria-hidden="true" tabindex="-1"></a>                <span class="cf">if</span> remaining_content:</span>
 <span id="cb34-23"><a href="#cb34-23" aria-hidden="true" tabindex="-1"></a>                    <span class="co"># split content into paragraphs</span></span>
-<span id="cb34-24"><a href="#cb34-24" aria-hidden="true" tabindex="-1"></a>                    paragraphs <span class="op">=</span> re.split(<span class="vs">r'\n\s*\n'</span>, remaining_content)</span>
+<span id="cb34-24"><a href="#cb34-24" aria-hidden="true" tabindex="-1"></a>                    paragraphs <span class="op">=</span> re.split(<span class="vs">r'</span><span class="ch">\n</span><span class="dv">\s</span><span class="op">*</span><span class="ch">\n</span><span class="vs">'</span>, remaining_content)</span>
 <span id="cb34-25"><a href="#cb34-25" aria-hidden="true" tabindex="-1"></a>                    <span class="co"># append the paragraph to the list of chunks</span></span>
 <span id="cb34-26"><a href="#cb34-26" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">for</span> paragraph <span class="kw">in</span> paragraphs:</span>
 <span id="cb34-27"><a href="#cb34-27" aria-hidden="true" tabindex="-1"></a>                        add_chunk(paragraph)</span>
 <span id="cb34-28"><a href="#cb34-28" aria-hidden="true" tabindex="-1"></a>            <span class="cf">else</span>:</span>
 <span id="cb34-29"><a href="#cb34-29" aria-hidden="true" tabindex="-1"></a>                <span class="co"># split content into paragraphs</span></span>
-<span id="cb34-30"><a href="#cb34-30" aria-hidden="true" tabindex="-1"></a>                paragraphs <span class="op">=</span> re.split(<span class="vs">r'\n\s*\n'</span>, content)</span>
+<span id="cb34-30"><a href="#cb34-30" aria-hidden="true" tabindex="-1"></a>                paragraphs <span class="op">=</span> re.split(<span class="vs">r'</span><span class="ch">\n</span><span class="dv">\s</span><span class="op">*</span><span class="ch">\n</span><span class="vs">'</span>, content)</span>
 <span id="cb34-31"><a href="#cb34-31" aria-hidden="true" tabindex="-1"></a>                <span class="co"># append the paragraph to the list of chunks</span></span>
 <span id="cb34-32"><a href="#cb34-32" aria-hidden="true" tabindex="-1"></a>                <span class="cf">for</span> paragraph <span class="kw">in</span> paragraphs:</span>
 <span id="cb34-33"><a href="#cb34-33" aria-hidden="true" tabindex="-1"></a>                    add_chunk(paragraph)</span>
@@ -1052,8 +1038,8 @@ Gradual expansion - The model scope is gradually increased, while good reporting
 <span id="cb34-59"><a href="#cb34-59" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> filter_chunks(chunks)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-execution_count="71">
-<details>
+<div id="cell-85" class="cell" data-execution_count="71">
+<details class="code-fold">
 <summary>Show the <code>load_data</code> function</summary>
 <div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> load_data(chunks, db_path, chapter<span class="op">=</span><span class="dv">1</span>):</span>
 <span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
@@ -1090,8 +1076,8 @@ Gradual expansion - The model scope is gradually increased, while good reporting
 <span id="cb35-33"><a href="#cb35-33" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="va">False</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-execution_count="72">
-<details>
+<div id="cell-86" class="cell" data-execution_count="72">
+<details class="code-fold">
 <summary>Show the <code>db_search</code> function</summary>
 <div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> db_search(df, limit<span class="op">=</span><span class="dv">1</span>):</span>
 <span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>  results <span class="op">=</span> []</span>
@@ -1124,8 +1110,8 @@ Gradual expansion - The model scope is gradually increased, while good reporting
 <section id="data-preprocessing-1" class="level3">
 <h3 class="anchored" data-anchor-id="data-preprocessing-1">Data Preprocessing</h3>
 <p>You can download the notebooks from the <a href="https://github.com/fastai/fastbook/tree/master">fastbook repo</a> or run the following cell to download them.</p>
-<div class="cell">
-<details>
+<div id="cell-89" class="cell">
+<details class="code-fold">
 <summary>Show the file download</summary>
 <div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>urls <span class="op">=</span> {</span>
 <span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'01_intro.ipynb'</span>: <span class="st">'https://drive.google.com/uc?export=view&amp;id=1mmBjFH_plndPBC4iRZHChfMazgBxKK4_'</span>,</span>
@@ -1156,8 +1142,8 @@ Gradual expansion - The model scope is gradually increased, while good reporting
 </details>
 </div>
 <p>I have seven notebooks in total. I’ll start by using <code>get_chunks</code> to split the notebook content into paragraphs (with the corresponding header).</p>
-<div class="cell" data-execution_count="67">
-<details>
+<div id="cell-91" class="cell" data-execution_count="67">
+<details class="code-fold">
 <summary>Show the dict w/ notebook filenames</summary>
 <div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>nbs <span class="op">=</span> {</span>
 <span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">'1'</span>: <span class="st">'01_intro.ipynb'</span>,</span>
@@ -1170,7 +1156,7 @@ Gradual expansion - The model scope is gradually increased, while good reporting
 <span id="cb38-9"><a href="#cb38-9" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-execution_count="73">
+<div id="cell-92" class="cell" data-execution_count="73">
 <div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="co"># chunking each notebook</span></span>
 <span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>data <span class="op">=</span> {}</span>
 <span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -1178,7 +1164,7 @@ Gradual expansion - The model scope is gradually increased, while good reporting
 <span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a>  data[chapter] <span class="op">=</span> get_chunks(nb)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>I’ll print out the length of the total chunks so I get a sense of how many unique chunks there are:</p>
-<div class="cell" data-outputid="21a0c802-fd54-47b4-e21b-bc7793c1b685" data-execution_count="74">
+<div id="cell-94" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="21a0c802-fd54-47b4-e21b-bc7793c1b685" data-execution_count="74">
 <div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>total_chunks <span class="op">=</span> <span class="dv">0</span></span>
 <span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chapter, chunks <span class="kw">in</span> data.items():</span>
 <span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(chapter, <span class="bu">len</span>(chunks))</span>
@@ -1199,20 +1185,20 @@ Gradual expansion - The model scope is gradually increased, while good reporting
 </div>
 </div>
 <p>Since my entire pipeline depends on the content of these chunks, I’ll save each notebook’s chunks into a text file and compared it with the original <a href="https://github.com/fastai/fastbook/tree/master">fastbook repo</a> and made sure that all of the headers were captured.</p>
-<div class="cell" data-execution_count="39">
+<div id="cell-96" class="cell" data-execution_count="39">
 <div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> save_chunks(chunks, filename):</span>
 <span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> <span class="bu">open</span>(filename, <span class="st">'w'</span>) <span class="im">as</span> <span class="bu">file</span>:</span>
 <span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> chunk <span class="kw">in</span> chunks:</span>
 <span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a>            <span class="bu">file</span>.write(chunk <span class="op">+</span> <span class="st">'</span><span class="ch">\n\n</span><span class="st">'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-execution_count="40">
+<div id="cell-97" class="cell" data-execution_count="40">
 <div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chapter, chunks <span class="kw">in</span> data.items():</span>
 <span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>  save_chunks(chunks, <span class="ss">f'</span><span class="sc">{</span>nbs[chapter]<span class="sc">}</span><span class="ss">.txt'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="loading-the-chunks-into-the-database" class="level3">
 <h3 class="anchored" data-anchor-id="loading-the-chunks-into-the-database">Loading the Chunks into the Database</h3>
-<div class="cell" data-outputid="223a1038-ad23-46ab-fc41-f4b3066323e1" data-execution_count="13">
+<div id="cell-99" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="223a1038-ad23-46ab-fc41-f4b3066323e1" data-execution_count="13">
 <div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chapter, chunks <span class="kw">in</span> data.items():</span>
 <span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(<span class="ss">f"Chapter </span><span class="sc">{</span>chapter<span class="sc">}</span><span class="ss">:"</span>, load_data(chunks, <span class="st">'fastbook.db'</span>, chapter))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
@@ -1226,7 +1212,7 @@ Chapter 13: True</code></pre>
 </div>
 </div>
 <p>Just to be sure, I’ll query the database to get each chapter’s chunks, export them to text files and review them once more.</p>
-<div class="cell" data-outputid="a3a8618b-532b-455e-b39b-af8a782ee566" data-execution_count="14">
+<div id="cell-101" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="a3a8618b-532b-455e-b39b-af8a782ee566" data-execution_count="14">
 <div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>total_chunks <span class="op">=</span> <span class="dv">0</span></span>
 <span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chapter <span class="kw">in</span> data.keys():</span>
 <span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">with</span> sqlite3.<span class="ex">connect</span>(<span class="st">'fastbook.db'</span>) <span class="im">as</span> conn:</span>
@@ -1245,76 +1231,76 @@ Chapter 13: True</code></pre>
 <section id="load-the-question-data" class="level3">
 <h3 class="anchored" data-anchor-id="load-the-question-data">Load the Question Data</h3>
 <p>I have saved each chapter’s questions, answer, and Claude-3.5-Sonnet-generated keywords in <a href="https://gist.github.com/vishalbakshi/309fb3abb222d32446b2c4e29db753fe">this gist</a>.</p>
-<div class="cell" data-outputid="d8e73526-4a16-43c0-f12b-72931f46223e" data-execution_count="9">
+<div id="cell-104" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:206}}" data-outputid="d8e73526-4a16-43c0-f12b-72931f46223e" data-execution_count="9">
 <div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>url <span class="op">=</span> <span class="st">'https://gist.githubusercontent.com/vishalbakshi/309fb3abb222d32446b2c4e29db753fe/raw/11aab9462df445705b643be361b7c4d7d54ef77b/fastbookRAG_evals.csv'</span></span>
 <span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>questions <span class="op">=</span> pd.read_csv(url)</span>
 <span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a>questions.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="9">
-
-
-  <div id="df-fa022481-d34c-4cf8-af70-3c8df1479e1f" class="colab-df-container">
+<div id="df-fa022481-d34c-4cf8-af70-3c8df1479e1f" class="colab-df-container">
     <div>
 
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>chapter</th>
-      <th>question_number</th>
-      <th>question_text</th>
-      <th>answer</th>
-      <th>is_answerable</th>
-      <th>keywords</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>1</td>
-      <td>""Do you need these for deep learning?nn- Lots...</td>
-      <td>""Lots of math - False\nLots of data - False\n...</td>
-      <td>1</td>
-      <td>"deep learning, math, data, computers, PhD"</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>1</td>
-      <td>2</td>
-      <td>""Name five areas where deep learning is now t...</td>
-      <td>""Any five of the following:\nNatural Language...</td>
-      <td>1</td>
-      <td>deep learning, areas, best, world</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1</td>
-      <td>3</td>
-      <td>""What was the name of the first device that w...</td>
-      <td>""Mark I perceptron built by Frank Rosenblatt""</td>
-      <td>1</td>
-      <td>"neuron, neurons, device, artificial, principle"</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>1</td>
-      <td>4</td>
-      <td>""Based on the book of the same name, what are...</td>
-      <td>""A set of processing units\nA state of activa...</td>
-      <td>1</td>
-      <td>"parallel, distributed, processing, PDP, requi...</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>1</td>
-      <td>5</td>
-      <td>""What were the two theoretical misunderstandi...</td>
-      <td>""In 1969, Marvin Minsky and Seymour Papert de...</td>
-      <td>1</td>
-      <td>"neural, networks, theoretical, misunderstandi...</td>
-    </tr>
-  </tbody>
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">chapter</th>
+<th data-quarto-table-cell-role="th">question_number</th>
+<th data-quarto-table-cell-role="th">question_text</th>
+<th data-quarto-table-cell-role="th">answer</th>
+<th data-quarto-table-cell-role="th">is_answerable</th>
+<th data-quarto-table-cell-role="th">keywords</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0</td>
+<td>1</td>
+<td>1</td>
+<td>""Do you need these for deep learning?nn- Lots...</td>
+<td>""Lots of math - False\nLots of data - False\n...</td>
+<td>1</td>
+<td>"deep learning, math, data, computers, PhD"</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1</td>
+<td>1</td>
+<td>2</td>
+<td>""Name five areas where deep learning is now t...</td>
+<td>""Any five of the following:\nNatural Language...</td>
+<td>1</td>
+<td>deep learning, areas, best, world</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">2</td>
+<td>1</td>
+<td>3</td>
+<td>""What was the name of the first device that w...</td>
+<td>""Mark I perceptron built by Frank Rosenblatt""</td>
+<td>1</td>
+<td>"neuron, neurons, device, artificial, principle"</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">3</td>
+<td>1</td>
+<td>4</td>
+<td>""Based on the book of the same name, what are...</td>
+<td>""A set of processing units\nA state of activa...</td>
+<td>1</td>
+<td>"parallel, distributed, processing, PDP, requi...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">4</td>
+<td>1</td>
+<td>5</td>
+<td>""What were the two theoretical misunderstandi...</td>
+<td>""In 1969, Marvin Minsky and Seymour Papert de...</td>
+<td>1</td>
+<td>"neural, networks, theoretical, misunderstandi...</td>
+</tr>
+</tbody>
 </table>
+
 </div>
     <div class="colab-df-buttons">
 
@@ -1522,7 +1508,7 @@ Chapter 13: True</code></pre>
   </div>
 </div>
 </div>
-<div class="cell" data-outputid="a8f6488f-1cf4-43aa-a0e3-a892a2b5b4c3" data-execution_count="10">
+<div id="cell-105" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="a8f6488f-1cf4-43aa-a0e3-a892a2b5b4c3" data-execution_count="10">
 <div class="sourceCode cell-code" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a>questions.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="10">
 <pre><code>(202, 6)</code></pre>
@@ -1534,98 +1520,98 @@ Chapter 13: True</code></pre>
 <h3 class="anchored" data-anchor-id="bm25_a-top-1-1-paragraph-chunks">BM25_A: Top-1 1-Paragraph Chunks</h3>
 <p>In this approach, I’ll select the top-1 retrieved context (1-paragraph chunk) for each question’s keywords and calculate the <strong>Answer Rate</strong>. As a reminder, the evaluation metric for each question, that I’m simply calling <strong>score</strong>, is binary: can the retrieved context answer the question (<code>1</code>) or not (<code>0</code>)? The evaluation metric across a set of questions, which I’m calling the <strong>Answer Rate</strong>, is the mean score for those questions.</p>
 <p>It’s pretty awesome that is takes about a fifth of a second to retrieve chunks for 202 keyword searches.</p>
-<div class="cell" data-outputid="78bc1622-3b64-4d71-df67-33c351ca1496">
+<div id="cell-110" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="78bc1622-3b64-4d71-df67-33c351ca1496">
 <div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="op">%</span>time results <span class="op">=</span> db_search(questions, limit<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>CPU times: user 242 ms, sys: 3.7 ms, total: 246 ms
 Wall time: 249 ms</code></pre>
 </div>
 </div>
-<div class="cell">
+<div id="cell-111" class="cell">
 <div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> db_search(questions, limit<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-outputid="9774bc0c-65a5-4e65-e459-688580008938">
+<div id="cell-112" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="9774bc0c-65a5-4e65-e459-688580008938">
 <div class="sourceCode cell-code" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="17">
 <pre><code>202</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="c2131dba-a497-4469-efae-e5c18c8d931f">
+<div id="cell-113" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:380}}" data-outputid="c2131dba-a497-4469-efae-e5c18c8d931f">
 <div class="sourceCode cell-code" id="cb57"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1"><a href="#cb57-1" aria-hidden="true" tabindex="-1"></a>bm25_a <span class="op">=</span> questions.copy()</span>
 <span id="cb57-2"><a href="#cb57-2" aria-hidden="true" tabindex="-1"></a>bm25_a[<span class="st">'bm25_a_context'</span>] <span class="op">=</span> results</span>
 <span id="cb57-3"><a href="#cb57-3" aria-hidden="true" tabindex="-1"></a>bm25_a.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="18">
-
-
-  <div id="df-70fbd68d-0d40-4275-b1c1-39d8c668609f" class="colab-df-container">
+<div id="df-70fbd68d-0d40-4275-b1c1-39d8c668609f" class="colab-df-container">
     <div>
 
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>chapter</th>
-      <th>question_number</th>
-      <th>question_text</th>
-      <th>answer</th>
-      <th>is_answerable</th>
-      <th>keywords</th>
-      <th>bm25_a_context</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>1</td>
-      <td>""Do you need these for deep learning?nn- Lots...</td>
-      <td>""Lots of math - False\nLots of data - False\n...</td>
-      <td>1</td>
-      <td>"deep learning, math, data, computers, PhD"</td>
-      <td>## Deep Learning Is for Everyone\n\n```asciido...</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>1</td>
-      <td>2</td>
-      <td>""Name five areas where deep learning is now t...</td>
-      <td>""Any five of the following:\nNatural Language...</td>
-      <td>1</td>
-      <td>deep learning, areas, best, world</td>
-      <td>## Deep Learning Is for Everyone\n\nHere's a l...</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1</td>
-      <td>3</td>
-      <td>""What was the name of the first device that w...</td>
-      <td>""Mark I perceptron built by Frank Rosenblatt""</td>
-      <td>1</td>
-      <td>"neuron, neurons, device, artificial, principle"</td>
-      <td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>1</td>
-      <td>4</td>
-      <td>""Based on the book of the same name, what are...</td>
-      <td>""A set of processing units\nA state of activa...</td>
-      <td>1</td>
-      <td>"parallel, distributed, processing, PDP, requi...</td>
-      <td>## Neural Networks: A Brief History\n\nIn fact...</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>1</td>
-      <td>5</td>
-      <td>""What were the two theoretical misunderstandi...</td>
-      <td>""In 1969, Marvin Minsky and Seymour Papert de...</td>
-      <td>1</td>
-      <td>"neural, networks, theoretical, misunderstandi...</td>
-      <td>## Neural Networks: A Brief History\n\nIn the ...</td>
-    </tr>
-  </tbody>
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">chapter</th>
+<th data-quarto-table-cell-role="th">question_number</th>
+<th data-quarto-table-cell-role="th">question_text</th>
+<th data-quarto-table-cell-role="th">answer</th>
+<th data-quarto-table-cell-role="th">is_answerable</th>
+<th data-quarto-table-cell-role="th">keywords</th>
+<th data-quarto-table-cell-role="th">bm25_a_context</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0</td>
+<td>1</td>
+<td>1</td>
+<td>""Do you need these for deep learning?nn- Lots...</td>
+<td>""Lots of math - False\nLots of data - False\n...</td>
+<td>1</td>
+<td>"deep learning, math, data, computers, PhD"</td>
+<td>## Deep Learning Is for Everyone\n\n```asciido...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1</td>
+<td>1</td>
+<td>2</td>
+<td>""Name five areas where deep learning is now t...</td>
+<td>""Any five of the following:\nNatural Language...</td>
+<td>1</td>
+<td>deep learning, areas, best, world</td>
+<td>## Deep Learning Is for Everyone\n\nHere's a l...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">2</td>
+<td>1</td>
+<td>3</td>
+<td>""What was the name of the first device that w...</td>
+<td>""Mark I perceptron built by Frank Rosenblatt""</td>
+<td>1</td>
+<td>"neuron, neurons, device, artificial, principle"</td>
+<td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">3</td>
+<td>1</td>
+<td>4</td>
+<td>""Based on the book of the same name, what are...</td>
+<td>""A set of processing units\nA state of activa...</td>
+<td>1</td>
+<td>"parallel, distributed, processing, PDP, requi...</td>
+<td>## Neural Networks: A Brief History\n\nIn fact...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">4</td>
+<td>1</td>
+<td>5</td>
+<td>""What were the two theoretical misunderstandi...</td>
+<td>""In 1969, Marvin Minsky and Seymour Papert de...</td>
+<td>1</td>
+<td>"neural, networks, theoretical, misunderstandi...</td>
+<td>## Neural Networks: A Brief History\n\nIn the ...</td>
+</tr>
+</tbody>
 </table>
+
 </div>
     <div class="colab-df-buttons">
 
@@ -1833,13 +1819,13 @@ Wall time: 249 ms</code></pre>
   </div>
 </div>
 </div>
-<div class="cell">
+<div id="cell-114" class="cell">
 <div class="sourceCode cell-code" id="cb58"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb58-1"><a href="#cb58-1" aria-hidden="true" tabindex="-1"></a>bm25_a.to_csv(<span class="st">'bm25_a.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <section id="results-1" class="level4">
 <h4 class="anchored" data-anchor-id="results-1">Results</h4>
 <p>Here is the <strong>Answer Rate</strong> (by chapter and overall).</p>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;">Chapter</th>
@@ -1905,91 +1891,91 @@ Wall time: 249 ms</code></pre>
 <h3 class="anchored" data-anchor-id="bm25_b-top-3-1-paragraph-chunks">BM25_B: Top-3 1-Paragraph Chunks</h3>
 <p>In this approach, I’ll select the top-3 retrieved context (1-paragraph chunks) for each question’s keywords and calculate the <strong>Answer Rate</strong>. As a reminder, the evaluation metric for each question, that I’m simply calling <strong>score</strong>, is binary: can the retrieved context answer the question (<code>1</code>) or not (<code>0</code>)? The evaluation metric across a set of questions, which I’m calling the <strong>Answer Rate</strong>, is the mean score for those questions.</p>
 <p>I select the top-3 chunks by setting <code>LIMIT 3</code> in the sqlite query.</p>
-<div class="cell" data-execution_count="19">
+<div id="cell-120" class="cell" data-execution_count="19">
 <div class="sourceCode cell-code" id="cb59"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1"><a href="#cb59-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> db_search(questions, limit<span class="op">=</span><span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-outputid="93e28636-e07b-4a8a-d0da-222cdba1749f" data-execution_count="21">
+<div id="cell-121" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="93e28636-e07b-4a8a-d0da-222cdba1749f" data-execution_count="21">
 <div class="sourceCode cell-code" id="cb60"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb60-1"><a href="#cb60-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">202</span> <span class="co"># top-3 chunks for all 202 questions</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="21">
 <pre><code>True</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="092fc1a6-4f17-4e67-e9b6-b7a406fd960d" data-execution_count="26">
+<div id="cell-122" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:328}}" data-outputid="092fc1a6-4f17-4e67-e9b6-b7a406fd960d" data-execution_count="26">
 <div class="sourceCode cell-code" id="cb62"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1" aria-hidden="true" tabindex="-1"></a>bm25_b <span class="op">=</span> questions.copy()</span>
 <span id="cb62-2"><a href="#cb62-2" aria-hidden="true" tabindex="-1"></a>bm25_b[<span class="st">'bm25_b_context'</span>] <span class="op">=</span> results</span>
 <span id="cb62-3"><a href="#cb62-3" aria-hidden="true" tabindex="-1"></a>bm25_b.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="26">
-
-
-  <div id="df-cb36a759-c03e-4699-936d-5b5c63f33d4d" class="colab-df-container">
+<div id="df-cb36a759-c03e-4699-936d-5b5c63f33d4d" class="colab-df-container">
     <div>
 
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>chapter</th>
-      <th>question_number</th>
-      <th>question_text</th>
-      <th>answer</th>
-      <th>is_answerable</th>
-      <th>keywords</th>
-      <th>bm25_b_context</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>1</td>
-      <td>""Do you need these for deep learning?nn- Lots...</td>
-      <td>""Lots of math - False\nLots of data - False\n...</td>
-      <td>1</td>
-      <td>"deep learning, math, data, computers, PhD"</td>
-      <td>## Deep Learning Is for Everyone\n\n```asciido...</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>1</td>
-      <td>2</td>
-      <td>""Name five areas where deep learning is now t...</td>
-      <td>""Any five of the following:\nNatural Language...</td>
-      <td>1</td>
-      <td>deep learning, areas, best, world</td>
-      <td>## Deep Learning Is for Everyone\n\nHere's a l...</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1</td>
-      <td>3</td>
-      <td>""What was the name of the first device that w...</td>
-      <td>""Mark I perceptron built by Frank Rosenblatt""</td>
-      <td>1</td>
-      <td>"neuron, neurons, device, artificial, principle"</td>
-      <td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>1</td>
-      <td>4</td>
-      <td>""Based on the book of the same name, what are...</td>
-      <td>""A set of processing units\nA state of activa...</td>
-      <td>1</td>
-      <td>"parallel, distributed, processing, PDP, requi...</td>
-      <td>## Neural Networks: A Brief History\n\nIn fact...</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>1</td>
-      <td>5</td>
-      <td>""What were the two theoretical misunderstandi...</td>
-      <td>""In 1969, Marvin Minsky and Seymour Papert de...</td>
-      <td>1</td>
-      <td>"neural, networks, theoretical, misunderstandi...</td>
-      <td>## Neural Networks: A Brief History\n\nIn the ...</td>
-    </tr>
-  </tbody>
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">chapter</th>
+<th data-quarto-table-cell-role="th">question_number</th>
+<th data-quarto-table-cell-role="th">question_text</th>
+<th data-quarto-table-cell-role="th">answer</th>
+<th data-quarto-table-cell-role="th">is_answerable</th>
+<th data-quarto-table-cell-role="th">keywords</th>
+<th data-quarto-table-cell-role="th">bm25_b_context</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0</td>
+<td>1</td>
+<td>1</td>
+<td>""Do you need these for deep learning?nn- Lots...</td>
+<td>""Lots of math - False\nLots of data - False\n...</td>
+<td>1</td>
+<td>"deep learning, math, data, computers, PhD"</td>
+<td>## Deep Learning Is for Everyone\n\n```asciido...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1</td>
+<td>1</td>
+<td>2</td>
+<td>""Name five areas where deep learning is now t...</td>
+<td>""Any five of the following:\nNatural Language...</td>
+<td>1</td>
+<td>deep learning, areas, best, world</td>
+<td>## Deep Learning Is for Everyone\n\nHere's a l...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">2</td>
+<td>1</td>
+<td>3</td>
+<td>""What was the name of the first device that w...</td>
+<td>""Mark I perceptron built by Frank Rosenblatt""</td>
+<td>1</td>
+<td>"neuron, neurons, device, artificial, principle"</td>
+<td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">3</td>
+<td>1</td>
+<td>4</td>
+<td>""Based on the book of the same name, what are...</td>
+<td>""A set of processing units\nA state of activa...</td>
+<td>1</td>
+<td>"parallel, distributed, processing, PDP, requi...</td>
+<td>## Neural Networks: A Brief History\n\nIn fact...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">4</td>
+<td>1</td>
+<td>5</td>
+<td>""What were the two theoretical misunderstandi...</td>
+<td>""In 1969, Marvin Minsky and Seymour Papert de...</td>
+<td>1</td>
+<td>"neural, networks, theoretical, misunderstandi...</td>
+<td>## Neural Networks: A Brief History\n\nIn the ...</td>
+</tr>
+</tbody>
 </table>
+
 </div>
     <div class="colab-df-buttons">
 
@@ -2197,13 +2183,13 @@ Wall time: 249 ms</code></pre>
   </div>
 </div>
 </div>
-<div class="cell" data-execution_count="27">
+<div id="cell-123" class="cell" data-execution_count="27">
 <div class="sourceCode cell-code" id="cb63"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1"><a href="#cb63-1" aria-hidden="true" tabindex="-1"></a>bm25_b.to_csv(<span class="st">'bm25_b.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <section id="results-2" class="level4">
 <h4 class="anchored" data-anchor-id="results-2">Results</h4>
 <p>Here is the <strong>Answer Rate</strong> (by chapter and overall).</p>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;">Chapter</th>
@@ -2269,91 +2255,91 @@ Wall time: 249 ms</code></pre>
 <h3 class="anchored" data-anchor-id="bm25_c-top-5-1-paragraph-chunks">BM25_C: Top-5 1-Paragraph Chunks</h3>
 <p>In this approach, I’ll select the top-5 retrieved context (1-paragraph chunks) for each question’s keywords and calculate the <strong>Answer Rate</strong>. As a reminder, the evaluation metric for each question, that I’m simply calling <strong>score</strong>, is binary: can the retrieved context answer the question (<code>1</code>) or not (<code>0</code>)? The evaluation metric across a set of questions, which I’m calling the <strong>Answer Rate</strong>, is the mean score for those questions.</p>
 <p>I select the top-5 chunks by setting <code>LIMIT 5</code> in the sqlite query.</p>
-<div class="cell" data-execution_count="15">
+<div id="cell-128" class="cell" data-execution_count="15">
 <div class="sourceCode cell-code" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> db_search(questions, limit<span class="op">=</span><span class="dv">5</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-outputid="4be1527e-2bef-4343-eed3-a3ec794aeeca" data-execution_count="16">
+<div id="cell-129" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="4be1527e-2bef-4343-eed3-a3ec794aeeca" data-execution_count="16">
 <div class="sourceCode cell-code" id="cb65"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">202</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="16">
 <pre><code>True</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="555d5e94-f39f-4bf3-d7db-d8cb97e65bc5" data-execution_count="18">
+<div id="cell-130" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:328}}" data-outputid="555d5e94-f39f-4bf3-d7db-d8cb97e65bc5" data-execution_count="18">
 <div class="sourceCode cell-code" id="cb67"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb67-1"><a href="#cb67-1" aria-hidden="true" tabindex="-1"></a>bm25_c <span class="op">=</span> questions.copy()</span>
 <span id="cb67-2"><a href="#cb67-2" aria-hidden="true" tabindex="-1"></a>bm25_c[<span class="st">'bm25_c_context'</span>] <span class="op">=</span> results</span>
 <span id="cb67-3"><a href="#cb67-3" aria-hidden="true" tabindex="-1"></a>bm25_c.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="18">
-
-
-  <div id="df-9a99e068-6408-452b-9264-b89d58b9521d" class="colab-df-container">
+<div id="df-9a99e068-6408-452b-9264-b89d58b9521d" class="colab-df-container">
     <div>
 
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>chapter</th>
-      <th>question_number</th>
-      <th>question_text</th>
-      <th>answer</th>
-      <th>is_answerable</th>
-      <th>keywords</th>
-      <th>bm25_c_context</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>1</td>
-      <td>""Do you need these for deep learning?nn- Lots...</td>
-      <td>""Lots of math - False\nLots of data - False\n...</td>
-      <td>1</td>
-      <td>"deep learning, math, data, computers, PhD"</td>
-      <td>## Deep Learning Is for Everyone\n\n```asciido...</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>1</td>
-      <td>2</td>
-      <td>""Name five areas where deep learning is now t...</td>
-      <td>""Any five of the following:\nNatural Language...</td>
-      <td>1</td>
-      <td>deep learning, areas, best, world</td>
-      <td>## Deep Learning Is for Everyone\n\nHere's a l...</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1</td>
-      <td>3</td>
-      <td>""What was the name of the first device that w...</td>
-      <td>""Mark I perceptron built by Frank Rosenblatt""</td>
-      <td>1</td>
-      <td>"neuron, neurons, device, artificial, principle"</td>
-      <td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>1</td>
-      <td>4</td>
-      <td>""Based on the book of the same name, what are...</td>
-      <td>""A set of processing units\nA state of activa...</td>
-      <td>1</td>
-      <td>"parallel, distributed, processing, PDP, requi...</td>
-      <td>## Neural Networks: A Brief History\n\nIn fact...</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>1</td>
-      <td>5</td>
-      <td>""What were the two theoretical misunderstandi...</td>
-      <td>""In 1969, Marvin Minsky and Seymour Papert de...</td>
-      <td>1</td>
-      <td>"neural, networks, theoretical, misunderstandi...</td>
-      <td>## Neural Networks: A Brief History\n\nIn the ...</td>
-    </tr>
-  </tbody>
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">chapter</th>
+<th data-quarto-table-cell-role="th">question_number</th>
+<th data-quarto-table-cell-role="th">question_text</th>
+<th data-quarto-table-cell-role="th">answer</th>
+<th data-quarto-table-cell-role="th">is_answerable</th>
+<th data-quarto-table-cell-role="th">keywords</th>
+<th data-quarto-table-cell-role="th">bm25_c_context</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0</td>
+<td>1</td>
+<td>1</td>
+<td>""Do you need these for deep learning?nn- Lots...</td>
+<td>""Lots of math - False\nLots of data - False\n...</td>
+<td>1</td>
+<td>"deep learning, math, data, computers, PhD"</td>
+<td>## Deep Learning Is for Everyone\n\n```asciido...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1</td>
+<td>1</td>
+<td>2</td>
+<td>""Name five areas where deep learning is now t...</td>
+<td>""Any five of the following:\nNatural Language...</td>
+<td>1</td>
+<td>deep learning, areas, best, world</td>
+<td>## Deep Learning Is for Everyone\n\nHere's a l...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">2</td>
+<td>1</td>
+<td>3</td>
+<td>""What was the name of the first device that w...</td>
+<td>""Mark I perceptron built by Frank Rosenblatt""</td>
+<td>1</td>
+<td>"neuron, neurons, device, artificial, principle"</td>
+<td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">3</td>
+<td>1</td>
+<td>4</td>
+<td>""Based on the book of the same name, what are...</td>
+<td>""A set of processing units\nA state of activa...</td>
+<td>1</td>
+<td>"parallel, distributed, processing, PDP, requi...</td>
+<td>## Neural Networks: A Brief History\n\nIn fact...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">4</td>
+<td>1</td>
+<td>5</td>
+<td>""What were the two theoretical misunderstandi...</td>
+<td>""In 1969, Marvin Minsky and Seymour Papert de...</td>
+<td>1</td>
+<td>"neural, networks, theoretical, misunderstandi...</td>
+<td>## Neural Networks: A Brief History\n\nIn the ...</td>
+</tr>
+</tbody>
 </table>
+
 </div>
     <div class="colab-df-buttons">
 
@@ -2561,13 +2547,13 @@ Wall time: 249 ms</code></pre>
   </div>
 </div>
 </div>
-<div class="cell" data-execution_count="19">
+<div id="cell-131" class="cell" data-execution_count="19">
 <div class="sourceCode cell-code" id="cb68"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb68-1"><a href="#cb68-1" aria-hidden="true" tabindex="-1"></a>bm25_c.to_csv(<span class="st">'bm25_c.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <section id="results-3" class="level4">
 <h4 class="anchored" data-anchor-id="results-3">Results</h4>
 <p>Here is the <strong>Answer Rate</strong> (by chapter and overall).</p>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;">Chapter</th>
@@ -2632,7 +2618,7 @@ Wall time: 249 ms</code></pre>
 <section id="bm25_d-top-1-3-paragraph-chunks" class="level3">
 <h3 class="anchored" data-anchor-id="bm25_d-top-1-3-paragraph-chunks">BM25_D: Top-1 3-Paragraph Chunks</h3>
 <p>I now want to increase the chunk size (to 3 paragraphs per chunk) before loading them into the database. I do this by iterating over the 1-paragraph chunks in groups of three, removing the header from the 2nd and 3rd chunk in each triplet (to avoid littering the text with additional keyword matches) and then concatenating the three chunks into new 3-paragraph chunks.</p>
-<div class="cell" data-execution_count="11">
+<div id="cell-136" class="cell" data-execution_count="11">
 <div class="sourceCode cell-code" id="cb69"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb69-1"><a href="#cb69-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> combine_chunks(chunks, num_p<span class="op">=</span><span class="dv">3</span>):</span>
 <span id="cb69-2"><a href="#cb69-2" aria-hidden="true" tabindex="-1"></a>    combined_chunks <span class="op">=</span> []</span>
 <span id="cb69-3"><a href="#cb69-3" aria-hidden="true" tabindex="-1"></a>    current_header <span class="op">=</span> <span class="va">None</span></span>
@@ -2667,14 +2653,14 @@ Wall time: 249 ms</code></pre>
 <span id="cb69-32"><a href="#cb69-32" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb69-33"><a href="#cb69-33" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> combined_chunks</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-execution_count="12">
+<div id="cell-137" class="cell" data-execution_count="12">
 <div class="sourceCode cell-code" id="cb70"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb70-1"><a href="#cb70-1" aria-hidden="true" tabindex="-1"></a>data_3p <span class="op">=</span> {}</span>
 <span id="cb70-2"><a href="#cb70-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb70-3"><a href="#cb70-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chapter, chunks <span class="kw">in</span> data.items():</span>
 <span id="cb70-4"><a href="#cb70-4" aria-hidden="true" tabindex="-1"></a>  data_3p[chapter] <span class="op">=</span> combine_chunks(chunks, num_p<span class="op">=</span><span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>The number of total chunks has gone down from <code>1967</code> to <code>713</code>, approximately a 3x decrease.</p>
-<div class="cell" data-outputid="56d9da3e-983d-47d2-bd63-f8e346913d25" data-execution_count="13">
+<div id="cell-139" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="56d9da3e-983d-47d2-bd63-f8e346913d25" data-execution_count="13">
 <div class="sourceCode cell-code" id="cb71"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb71-1"><a href="#cb71-1" aria-hidden="true" tabindex="-1"></a>total_chunks <span class="op">=</span> <span class="dv">0</span></span>
 <span id="cb71-2"><a href="#cb71-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb71-3"><a href="#cb71-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chapter, chunks <span class="kw">in</span> data_3p.items():</span>
@@ -2695,17 +2681,17 @@ Wall time: 249 ms</code></pre>
 <pre><code>713</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="310c2bec-6ed3-40d4-b269-d7f5b5c2c940" data-execution_count="271">
+<div id="cell-140" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="310c2bec-6ed3-40d4-b269-d7f5b5c2c940" data-execution_count="271">
 <div class="sourceCode cell-code" id="cb74"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb74-1"><a href="#cb74-1" aria-hidden="true" tabindex="-1"></a><span class="dv">1967</span><span class="op">/</span><span class="dv">713</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="271">
 <pre><code>2.758765778401122</code></pre>
 </div>
 </div>
 <p>I’ll iterate through one of the chapter’s chunks and view them one-by-one, comparing them with the original notebook to ensure they are chunked correctly.</p>
-<div class="cell" data-execution_count="363">
+<div id="cell-142" class="cell" data-execution_count="363">
 <div class="sourceCode cell-code" id="cb76"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb76-1"><a href="#cb76-1" aria-hidden="true" tabindex="-1"></a>ch2_iter <span class="op">=</span> <span class="bu">iter</span>(data_3p[<span class="st">'2'</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p>::: {.cell outputId=‘e6ae6acd-1439-4df5-bfb3-eaffdd4b5ef3’ execution_count=364}</p>
+<div id="cell-143" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="e6ae6acd-1439-4df5-bfb3-eaffdd4b5ef3" data-execution_count="364">
 <div class="sourceCode cell-code" id="cb77"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb77-1"><a href="#cb77-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="bu">next</span>(ch2_iter))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>
@@ -2714,20 +2700,20 @@ Wall time: 249 ms</code></pre>
 #hide
 ! [ -e /content ] &amp;&amp; pip install -Uqq fastbook
 import fastbook
-fastbook.setup_book()</code></pre>
-<div class="sourceCode" id="cb79"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb79-1"><a href="#cb79-1" aria-hidden="true" tabindex="-1"></a><span class="co">#hide</span></span>
-<span id="cb79-2"><a href="#cb79-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fastbook <span class="im">import</span> <span class="op">*</span></span>
-<span id="cb79-3"><a href="#cb79-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fastai.vision.widgets <span class="im">import</span> <span class="op">*</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<pre><code>:::
-:::
+fastbook.setup_book()
+```
 
-
-With the data reviewed and looking good, I'll load it into the database.
-
-::: {.cell outputId='0769d4ba-92dc-4ffb-bd58-64986d47dc22' execution_count=14}
-``` {.python .cell-code}
-for chapter, chunks in data_3p.items():
-  print(f"Chapter {chapter}:", load_data(chunks, 'fastbook.db', chapter))</code></pre>
+```python
+#hide
+from fastbook import *
+from fastai.vision.widgets import *
+```</code></pre>
+</div>
+</div>
+<p>With the data reviewed and looking good, I’ll load it into the database.</p>
+<div id="cell-145" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="0769d4ba-92dc-4ffb-bd58-64986d47dc22" data-execution_count="14">
+<div class="sourceCode cell-code" id="cb79"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb79-1"><a href="#cb79-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chapter, chunks <span class="kw">in</span> data_3p.items():</span>
+<span id="cb79-2"><a href="#cb79-2" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(<span class="ss">f"Chapter </span><span class="sc">{</span>chapter<span class="sc">}</span><span class="ss">:"</span>, load_data(chunks, <span class="st">'fastbook.db'</span>, chapter))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>Chapter 1: True
 Chapter 2: True
@@ -2739,91 +2725,91 @@ Chapter 13: True</code></pre>
 </div>
 </div>
 <p>Now, I can the full text search, returning the top-1 3-paragraph chunk for each question:</p>
-<div class="cell" data-execution_count="366">
-<div class="sourceCode cell-code" id="cb82"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb82-1"><a href="#cb82-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> db_search(questions, limit<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-147" class="cell" data-execution_count="366">
+<div class="sourceCode cell-code" id="cb81"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb81-1"><a href="#cb81-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> db_search(questions, limit<span class="op">=</span><span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-outputid="6de0fc93-37c0-4925-a044-cb878cc08337" data-execution_count="367">
-<div class="sourceCode cell-code" id="cb83"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb83-1"><a href="#cb83-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">202</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-148" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="6de0fc93-37c0-4925-a044-cb878cc08337" data-execution_count="367">
+<div class="sourceCode cell-code" id="cb82"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb82-1"><a href="#cb82-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">202</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="367">
 <pre><code>True</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="608ddb20-476d-47bc-d66e-5859888a65d6" data-execution_count="368">
-<div class="sourceCode cell-code" id="cb85"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb85-1"><a href="#cb85-1" aria-hidden="true" tabindex="-1"></a>bm25_d <span class="op">=</span> questions.copy()</span>
-<span id="cb85-2"><a href="#cb85-2" aria-hidden="true" tabindex="-1"></a>bm25_d[<span class="st">'bm25_d_context'</span>] <span class="op">=</span> results</span>
-<span id="cb85-3"><a href="#cb85-3" aria-hidden="true" tabindex="-1"></a>bm25_d.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-149" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:328}}" data-outputid="608ddb20-476d-47bc-d66e-5859888a65d6" data-execution_count="368">
+<div class="sourceCode cell-code" id="cb84"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb84-1"><a href="#cb84-1" aria-hidden="true" tabindex="-1"></a>bm25_d <span class="op">=</span> questions.copy()</span>
+<span id="cb84-2"><a href="#cb84-2" aria-hidden="true" tabindex="-1"></a>bm25_d[<span class="st">'bm25_d_context'</span>] <span class="op">=</span> results</span>
+<span id="cb84-3"><a href="#cb84-3" aria-hidden="true" tabindex="-1"></a>bm25_d.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="368">
-
-
-  <div id="df-280b69b4-78ea-48d3-ba5e-c44267c6a0ea" class="colab-df-container">
+<div id="df-280b69b4-78ea-48d3-ba5e-c44267c6a0ea" class="colab-df-container">
     <div>
 
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>chapter</th>
-      <th>question_number</th>
-      <th>question_text</th>
-      <th>answer</th>
-      <th>is_answerable</th>
-      <th>keywords</th>
-      <th>bm25_d_context</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>1</td>
-      <td>""Do you need these for deep learning?nn- Lots...</td>
-      <td>""Lots of math - False\nLots of data - False\n...</td>
-      <td>1</td>
-      <td>"deep learning, math, data, computers, PhD"</td>
-      <td>## Deep Learning Is for Everyone\n\nA lot of p...</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>1</td>
-      <td>2</td>
-      <td>""Name five areas where deep learning is now t...</td>
-      <td>""Any five of the following:\nNatural Language...</td>
-      <td>1</td>
-      <td>deep learning, areas, best, world</td>
-      <td>## Deep Learning Is for Everyone\n\nDeep learn...</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1</td>
-      <td>3</td>
-      <td>""What was the name of the first device that w...</td>
-      <td>""Mark I perceptron built by Frank Rosenblatt""</td>
-      <td>1</td>
-      <td>"neuron, neurons, device, artificial, principle"</td>
-      <td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>1</td>
-      <td>4</td>
-      <td>""Based on the book of the same name, what are...</td>
-      <td>""A set of processing units\nA state of activa...</td>
-      <td>1</td>
-      <td>"parallel, distributed, processing, PDP, requi...</td>
-      <td>## Neural Networks: A Brief History\n\nIn fact...</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>1</td>
-      <td>5</td>
-      <td>""What were the two theoretical misunderstandi...</td>
-      <td>""In 1969, Marvin Minsky and Seymour Papert de...</td>
-      <td>1</td>
-      <td>"neural, networks, theoretical, misunderstandi...</td>
-      <td>## Neural Networks: A Brief History\n\nIn the ...</td>
-    </tr>
-  </tbody>
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">chapter</th>
+<th data-quarto-table-cell-role="th">question_number</th>
+<th data-quarto-table-cell-role="th">question_text</th>
+<th data-quarto-table-cell-role="th">answer</th>
+<th data-quarto-table-cell-role="th">is_answerable</th>
+<th data-quarto-table-cell-role="th">keywords</th>
+<th data-quarto-table-cell-role="th">bm25_d_context</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0</td>
+<td>1</td>
+<td>1</td>
+<td>""Do you need these for deep learning?nn- Lots...</td>
+<td>""Lots of math - False\nLots of data - False\n...</td>
+<td>1</td>
+<td>"deep learning, math, data, computers, PhD"</td>
+<td>## Deep Learning Is for Everyone\n\nA lot of p...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1</td>
+<td>1</td>
+<td>2</td>
+<td>""Name five areas where deep learning is now t...</td>
+<td>""Any five of the following:\nNatural Language...</td>
+<td>1</td>
+<td>deep learning, areas, best, world</td>
+<td>## Deep Learning Is for Everyone\n\nDeep learn...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">2</td>
+<td>1</td>
+<td>3</td>
+<td>""What was the name of the first device that w...</td>
+<td>""Mark I perceptron built by Frank Rosenblatt""</td>
+<td>1</td>
+<td>"neuron, neurons, device, artificial, principle"</td>
+<td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">3</td>
+<td>1</td>
+<td>4</td>
+<td>""Based on the book of the same name, what are...</td>
+<td>""A set of processing units\nA state of activa...</td>
+<td>1</td>
+<td>"parallel, distributed, processing, PDP, requi...</td>
+<td>## Neural Networks: A Brief History\n\nIn fact...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">4</td>
+<td>1</td>
+<td>5</td>
+<td>""What were the two theoretical misunderstandi...</td>
+<td>""In 1969, Marvin Minsky and Seymour Papert de...</td>
+<td>1</td>
+<td>"neural, networks, theoretical, misunderstandi...</td>
+<td>## Neural Networks: A Brief History\n\nIn the ...</td>
+</tr>
+</tbody>
 </table>
+
 </div>
     <div class="colab-df-buttons">
 
@@ -3031,13 +3017,13 @@ Chapter 13: True</code></pre>
   </div>
 </div>
 </div>
-<div class="cell" data-execution_count="369">
-<div class="sourceCode cell-code" id="cb86"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb86-1"><a href="#cb86-1" aria-hidden="true" tabindex="-1"></a>bm25_d.to_csv(<span class="st">'bm25_d.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-150" class="cell" data-execution_count="369">
+<div class="sourceCode cell-code" id="cb85"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb85-1"><a href="#cb85-1" aria-hidden="true" tabindex="-1"></a>bm25_d.to_csv(<span class="st">'bm25_d.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <section id="results-4" class="level4">
 <h4 class="anchored" data-anchor-id="results-4">Results</h4>
 <p>Here is the <strong>Answer Rate</strong> (by chapter and overall).</p>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;">Chapter</th>
@@ -3102,89 +3088,89 @@ Chapter 13: True</code></pre>
 <section id="bm_25e-top-3-3-paragraph-chunks" class="level3">
 <h3 class="anchored" data-anchor-id="bm_25e-top-3-3-paragraph-chunks">BM_25E: Top-3 3-Paragraph Chunks</h3>
 <p>I’ll use the same loaded database (3-paragraph chunks) and full text search it with my keywords, setting <code>LIMIT = 3</code> to get the top-3 chunks.</p>
-<div class="cell" data-outputid="78ba29f3-24dd-40da-a8a8-bd4577b583c6" data-execution_count="28">
-<div class="sourceCode cell-code" id="cb87"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb87-1"><a href="#cb87-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> db_search(questions, limit<span class="op">=</span><span class="dv">3</span>)</span>
-<span id="cb87-2"><a href="#cb87-2" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">202</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-155" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="78ba29f3-24dd-40da-a8a8-bd4577b583c6" data-execution_count="28">
+<div class="sourceCode cell-code" id="cb86"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb86-1"><a href="#cb86-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> db_search(questions, limit<span class="op">=</span><span class="dv">3</span>)</span>
+<span id="cb86-2"><a href="#cb86-2" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">202</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="28">
 <pre><code>True</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="3adec362-2257-4f0b-f82e-4abf1d6b0a7d" data-execution_count="30">
-<div class="sourceCode cell-code" id="cb89"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb89-1"><a href="#cb89-1" aria-hidden="true" tabindex="-1"></a>bm25_e <span class="op">=</span> questions.copy()</span>
-<span id="cb89-2"><a href="#cb89-2" aria-hidden="true" tabindex="-1"></a>bm25_e[<span class="st">'bm25_e_context'</span>] <span class="op">=</span> results</span>
-<span id="cb89-3"><a href="#cb89-3" aria-hidden="true" tabindex="-1"></a>bm25_e.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-156" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:328}}" data-outputid="3adec362-2257-4f0b-f82e-4abf1d6b0a7d" data-execution_count="30">
+<div class="sourceCode cell-code" id="cb88"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb88-1"><a href="#cb88-1" aria-hidden="true" tabindex="-1"></a>bm25_e <span class="op">=</span> questions.copy()</span>
+<span id="cb88-2"><a href="#cb88-2" aria-hidden="true" tabindex="-1"></a>bm25_e[<span class="st">'bm25_e_context'</span>] <span class="op">=</span> results</span>
+<span id="cb88-3"><a href="#cb88-3" aria-hidden="true" tabindex="-1"></a>bm25_e.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="30">
-
-
-  <div id="df-a4c95da4-2946-4786-babe-d0bfaebf81bd" class="colab-df-container">
+<div id="df-a4c95da4-2946-4786-babe-d0bfaebf81bd" class="colab-df-container">
     <div>
 
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>chapter</th>
-      <th>question_number</th>
-      <th>question_text</th>
-      <th>answer</th>
-      <th>is_answerable</th>
-      <th>keywords</th>
-      <th>bm25_e_context</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>1</td>
-      <td>""Do you need these for deep learning?nn- Lots...</td>
-      <td>""Lots of math - False\nLots of data - False\n...</td>
-      <td>1</td>
-      <td>"deep learning, math, data, computers, PhD"</td>
-      <td>## Deep Learning Is for Everyone\n\nA lot of p...</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>1</td>
-      <td>2</td>
-      <td>""Name five areas where deep learning is now t...</td>
-      <td>""Any five of the following:\nNatural Language...</td>
-      <td>1</td>
-      <td>deep learning, areas, best, world</td>
-      <td>## Deep Learning Is for Everyone\n\nDeep learn...</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1</td>
-      <td>3</td>
-      <td>""What was the name of the first device that w...</td>
-      <td>""Mark I perceptron built by Frank Rosenblatt""</td>
-      <td>1</td>
-      <td>"neuron, neurons, device, artificial, principle"</td>
-      <td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>1</td>
-      <td>4</td>
-      <td>""Based on the book of the same name, what are...</td>
-      <td>""A set of processing units\nA state of activa...</td>
-      <td>1</td>
-      <td>"parallel, distributed, processing, PDP, requi...</td>
-      <td>## Neural Networks: A Brief History\n\nIn fact...</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>1</td>
-      <td>5</td>
-      <td>""What were the two theoretical misunderstandi...</td>
-      <td>""In 1969, Marvin Minsky and Seymour Papert de...</td>
-      <td>1</td>
-      <td>"neural, networks, theoretical, misunderstandi...</td>
-      <td>## Neural Networks: A Brief History\n\nIn the ...</td>
-    </tr>
-  </tbody>
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">chapter</th>
+<th data-quarto-table-cell-role="th">question_number</th>
+<th data-quarto-table-cell-role="th">question_text</th>
+<th data-quarto-table-cell-role="th">answer</th>
+<th data-quarto-table-cell-role="th">is_answerable</th>
+<th data-quarto-table-cell-role="th">keywords</th>
+<th data-quarto-table-cell-role="th">bm25_e_context</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0</td>
+<td>1</td>
+<td>1</td>
+<td>""Do you need these for deep learning?nn- Lots...</td>
+<td>""Lots of math - False\nLots of data - False\n...</td>
+<td>1</td>
+<td>"deep learning, math, data, computers, PhD"</td>
+<td>## Deep Learning Is for Everyone\n\nA lot of p...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1</td>
+<td>1</td>
+<td>2</td>
+<td>""Name five areas where deep learning is now t...</td>
+<td>""Any five of the following:\nNatural Language...</td>
+<td>1</td>
+<td>deep learning, areas, best, world</td>
+<td>## Deep Learning Is for Everyone\n\nDeep learn...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">2</td>
+<td>1</td>
+<td>3</td>
+<td>""What was the name of the first device that w...</td>
+<td>""Mark I perceptron built by Frank Rosenblatt""</td>
+<td>1</td>
+<td>"neuron, neurons, device, artificial, principle"</td>
+<td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">3</td>
+<td>1</td>
+<td>4</td>
+<td>""Based on the book of the same name, what are...</td>
+<td>""A set of processing units\nA state of activa...</td>
+<td>1</td>
+<td>"parallel, distributed, processing, PDP, requi...</td>
+<td>## Neural Networks: A Brief History\n\nIn fact...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">4</td>
+<td>1</td>
+<td>5</td>
+<td>""What were the two theoretical misunderstandi...</td>
+<td>""In 1969, Marvin Minsky and Seymour Papert de...</td>
+<td>1</td>
+<td>"neural, networks, theoretical, misunderstandi...</td>
+<td>## Neural Networks: A Brief History\n\nIn the ...</td>
+</tr>
+</tbody>
 </table>
+
 </div>
     <div class="colab-df-buttons">
 
@@ -3392,13 +3378,13 @@ Chapter 13: True</code></pre>
   </div>
 </div>
 </div>
-<div class="cell" data-execution_count="31">
-<div class="sourceCode cell-code" id="cb90"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb90-1"><a href="#cb90-1" aria-hidden="true" tabindex="-1"></a>bm25_e.to_csv(<span class="st">'bm25_e.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-157" class="cell" data-execution_count="31">
+<div class="sourceCode cell-code" id="cb89"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb89-1"><a href="#cb89-1" aria-hidden="true" tabindex="-1"></a>bm25_e.to_csv(<span class="st">'bm25_e.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <section id="results-5" class="level4">
 <h4 class="anchored" data-anchor-id="results-5">Results</h4>
 <p>Here is the <strong>Answer Rate</strong> (by chapter and overall).</p>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;">Chapter</th>
@@ -3463,89 +3449,89 @@ Chapter 13: True</code></pre>
 <section id="bm25_f-top-5-3-paragraph-chunks" class="level3">
 <h3 class="anchored" data-anchor-id="bm25_f-top-5-3-paragraph-chunks">BM25_F: Top-5 3-Paragraph Chunks</h3>
 <p>I’ll use the same loaded database (3-paragraph chunks) and full text search it with my keywords, setting <code>LIMIT 5</code> to get the top-5 chunks.</p>
-<div class="cell" data-outputid="af1d46ed-4d58-431f-b981-7b48af5ec4dc" data-execution_count="32">
-<div class="sourceCode cell-code" id="cb91"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb91-1"><a href="#cb91-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> db_search(questions, limit<span class="op">=</span><span class="dv">5</span>)</span>
-<span id="cb91-2"><a href="#cb91-2" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">202</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-163" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="af1d46ed-4d58-431f-b981-7b48af5ec4dc" data-execution_count="32">
+<div class="sourceCode cell-code" id="cb90"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb90-1"><a href="#cb90-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> db_search(questions, limit<span class="op">=</span><span class="dv">5</span>)</span>
+<span id="cb90-2"><a href="#cb90-2" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results) <span class="op">==</span> <span class="dv">202</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="32">
 <pre><code>True</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="a65b4ced-1fd3-4a01-a971-93bf081eea62" data-execution_count="33">
-<div class="sourceCode cell-code" id="cb93"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb93-1"><a href="#cb93-1" aria-hidden="true" tabindex="-1"></a>bm25_f <span class="op">=</span> questions.copy()</span>
-<span id="cb93-2"><a href="#cb93-2" aria-hidden="true" tabindex="-1"></a>bm25_f[<span class="st">'bm25_f_context'</span>] <span class="op">=</span> results</span>
-<span id="cb93-3"><a href="#cb93-3" aria-hidden="true" tabindex="-1"></a>bm25_f.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-164" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:328}}" data-outputid="a65b4ced-1fd3-4a01-a971-93bf081eea62" data-execution_count="33">
+<div class="sourceCode cell-code" id="cb92"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb92-1"><a href="#cb92-1" aria-hidden="true" tabindex="-1"></a>bm25_f <span class="op">=</span> questions.copy()</span>
+<span id="cb92-2"><a href="#cb92-2" aria-hidden="true" tabindex="-1"></a>bm25_f[<span class="st">'bm25_f_context'</span>] <span class="op">=</span> results</span>
+<span id="cb92-3"><a href="#cb92-3" aria-hidden="true" tabindex="-1"></a>bm25_f.head()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="33">
-
-
-  <div id="df-19d8f002-b06f-40e3-acdb-79839d74ddb0" class="colab-df-container">
+<div id="df-19d8f002-b06f-40e3-acdb-79839d74ddb0" class="colab-df-container">
     <div>
 
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>chapter</th>
-      <th>question_number</th>
-      <th>question_text</th>
-      <th>answer</th>
-      <th>is_answerable</th>
-      <th>keywords</th>
-      <th>bm25_f_context</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>1</td>
-      <td>""Do you need these for deep learning?nn- Lots...</td>
-      <td>""Lots of math - False\nLots of data - False\n...</td>
-      <td>1</td>
-      <td>"deep learning, math, data, computers, PhD"</td>
-      <td>## Deep Learning Is for Everyone\n\nA lot of p...</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>1</td>
-      <td>2</td>
-      <td>""Name five areas where deep learning is now t...</td>
-      <td>""Any five of the following:\nNatural Language...</td>
-      <td>1</td>
-      <td>deep learning, areas, best, world</td>
-      <td>## Deep Learning Is for Everyone\n\nDeep learn...</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1</td>
-      <td>3</td>
-      <td>""What was the name of the first device that w...</td>
-      <td>""Mark I perceptron built by Frank Rosenblatt""</td>
-      <td>1</td>
-      <td>"neuron, neurons, device, artificial, principle"</td>
-      <td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>1</td>
-      <td>4</td>
-      <td>""Based on the book of the same name, what are...</td>
-      <td>""A set of processing units\nA state of activa...</td>
-      <td>1</td>
-      <td>"parallel, distributed, processing, PDP, requi...</td>
-      <td>## Neural Networks: A Brief History\n\nIn fact...</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>1</td>
-      <td>5</td>
-      <td>""What were the two theoretical misunderstandi...</td>
-      <td>""In 1969, Marvin Minsky and Seymour Papert de...</td>
-      <td>1</td>
-      <td>"neural, networks, theoretical, misunderstandi...</td>
-      <td>## Neural Networks: A Brief History\n\nIn the ...</td>
-    </tr>
-  </tbody>
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">chapter</th>
+<th data-quarto-table-cell-role="th">question_number</th>
+<th data-quarto-table-cell-role="th">question_text</th>
+<th data-quarto-table-cell-role="th">answer</th>
+<th data-quarto-table-cell-role="th">is_answerable</th>
+<th data-quarto-table-cell-role="th">keywords</th>
+<th data-quarto-table-cell-role="th">bm25_f_context</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0</td>
+<td>1</td>
+<td>1</td>
+<td>""Do you need these for deep learning?nn- Lots...</td>
+<td>""Lots of math - False\nLots of data - False\n...</td>
+<td>1</td>
+<td>"deep learning, math, data, computers, PhD"</td>
+<td>## Deep Learning Is for Everyone\n\nA lot of p...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1</td>
+<td>1</td>
+<td>2</td>
+<td>""Name five areas where deep learning is now t...</td>
+<td>""Any five of the following:\nNatural Language...</td>
+<td>1</td>
+<td>deep learning, areas, best, world</td>
+<td>## Deep Learning Is for Everyone\n\nDeep learn...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">2</td>
+<td>1</td>
+<td>3</td>
+<td>""What was the name of the first device that w...</td>
+<td>""Mark I perceptron built by Frank Rosenblatt""</td>
+<td>1</td>
+<td>"neuron, neurons, device, artificial, principle"</td>
+<td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">3</td>
+<td>1</td>
+<td>4</td>
+<td>""Based on the book of the same name, what are...</td>
+<td>""A set of processing units\nA state of activa...</td>
+<td>1</td>
+<td>"parallel, distributed, processing, PDP, requi...</td>
+<td>## Neural Networks: A Brief History\n\nIn fact...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">4</td>
+<td>1</td>
+<td>5</td>
+<td>""What were the two theoretical misunderstandi...</td>
+<td>""In 1969, Marvin Minsky and Seymour Papert de...</td>
+<td>1</td>
+<td>"neural, networks, theoretical, misunderstandi...</td>
+<td>## Neural Networks: A Brief History\n\nIn the ...</td>
+</tr>
+</tbody>
 </table>
+
 </div>
     <div class="colab-df-buttons">
 
@@ -3753,13 +3739,13 @@ Chapter 13: True</code></pre>
   </div>
 </div>
 </div>
-<div class="cell" data-execution_count="34">
-<div class="sourceCode cell-code" id="cb94"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb94-1"><a href="#cb94-1" aria-hidden="true" tabindex="-1"></a>bm25_f.to_csv(<span class="st">'bm25_f.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-165" class="cell" data-execution_count="34">
+<div class="sourceCode cell-code" id="cb93"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb93-1"><a href="#cb93-1" aria-hidden="true" tabindex="-1"></a>bm25_f.to_csv(<span class="st">'bm25_f.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <section id="results-6" class="level4">
 <h4 class="anchored" data-anchor-id="results-6">Results</h4>
 <p>Here is the <strong>Answer Rate</strong></p>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;">Chapter</th>
@@ -3840,140 +3826,438 @@ Chapter 13: True</code></pre>
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
-window.document.addEventListener("DOMContentLoaded", function (event) {
-  const toggleBodyColorMode = (bsSheetEl) => {
-    const mode = bsSheetEl.getAttribute("data-mode");
-    const bodyEl = window.document.querySelector("body");
-    if (mode === "dark") {
-      bodyEl.classList.add("quarto-dark");
-      bodyEl.classList.remove("quarto-light");
-    } else {
-      bodyEl.classList.add("quarto-light");
-      bodyEl.classList.remove("quarto-dark");
-    }
-  }
-  const toggleBodyColorPrimary = () => {
-    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
-    if (bsSheetEl) {
-      toggleBodyColorMode(bsSheetEl);
-    }
-  }
-  toggleBodyColorPrimary();  
-  const icon = "";
-  const anchorJS = new window.AnchorJS();
-  anchorJS.options = {
-    placement: 'right',
-    icon: icon
-  };
-  anchorJS.add('.anchored');
-  const clipboard = new window.ClipboardJS('.code-copy-button', {
-    target: function(trigger) {
-      return trigger.previousElementSibling;
-    }
-  });
-  clipboard.on('success', function(e) {
-    // button target
-    const button = e.trigger;
-    // don't keep focus
-    button.blur();
-    // flash "checked"
-    button.classList.add('code-copy-button-checked');
-    var currentTitle = button.getAttribute("title");
-    button.setAttribute("title", "Copied!");
-    let tooltip;
-    if (window.bootstrap) {
-      button.setAttribute("data-bs-toggle", "tooltip");
-      button.setAttribute("data-bs-placement", "left");
-      button.setAttribute("data-bs-title", "Copied!");
-      tooltip = new bootstrap.Tooltip(button, 
-        { trigger: "manual", 
-          customClass: "code-copy-button-tooltip",
-          offset: [0, -8]});
-      tooltip.show();    
-    }
-    setTimeout(function() {
-      if (tooltip) {
-        tooltip.hide();
-        button.removeAttribute("data-bs-title");
-        button.removeAttribute("data-bs-toggle");
-        button.removeAttribute("data-bs-placement");
-      }
-      button.setAttribute("title", currentTitle);
-      button.classList.remove('code-copy-button-checked');
-    }, 1000);
-    // clear code selection
-    e.clearSelection();
-  });
-  function tippyHover(el, contentFn) {
-    const config = {
-      allowHTML: true,
-      content: contentFn,
-      maxWidth: 500,
-      delay: 100,
-      arrow: false,
-      appendTo: function(el) {
-          return el.parentElement;
-      },
-      interactive: true,
-      interactiveBorder: 10,
-      theme: 'quarto',
-      placement: 'bottom-start'
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
     };
-    window.tippy(el, config); 
-  }
-  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
-  for (var i=0; i<noterefs.length; i++) {
-    const ref = noterefs[i];
-    tippyHover(ref, function() {
-      // use id or data attribute instead here
-      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
-      try { href = new URL(href).hash; } catch {}
-      const id = href.replace(/^#\/?/, "");
-      const note = window.document.getElementById(id);
-      return note.innerHTML;
-    });
-  }
-  const findCites = (el) => {
-    const parentEl = el.parentElement;
-    if (parentEl) {
-      const cites = parentEl.dataset.cites;
-      if (cites) {
-        return {
-          el,
-          cites: cites.split(' ')
-        };
-      } else {
-        return findCites(el.parentElement)
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
       }
-    } else {
-      return undefined;
+      return false;
     }
-  };
-  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
-  for (var i=0; i<bibliorefs.length; i++) {
-    const ref = bibliorefs[i];
-    const citeInfo = findCites(ref);
-    if (citeInfo) {
-      tippyHover(citeInfo.el, function() {
-        var popup = window.document.createElement('div');
-        citeInfo.cites.forEach(function(cite) {
-          var citeDiv = window.document.createElement('div');
-          citeDiv.classList.add('hanging-indent');
-          citeDiv.classList.add('csl-entry');
-          var biblioDiv = window.document.getElementById('ref-' + cite);
-          if (biblioDiv) {
-            citeDiv.innerHTML = biblioDiv.innerHTML;
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+        const codeEl = trigger.previousElementSibling.cloneNode(true);
+        for (const childEl of codeEl.children) {
+          if (isCodeAnnotation(childEl)) {
+            childEl.remove();
           }
-          popup.appendChild(citeDiv);
-        });
-        return popup.innerHTML;
+        }
+        return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vishalbakshi\.github\.io\/blog");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
       });
     }
-  }
-});
-</script>
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
 </div> <!-- /content -->
-<script>var lightboxQuarto = GLightbox({"selector":".lightbox","closeEffect":"zoom","loop":true,"descPosition":"bottom","openEffect":"zoom"});</script>
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","descPosition":"bottom","loop":false,"openEffect":"zoom","selector":".lightbox"});
+(function() {
+  let previousOnload = window.onload;
+  window.onload = () => {
+    if (previousOnload) {
+      previousOnload();
+    }
+    lightboxQuarto.on('slide_before_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      const href = trigger.getAttribute('href');
+      if (href !== null) {
+        const imgEl = window.document.querySelector(`a[href="${href}"] img`);
+        if (imgEl !== null) {
+          const srcAttr = imgEl.getAttribute("src");
+          if (srcAttr && srcAttr.startsWith("data:")) {
+            slideConfig.href = srcAttr;
+          }
+        }
+      } 
+    });
+  
+    lightboxQuarto.on('slide_after_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(slideNode);
+      }
+    });
+  
+  };
+  
+})();
+          </script>
+
 
 
 

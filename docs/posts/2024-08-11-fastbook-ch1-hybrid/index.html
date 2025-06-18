@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.2.335">
+<meta name="generator" content="quarto-1.7.32">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -10,7 +10,7 @@
 <meta name="dcterms.date" content="2024-08-11">
 <meta name="description" content="In this blog post I use different approaches to combine FTS5 (keyword search) and Cosine Similarity (semantic search) to retrieve context necessary to answer questions about Chapter 1 of the fastai textbook.">
 
-<title>Vishal Bakshi’s Blog - Using Hybrid Search to Answer fastai the Chapter 1 Questionnaire</title>
+<title>Using Hybrid Search to Answer fastai the Chapter 1 Questionnaire – Vishal Bakshi’s Blog</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -20,9 +20,11 @@ div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
 ul.task-list{list-style: none;}
 ul.task-list li input[type="checkbox"] {
   width: 0.8em;
-  margin: 0 0.8em 0.2em -1.6em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
 pre > code.sourceCode { white-space: pre; position: relative; }
 pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
 pre > code.sourceCode > span:empty { height: 1.2em; }
@@ -49,69 +51,46 @@ pre.numberSource code > span > a:first-child::before
     -khtml-user-select: none; -moz-user-select: none;
     -ms-user-select: none; user-select: none;
     padding: 0 4px; width: 4em;
-    color: #aaaaaa;
   }
-pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
 div.sourceCode
   {   }
 @media screen {
 pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
-code span.al { color: #ff0000; font-weight: bold; } /* Alert */
-code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
-code span.at { color: #7d9029; } /* Attribute */
-code span.bn { color: #40a070; } /* BaseN */
-code span.bu { color: #008000; } /* BuiltIn */
-code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
-code span.ch { color: #4070a0; } /* Char */
-code span.cn { color: #880000; } /* Constant */
-code span.co { color: #60a0b0; font-style: italic; } /* Comment */
-code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
-code span.do { color: #ba2121; font-style: italic; } /* Documentation */
-code span.dt { color: #902000; } /* DataType */
-code span.dv { color: #40a070; } /* DecVal */
-code span.er { color: #ff0000; font-weight: bold; } /* Error */
-code span.ex { } /* Extension */
-code span.fl { color: #40a070; } /* Float */
-code span.fu { color: #06287e; } /* Function */
-code span.im { color: #008000; font-weight: bold; } /* Import */
-code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
-code span.kw { color: #007020; font-weight: bold; } /* Keyword */
-code span.op { color: #666666; } /* Operator */
-code span.ot { color: #007020; } /* Other */
-code span.pp { color: #bc7a00; } /* Preprocessor */
-code span.sc { color: #4070a0; } /* SpecialChar */
-code span.ss { color: #bb6688; } /* SpecialString */
-code span.st { color: #4070a0; } /* String */
-code span.va { color: #19177c; } /* Variable */
-code span.vs { color: #4070a0; } /* VerbatimString */
-code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
 </style>
 
 
-<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="../../site_libs/quarto-nav/headroom.min.js"></script>
 <script src="../../site_libs/clipboard/clipboard.min.js"></script>
 <script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
 <script src="../../site_libs/quarto-search/fuse.min.js"></script>
 <script src="../../site_libs/quarto-search/quarto-search.js"></script>
 <meta name="quarto:offset" content="../../">
-<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
 <script src="../../site_libs/quarto-html/popper.min.js"></script>
 <script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-37eea08aefeeee20ff55810ff984fec1.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-9c1ae87ad5063dce4f793ccd314a7566.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
   "collapse-after": 3,
   "panel-placement": "end",
   "type": "overlay",
-  "limit": 20,
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
   "language": {
     "search-no-results-text": "No results",
     "search-matching-documents-text": "matching documents",
@@ -120,52 +99,56 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     "search-more-match-text": "more match in this document",
     "search-more-matches-text": "more matches in this document",
     "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
     "search-detached-cancel-button-title": "Cancel",
-    "search-submit-button-title": "Submit"
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
   }
 }</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+
 <script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
 
 
 <link rel="stylesheet" href="../../styles.css">
 </head>
 
-<body class="nav-fixed">
+<body class="nav-fixed quarto-light">
 
 <div id="quarto-search-results"></div>
   <header id="quarto-header" class="headroom fixed-top">
-    <nav class="navbar navbar-expand-lg navbar-dark ">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
-      <div class="navbar-brand-container">
+      <div class="navbar-brand-container mx-auto">
     <a class="navbar-brand" href="../../index.html">
     <span class="navbar-title">Vishal Bakshi’s Blog</span>
     </a>
   </div>
-          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
   <span class="navbar-toggler-icon"></span>
 </button>
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll me-auto">
   <li class="nav-item">
-    <a class="nav-link" href="../../index.html">
- <span class="menu-text">Home</span></a>
+    <a class="nav-link" href="../../index.html"> 
+<span class="menu-text">Home</span></a>
   </li>  
   <li class="nav-item">
-    <a class="nav-link" href="../../about.html">
- <span class="menu-text">About</span></a>
+    <a class="nav-link" href="../../about.html"> 
+<span class="menu-text">About</span></a>
   </li>  
 </ul>
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
   <li class="nav-item compact">
-    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+    <a class="nav-link" href="../../index.xml"> <i class="bi bi-rss" role="img">
 </i> 
- <span class="menu-text"></span></a>
+<span class="menu-text"></span></a>
   </li>  
 </ul>
-              <div id="quarto-search" class="" title="Search"></div>
           </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
       </div> <!-- /container-fluid -->
     </nav>
 </header>
@@ -232,14 +215,16 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   </div>
   
 
+
 </header>
+
 
 <section id="background" class="level2">
 <h2 class="anchored" data-anchor-id="background">Background</h2>
 <p>In this blog post I’ll work through creating a hybrid search (keyword search + semantic search) baseline for a project I’m working on called <strong>fastbookRAG</strong>. In this project, I’m building a hybrid search + LLM pipeline to answer questions from the end-of-chapter Questionnaires in the freely available <a href="https://github.com/fastai/fastbook/tree/master">fastai textbook</a>. For now, I’m taking the place of the LLM in the pipeline (using the context retrieved using keyword/semantic search to answer questions). In this notebook, I’ll focus on retrieving the relevant context needed to answer questions from Chapter 1. In future notebooks, I’ll be expanding this to all 8 lessons in <a href="https://course.fast.ai/">Part 1 of the fastai course</a>.</p>
 <p>In two previous blog posts I was able to answer 72% of the Chapter 1 Questionnairse questions <a href="https://vishalbakshi.github.io/blog/posts/2024-08-04-fastbook-ch1-fts5/">using full text search</a> and 76% of questions <a href="https://vishalbakshi.github.io/blog/posts/2024-08-06-fastbook-ch1-cosine-similarity/">using cosine similarity</a>. I’ll try to beat that result using a combined approach.</p>
 <p>I’ll summarize my results from this notebook in the table below. Cosine Similarity is represented as “CS” and full text search as “BM25”:</p>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;">Approach</th>
@@ -295,8 +280,8 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </tr>
 </tbody>
 </table>
-<div class="cell">
-<details>
+<div id="cell-5" class="cell">
+<details class="code-fold">
 <summary>Show imports</summary>
 <div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> sqlite3</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> json</span>
@@ -316,8 +301,8 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="chunking-the-chapter-1-notebook-into-paragraphs" class="level2">
 <h2 class="anchored" data-anchor-id="chunking-the-chapter-1-notebook-into-paragraphs">Chunking the Chapter 1 Notebook into Paragraphs</h2>
 <p>As usual, I’ll start by chunking the chapter 1 notebook into paragraphs and store them into a sqlite database. I’ll wrap the databse loading code into a function so that I can easily reuse it for different chunking strategies.</p>
-<div class="cell" data-execution_count="2">
-<details>
+<div id="cell-8" class="cell" data-execution_count="2">
+<details class="code-fold">
 <summary>Show the chunking code</summary>
 <div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_chunks(notebook_path):</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> <span class="bu">open</span>(notebook_path, <span class="st">'r'</span>, encoding<span class="op">=</span><span class="st">'utf-8'</span>) <span class="im">as</span> <span class="bu">file</span>:</span>
@@ -333,17 +318,17 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> cell <span class="kw">in</span> notebook[<span class="st">'cells'</span>]:</span>
 <span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> cell[<span class="st">'cell_type'</span>] <span class="op">==</span> <span class="st">'markdown'</span>:</span>
 <span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>            content <span class="op">=</span> <span class="st">''</span>.join(cell[<span class="st">'source'</span>])</span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>            header_match <span class="op">=</span> re.match(<span class="vs">r'^(#+\s+.*?)$'</span>, content, re.MULTILINE)</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>            header_match <span class="op">=</span> re.match(<span class="vs">r'</span><span class="dv">^</span><span class="kw">(</span><span class="vs">#</span><span class="op">+</span><span class="dv">\s</span><span class="op">+</span><span class="dv">.</span><span class="op">*?</span><span class="kw">)</span><span class="dv">$</span><span class="vs">'</span>, content, re.MULTILINE)</span>
 <span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> header_match:  <span class="co"># Check if the cell starts with a header</span></span>
 <span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>                current_header <span class="op">=</span> header_match.group(<span class="dv">1</span>)</span>
 <span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>                <span class="co"># Add any content after the header in the same cell</span></span>
 <span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>                remaining_content <span class="op">=</span> content[<span class="bu">len</span>(current_header):].strip()</span>
 <span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>                <span class="cf">if</span> remaining_content:</span>
-<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>                    paragraphs <span class="op">=</span> re.split(<span class="vs">r'\n\s*\n'</span>, remaining_content)</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>                    paragraphs <span class="op">=</span> re.split(<span class="vs">r'</span><span class="ch">\n</span><span class="dv">\s</span><span class="op">*</span><span class="ch">\n</span><span class="vs">'</span>, remaining_content)</span>
 <span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">for</span> paragraph <span class="kw">in</span> paragraphs:</span>
 <span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>                        add_chunk(paragraph)</span>
 <span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>            <span class="cf">else</span>:</span>
-<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>                paragraphs <span class="op">=</span> re.split(<span class="vs">r'\n\s*\n'</span>, content)</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>                paragraphs <span class="op">=</span> re.split(<span class="vs">r'</span><span class="ch">\n</span><span class="dv">\s</span><span class="op">*</span><span class="ch">\n</span><span class="vs">'</span>, content)</span>
 <span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>                <span class="cf">for</span> paragraph <span class="kw">in</span> paragraphs:</span>
 <span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>                    add_chunk(paragraph)</span>
 <span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>        <span class="cf">elif</span> cell[<span class="st">'cell_type'</span>] <span class="op">==</span> <span class="st">'code'</span>:</span>
@@ -364,15 +349,15 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb2-43"><a href="#cb2-43" aria-hidden="true" tabindex="-1"></a>exclude_headers <span class="op">=</span> [<span class="st">"Questionnaire"</span>, <span class="st">"Further Research"</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-execution_count="3">
+<div id="cell-9" class="cell" data-execution_count="3">
 <div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>notebook_path <span class="op">=</span> <span class="st">'01_intro.ipynb'</span></span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>chunks <span class="op">=</span> get_chunks(notebook_path)</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(chunks) <span class="op">==</span> <span class="dv">315</span></span>
 <span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>filtered_chunks <span class="op">=</span> filter_chunks(chunks, exclude_headers)</span>
 <span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(filtered_chunks) <span class="op">==</span> <span class="dv">307</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-execution_count="26">
-<details>
+<div id="cell-10" class="cell" data-execution_count="26">
+<details class="code-fold">
 <summary>Show the db loading function</summary>
 <div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>conn <span class="op">=</span> sqlite3.<span class="ex">connect</span>(<span class="st">'/content/fastbook.db'</span>)</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
@@ -394,7 +379,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> <span class="bu">len</span>(res) <span class="op">==</span> <span class="bu">len</span>(filtered_chunks)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-outputid="886d589e-e806-4bd0-c6a1-6ea7d92bd722" data-execution_count="5">
+<div id="cell-11" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="886d589e-e806-4bd0-c6a1-6ea7d92bd722" data-execution_count="5">
 <div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>load_data(filtered_chunks)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
 <pre><code>True</code></pre>
@@ -405,61 +390,61 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <h2 class="anchored" data-anchor-id="retrieving-top-1-cosine-similarity-of-top-10-bm25-ranked-keyword-search-results">Retrieving Top-1 Cosine Similarity of Top-10 BM25-Ranked Keyword Search Results</h2>
 <p>To give me some flexibility in which chunks are retrieved, I’ll use cosine similarity on the top-10 BM25-ranked full text search results. In previous experiments my best performing cosine similarity approach used top-5 small chunks and my best performing full text search approach used top-3 large chunks.</p>
 <p>I’ll first create embeddings for the chunked data and the questions:</p>
-<div class="cell" data-outputid="db60de01-30d0-46f7-ef8c-4c85d54e7405" data-execution_count="12">
+<div id="cell-15" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="db60de01-30d0-46f7-ef8c-4c85d54e7405" data-execution_count="12">
 <div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>data_embs <span class="op">=</span> emb_model.encode(filtered_chunks, convert_to_tensor<span class="op">=</span><span class="va">True</span>)</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>data_embs.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="12">
 <pre><code>torch.Size([307, 384])</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="02356857-9fee-4c77-fc3e-ae7e0b1e7847" data-execution_count="7">
+<div id="cell-16" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:196}}" data-outputid="02356857-9fee-4c77-fc3e-ae7e0b1e7847" data-execution_count="7">
 <div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Chapter 1 Questionnaire questions, answers and keywords</span></span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pd.read_csv(<span class="st">"https://gist.githubusercontent.com/vishalbakshi/309fb3abb222d32446b2c4e29db753fe/raw/bc6cd2ab15b64a92ec23796c61702f413fdd2b40/fastbookRAG_evals.csv"</span>)</span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>df.head(<span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="7">
-
-
-  <div id="df-7fc75e18-0962-40f1-8574-4693259080c8" class="colab-df-container">
+<div id="df-7fc75e18-0962-40f1-8574-4693259080c8" class="colab-df-container">
     <div>
 
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>chapter</th>
-      <th>question_number</th>
-      <th>question_text</th>
-      <th>answer</th>
-      <th>keywords</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>1</td>
-      <td>Do you need these for deep learning?\\n\\n- Lo...</td>
-      <td>Lots of math - False\\nLots of data - False\\n...</td>
-      <td>math, data, expensive computers, PhD</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>1</td>
-      <td>2</td>
-      <td>Name five areas where deep learning is now the...</td>
-      <td>Any five of the following:\\nNatural Language ...</td>
-      <td>deep learning, state of the art, best, world</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1</td>
-      <td>3</td>
-      <td>What was the name of the first device that was...</td>
-      <td>Mark I perceptron built by Frank Rosenblatt</td>
-      <td>first, device, artificial, neuron</td>
-    </tr>
-  </tbody>
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">chapter</th>
+<th data-quarto-table-cell-role="th">question_number</th>
+<th data-quarto-table-cell-role="th">question_text</th>
+<th data-quarto-table-cell-role="th">answer</th>
+<th data-quarto-table-cell-role="th">keywords</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0</td>
+<td>1</td>
+<td>1</td>
+<td>Do you need these for deep learning?\\n\\n- Lo...</td>
+<td>Lots of math - False\\nLots of data - False\\n...</td>
+<td>math, data, expensive computers, PhD</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1</td>
+<td>1</td>
+<td>2</td>
+<td>Name five areas where deep learning is now the...</td>
+<td>Any five of the following:\\nNatural Language ...</td>
+<td>deep learning, state of the art, best, world</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">2</td>
+<td>1</td>
+<td>3</td>
+<td>What was the name of the first device that was...</td>
+<td>Mark I perceptron built by Frank Rosenblatt</td>
+<td>first, device, artificial, neuron</td>
+</tr>
+</tbody>
 </table>
+
 </div>
     <div class="colab-df-buttons">
 
@@ -667,7 +652,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   </div>
 </div>
 </div>
-<div class="cell" data-outputid="e3574344-973b-49a0-ebc8-95cf779aaeb3" data-execution_count="8">
+<div id="cell-17" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="e3574344-973b-49a0-ebc8-95cf779aaeb3" data-execution_count="8">
 <div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>q_embs <span class="op">=</span> emb_model.encode(df[<span class="st">'question_text'</span>], convert_to_tensor<span class="op">=</span><span class="va">True</span>)</span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>q_embs.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="8">
@@ -675,8 +660,8 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </div>
 </div>
 <p>I’ll use <code>ORDER BY rank</code> and <code>LIMIT 10</code> in my SQL query to get the top-10 BM25-ranked results:</p>
-<div class="cell" data-execution_count="84">
-<details>
+<div id="cell-19" class="cell" data-execution_count="84">
+<details class="code-fold">
 <summary>Show the for-loop + query</summary>
 <div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> []</span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>conn <span class="op">=</span> sqlite3.<span class="ex">connect</span>(<span class="st">'fastbook.db'</span>)</span>
@@ -703,27 +688,27 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb12-23"><a href="#cb12-23" aria-hidden="true" tabindex="-1"></a>    results.append(res)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-outputid="98ab23f2-d381-4447-c90c-e131cc015358" data-execution_count="85">
+<div id="cell-20" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="98ab23f2-d381-4447-c90c-e131cc015358" data-execution_count="85">
 <div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results), <span class="bu">len</span>(results[<span class="dv">0</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="85">
 <pre><code>(33, 10)</code></pre>
 </div>
 </div>
 <p>I’ll embed these chunks of context (up to 10 for each of the 33 questions) so that I can perform cosine similarity between them and the question embeddings. Note that not all questions have 10 chunks as some keyword searches resulted in less than 10 retrieved chunks.</p>
-<div class="cell" data-outputid="f8309801-eb28-4eef-89c3-14e4936d111b" data-execution_count="90">
+<div id="cell-22" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="f8309801-eb28-4eef-89c3-14e4936d111b" data-execution_count="90">
 <div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results[<span class="op">-</span><span class="dv">3</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="90">
 <pre><code>2</code></pre>
 </div>
 </div>
-<div class="cell" data-execution_count="122">
+<div id="cell-23" class="cell" data-execution_count="122">
 <div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>results_embs <span class="op">=</span> {}</span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> idx, sublist <span class="kw">in</span> <span class="bu">enumerate</span>(results):</span>
 <span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>  results_embs[idx] <span class="op">=</span> emb_model.encode(sublist, convert_to_tensor<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>I’ll apply cosine similarity between the chunk embeddings for the given question’s keyword search result and the question embedding and select the top result:</p>
-<div class="cell" data-execution_count="116">
+<div id="cell-25" class="cell" data-execution_count="116">
 <div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>cs_results <span class="op">=</span> []</span>
 <span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i, q <span class="kw">in</span> <span class="bu">enumerate</span>(q_embs):</span>
@@ -733,63 +718,63 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>  <span class="cf">else</span>:</span>
 <span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>    cs_results.append(<span class="st">'No answer'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-outputid="3be4d477-8ef4-4873-fe2d-204db788874c" data-execution_count="118">
+<div id="cell-26" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="3be4d477-8ef4-4873-fe2d-204db788874c" data-execution_count="118">
 <div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(cs_results)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="118">
 <pre><code>33</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="5ed37c0b-aec1-4874-b26d-e0196818e66a" data-execution_count="119">
+<div id="cell-27" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:196}}" data-outputid="5ed37c0b-aec1-4874-b26d-e0196818e66a" data-execution_count="119">
 <div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>df[<span class="st">'retrieved_context'</span>] <span class="op">=</span> pd.Series(cs_results)</span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>df.head(<span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="119">
-
-
-  <div id="df-437d9794-a87c-4985-bd55-c7dadaefa807" class="colab-df-container">
+<div id="df-437d9794-a87c-4985-bd55-c7dadaefa807" class="colab-df-container">
     <div>
 
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>chapter</th>
-      <th>question_number</th>
-      <th>question_text</th>
-      <th>answer</th>
-      <th>keywords</th>
-      <th>retrieved_context</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>1</td>
-      <td>Do you need these for deep learning?\\n\\n- Lo...</td>
-      <td>Lots of math - False\\nLots of data - False\\n...</td>
-      <td>math, data, expensive computers, PhD</td>
-      <td>## Deep Learning Is for Everyone\n\n```asciido...</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>1</td>
-      <td>2</td>
-      <td>Name five areas where deep learning is now the...</td>
-      <td>Any five of the following:\\nNatural Language ...</td>
-      <td>deep learning, state of the art, best, world</td>
-      <td>## Deep Learning Is for Everyone\n\nHere's a l...</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1</td>
-      <td>3</td>
-      <td>What was the name of the first device that was...</td>
-      <td>Mark I perceptron built by Frank Rosenblatt</td>
-      <td>first, device, artificial, neuron</td>
-      <td>## Neural Networks: A Brief History\n\nRosenbl...</td>
-    </tr>
-  </tbody>
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">chapter</th>
+<th data-quarto-table-cell-role="th">question_number</th>
+<th data-quarto-table-cell-role="th">question_text</th>
+<th data-quarto-table-cell-role="th">answer</th>
+<th data-quarto-table-cell-role="th">keywords</th>
+<th data-quarto-table-cell-role="th">retrieved_context</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0</td>
+<td>1</td>
+<td>1</td>
+<td>Do you need these for deep learning?\\n\\n- Lo...</td>
+<td>Lots of math - False\\nLots of data - False\\n...</td>
+<td>math, data, expensive computers, PhD</td>
+<td>## Deep Learning Is for Everyone\n\n```asciido...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1</td>
+<td>1</td>
+<td>2</td>
+<td>Name five areas where deep learning is now the...</td>
+<td>Any five of the following:\\nNatural Language ...</td>
+<td>deep learning, state of the art, best, world</td>
+<td>## Deep Learning Is for Everyone\n\nHere's a l...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">2</td>
+<td>1</td>
+<td>3</td>
+<td>What was the name of the first device that was...</td>
+<td>Mark I perceptron built by Frank Rosenblatt</td>
+<td>first, device, artificial, neuron</td>
+<td>## Neural Networks: A Brief History\n\nRosenbl...</td>
+</tr>
+</tbody>
 </table>
+
 </div>
     <div class="colab-df-buttons">
 
@@ -997,12 +982,12 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   </div>
 </div>
 </div>
-<div class="cell" data-execution_count="120">
+<div id="cell-28" class="cell" data-execution_count="120">
 <div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>df.to_csv(<span class="st">'top1_top10_results.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>Using the retrieved chunks I was able to answer 17/33 or <strong>52%</strong> of the Chapter 1 questions.</p>
 <p>I’m curious: what was the BM25-rank of the context with the top-1 cosine similarity? In other words, did cosine similarity pick the highest ranked keyword search result?</p>
-<div class="cell" data-execution_count="125">
+<div id="cell-31" class="cell" data-execution_count="125">
 <div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>cs_ranks <span class="op">=</span> []</span>
 <span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i, q <span class="kw">in</span> <span class="bu">enumerate</span>(q_embs):</span>
@@ -1013,50 +998,51 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>    cs_ranks.append(<span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>For 16 of the 33 questions, the context with the highest cosine similarity with the question was also the highest BM25-ranked keyword search result. 24/33 highest cosine similarity results were top-3 BM25-ranked chunkcs. For 6 out of 33 questions, the highest cosine similarity was for a context that was not top-3 BM25 ranked.</p>
-<div class="cell" data-outputid="4acec6cd-c799-486e-ffd7-dfe17b8c6d12" data-execution_count="133">
+<div id="cell-33" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:304}}" data-outputid="4acec6cd-c799-486e-ffd7-dfe17b8c6d12" data-execution_count="133">
 <div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>cs_ranks.value_counts()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="133">
-
 <div>
 
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>count</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0.0</th>
-      <td>16</td>
-    </tr>
-    <tr>
-      <th>1.0</th>
-      <td>5</td>
-    </tr>
-    <tr>
-      <th>2.0</th>
-      <td>3</td>
-    </tr>
-    <tr>
-      <th>8.0</th>
-      <td>2</td>
-    </tr>
-    <tr>
-      <th>4.0</th>
-      <td>2</td>
-    </tr>
-    <tr>
-      <th>7.0</th>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>3.0</th>
-      <td>1</td>
-    </tr>
-  </tbody>
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">count</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0.0</td>
+<td>16</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1.0</td>
+<td>5</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">2.0</td>
+<td>3</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">8.0</td>
+<td>2</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">4.0</td>
+<td>2</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">7.0</td>
+<td>1</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">3.0</td>
+<td>1</td>
+</tr>
+</tbody>
 </table>
+
 </div><br><label><b>dtype:</b> int64</label>
 </div>
 </div>
@@ -1064,7 +1050,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="retrieving-top-3-cosine-similarity-of-top-10-bm25-ranked-keyword-search-results" class="level2">
 <h2 class="anchored" data-anchor-id="retrieving-top-3-cosine-similarity-of-top-10-bm25-ranked-keyword-search-results">Retrieving Top-3 Cosine Similarity of Top-10 BM25-Ranked Keyword Search Results</h2>
 <p>I’ll now retrieve 3 chunks (for each question) that have the top-3 highest cosine similarity values. I expect this to improve my ability to answer questions.</p>
-<div class="cell" data-execution_count="140">
+<div id="cell-36" class="cell" data-execution_count="140">
 <div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>cs_results <span class="op">=</span> []</span>
 <span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i, q <span class="kw">in</span> <span class="bu">enumerate</span>(q_embs):</span>
@@ -1075,57 +1061,57 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>  <span class="cf">else</span>:</span>
 <span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a>    cs_results.append(<span class="st">'No answer'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-outputid="cf3c8fd0-4b8f-4ca3-d750-1ead0a0863d0" data-execution_count="143">
+<div id="cell-37" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:196}}" data-outputid="cf3c8fd0-4b8f-4ca3-d750-1ead0a0863d0" data-execution_count="143">
 <div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>df[<span class="st">'retrieved_context'</span>] <span class="op">=</span> pd.Series(cs_results)</span>
 <span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>df.head(<span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="143">
-
-
-  <div id="df-afc09024-0af7-45d2-97cc-ae499c73166f" class="colab-df-container">
+<div id="df-afc09024-0af7-45d2-97cc-ae499c73166f" class="colab-df-container">
     <div>
 
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>chapter</th>
-      <th>question_number</th>
-      <th>question_text</th>
-      <th>answer</th>
-      <th>keywords</th>
-      <th>retrieved_context</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>1</td>
-      <td>Do you need these for deep learning?\\n\\n- Lo...</td>
-      <td>Lots of math - False\\nLots of data - False\\n...</td>
-      <td>math, data, expensive computers, PhD</td>
-      <td>## Deep Learning Is for Everyone\n\n```asciido...</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>1</td>
-      <td>2</td>
-      <td>Name five areas where deep learning is now the...</td>
-      <td>Any five of the following:\\nNatural Language ...</td>
-      <td>deep learning, state of the art, best, world</td>
-      <td>## Deep Learning Is for Everyone\n\nHere's a l...</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1</td>
-      <td>3</td>
-      <td>What was the name of the first device that was...</td>
-      <td>Mark I perceptron built by Frank Rosenblatt</td>
-      <td>first, device, artificial, neuron</td>
-      <td>## Neural Networks: A Brief History\n\nRosenbl...</td>
-    </tr>
-  </tbody>
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">chapter</th>
+<th data-quarto-table-cell-role="th">question_number</th>
+<th data-quarto-table-cell-role="th">question_text</th>
+<th data-quarto-table-cell-role="th">answer</th>
+<th data-quarto-table-cell-role="th">keywords</th>
+<th data-quarto-table-cell-role="th">retrieved_context</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0</td>
+<td>1</td>
+<td>1</td>
+<td>Do you need these for deep learning?\\n\\n- Lo...</td>
+<td>Lots of math - False\\nLots of data - False\\n...</td>
+<td>math, data, expensive computers, PhD</td>
+<td>## Deep Learning Is for Everyone\n\n```asciido...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1</td>
+<td>1</td>
+<td>2</td>
+<td>Name five areas where deep learning is now the...</td>
+<td>Any five of the following:\\nNatural Language ...</td>
+<td>deep learning, state of the art, best, world</td>
+<td>## Deep Learning Is for Everyone\n\nHere's a l...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">2</td>
+<td>1</td>
+<td>3</td>
+<td>What was the name of the first device that was...</td>
+<td>Mark I perceptron built by Frank Rosenblatt</td>
+<td>first, device, artificial, neuron</td>
+<td>## Neural Networks: A Brief History\n\nRosenbl...</td>
+</tr>
+</tbody>
 </table>
+
 </div>
     <div class="colab-df-buttons">
 
@@ -1333,7 +1319,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   </div>
 </div>
 </div>
-<div class="cell" data-execution_count="144">
+<div id="cell-38" class="cell" data-execution_count="144">
 <div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>df.to_csv(<span class="st">'top3_top10_results.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>This approach slightly improves the performance. Now I can answer 19/33 or <strong>58%</strong> of the questions with the given retrieved context. This still underperforms each individual approach.</p>
@@ -1342,8 +1328,8 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <h2 class="anchored" data-anchor-id="concatenating-keyword-search-result-before-applying-cosine-similarity">Concatenating Keyword Search Result Before Applying Cosine Similarity</h2>
 <p>Next, I’ll try a different approach: I’ll concatenate, three at a time, keyword search results and then perform cosine similarity on those larger chunks. I’ll pick the larger chunk with the highest cosine similarity.</p>
 <p>Since I’m concatenating 3 keyword search results at a time, I’ll increase my <code>LIMIT</code> to <code>12</code> (a multiple of 3).</p>
-<div class="cell" data-execution_count="9">
-<details>
+<div id="cell-42" class="cell" data-execution_count="9">
+<details class="code-fold">
 <summary>Show the for-loop + query</summary>
 <div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> []</span>
 <span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>conn <span class="op">=</span> sqlite3.<span class="ex">connect</span>(<span class="st">'fastbook.db'</span>)</span>
@@ -1378,14 +1364,14 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb28-31"><a href="#cb28-31" aria-hidden="true" tabindex="-1"></a>    results.append(res)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-outputid="d70e0355-4a61-4b06-e0a6-ce6916f3b802" data-execution_count="10">
+<div id="cell-43" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="d70e0355-4a61-4b06-e0a6-ce6916f3b802" data-execution_count="10">
 <div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="10">
 <pre><code>33</code></pre>
 </div>
 </div>
-<div class="cell" data-execution_count="13">
-<details>
+<div id="cell-44" class="cell" data-execution_count="13">
+<details class="code-fold">
 <summary>Show the embedding of results</summary>
 <div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>results_embs <span class="op">=</span> {}</span>
 <span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a></span>
@@ -1393,7 +1379,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>  results_embs[idx] <span class="op">=</span> emb_model.encode(sublist, convert_to_tensor<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-execution_count="19">
+<div id="cell-45" class="cell" data-execution_count="19">
 <div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>cs_results <span class="op">=</span> []</span>
 <span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i, q <span class="kw">in</span> <span class="bu">enumerate</span>(q_embs):</span>
@@ -1403,63 +1389,63 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a>  <span class="cf">else</span>:</span>
 <span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a>    cs_results.append(<span class="st">'No answer'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-outputid="1ec71b4c-da09-4ea0-c256-a90ea2ae7d03" data-execution_count="20">
+<div id="cell-46" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="1ec71b4c-da09-4ea0-c256-a90ea2ae7d03" data-execution_count="20">
 <div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(cs_results)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="20">
 <pre><code>33</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="784f9299-3018-4825-ec80-9c308d688deb" data-execution_count="21">
+<div id="cell-47" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:196}}" data-outputid="784f9299-3018-4825-ec80-9c308d688deb" data-execution_count="21">
 <div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>df[<span class="st">'retrieved_context'</span>] <span class="op">=</span> pd.Series(cs_results)</span>
 <span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>df.head(<span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="21">
-
-
-  <div id="df-9d524817-10a9-416f-a781-6c9f0ca81ffe" class="colab-df-container">
+<div id="df-9d524817-10a9-416f-a781-6c9f0ca81ffe" class="colab-df-container">
     <div>
 
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>chapter</th>
-      <th>question_number</th>
-      <th>question_text</th>
-      <th>answer</th>
-      <th>keywords</th>
-      <th>retrieved_context</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>1</td>
-      <td>Do you need these for deep learning?\\n\\n- Lo...</td>
-      <td>Lots of math - False\\nLots of data - False\\n...</td>
-      <td>math, data, expensive computers, PhD</td>
-      <td>## Deep Learning Is for Everyone\n\n```asciido...</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>1</td>
-      <td>2</td>
-      <td>Name five areas where deep learning is now the...</td>
-      <td>Any five of the following:\\nNatural Language ...</td>
-      <td>deep learning, state of the art, best, world</td>
-      <td>## Deep Learning Is for Everyone\n\nHere's a l...</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1</td>
-      <td>3</td>
-      <td>What was the name of the first device that was...</td>
-      <td>Mark I perceptron built by Frank Rosenblatt</td>
-      <td>first, device, artificial, neuron</td>
-      <td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
-    </tr>
-  </tbody>
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">chapter</th>
+<th data-quarto-table-cell-role="th">question_number</th>
+<th data-quarto-table-cell-role="th">question_text</th>
+<th data-quarto-table-cell-role="th">answer</th>
+<th data-quarto-table-cell-role="th">keywords</th>
+<th data-quarto-table-cell-role="th">retrieved_context</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0</td>
+<td>1</td>
+<td>1</td>
+<td>Do you need these for deep learning?\\n\\n- Lo...</td>
+<td>Lots of math - False\\nLots of data - False\\n...</td>
+<td>math, data, expensive computers, PhD</td>
+<td>## Deep Learning Is for Everyone\n\n```asciido...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1</td>
+<td>1</td>
+<td>2</td>
+<td>Name five areas where deep learning is now the...</td>
+<td>Any five of the following:\\nNatural Language ...</td>
+<td>deep learning, state of the art, best, world</td>
+<td>## Deep Learning Is for Everyone\n\nHere's a l...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">2</td>
+<td>1</td>
+<td>3</td>
+<td>What was the name of the first device that was...</td>
+<td>Mark I perceptron built by Frank Rosenblatt</td>
+<td>first, device, artificial, neuron</td>
+<td>## Neural Networks: A Brief History\n\n&lt;img al...</td>
+</tr>
+</tbody>
 </table>
+
 </div>
     <div class="colab-df-buttons">
 
@@ -1667,7 +1653,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   </div>
 </div>
 </div>
-<div class="cell" data-execution_count="22">
+<div id="cell-48" class="cell" data-execution_count="22">
 <div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>df.to_csv(<span class="st">'top1_group-by-3_results.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>This approach led to a worse performance: I was able to answer only 16 out of the 33 questions, or <strong>48%</strong>.</p>
@@ -1675,7 +1661,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="storing-larger-chunks-in-the-database" class="level2">
 <h2 class="anchored" data-anchor-id="storing-larger-chunks-in-the-database">Storing Larger Chunks in the Database</h2>
 <p>So far, I haven’t been able to beat the individual performance of full text search or cosine similarity. I’ll try something that improved full text search: storing larger chunks of data. To do this, I’ll concatenate three paragraphs at a time before loading them into the database:</p>
-<div class="cell" data-outputid="b4032a5a-4c61-45e9-c547-94a7d63b84a5" data-execution_count="24">
+<div id="cell-52" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="b4032a5a-4c61-45e9-c547-94a7d63b84a5" data-execution_count="24">
 <div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>larger_chunks <span class="op">=</span> [<span class="st">"</span><span class="ch">\n</span><span class="st">"</span>.join(filtered_chunks[i:i<span class="op">+</span><span class="dv">3</span>]) <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">0</span>, <span class="bu">len</span>(filtered_chunks), <span class="dv">3</span>)]</span>
 <span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(larger_chunks)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="24">
@@ -1683,14 +1669,14 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </div>
 </div>
 <p>Note that I’m just deleting my sqlite database file and recreating from scratch when I run <code>load_data</code>:</p>
-<div class="cell" data-outputid="2e1850b3-cce0-4d8e-9e46-7c8824b3fbdf" data-execution_count="27">
+<div id="cell-54" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="2e1850b3-cce0-4d8e-9e46-7c8824b3fbdf" data-execution_count="27">
 <div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>load_data(larger_chunks)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="27">
 <pre><code>True</code></pre>
 </div>
 </div>
-<div class="cell" data-execution_count="28">
-<details>
+<div id="cell-55" class="cell" data-execution_count="28">
+<details class="code-fold">
 <summary>Show the for-loop + query</summary>
 <div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> []</span>
 <span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>conn <span class="op">=</span> sqlite3.<span class="ex">connect</span>(<span class="st">'fastbook.db'</span>)</span>
@@ -1717,14 +1703,14 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb41-23"><a href="#cb41-23" aria-hidden="true" tabindex="-1"></a>    results.append(res)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-outputid="7450800b-78aa-4b54-b43d-147d6fc86b55" data-execution_count="29">
+<div id="cell-56" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="7450800b-78aa-4b54-b43d-147d6fc86b55" data-execution_count="29">
 <div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="29">
 <pre><code>33</code></pre>
 </div>
 </div>
-<div class="cell" data-execution_count="34">
-<details>
+<div id="cell-57" class="cell" data-execution_count="34">
+<details class="code-fold">
 <summary>Show the cosine similarity code</summary>
 <div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>results_embs <span class="op">=</span> {}</span>
 <span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a></span>
@@ -1741,63 +1727,63 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb44-13"><a href="#cb44-13" aria-hidden="true" tabindex="-1"></a>    cs_results.append(<span class="st">'No answer'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-outputid="18d6775b-ec94-4acf-cd66-6b5f9edf5c6e" data-execution_count="35">
+<div id="cell-58" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="18d6775b-ec94-4acf-cd66-6b5f9edf5c6e" data-execution_count="35">
 <div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(cs_results)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="35">
 <pre><code>33</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="7b0d5eb4-45f1-4bf5-803c-d8f36dfb91aa" data-execution_count="36">
+<div id="cell-59" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:196}}" data-outputid="7b0d5eb4-45f1-4bf5-803c-d8f36dfb91aa" data-execution_count="36">
 <div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>df[<span class="st">'retrieved_context'</span>] <span class="op">=</span> pd.Series(cs_results)</span>
 <span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>df.head(<span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="36">
-
-
-  <div id="df-f9493535-6228-4884-8705-49bc354e3050" class="colab-df-container">
+<div id="df-f9493535-6228-4884-8705-49bc354e3050" class="colab-df-container">
     <div>
 
-<table class="dataframe table table-sm table-striped">
-  <thead>
-    <tr>
-      <th></th>
-      <th>chapter</th>
-      <th>question_number</th>
-      <th>question_text</th>
-      <th>answer</th>
-      <th>keywords</th>
-      <th>retrieved_context</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>1</td>
-      <td>Do you need these for deep learning?\\n\\n- Lo...</td>
-      <td>Lots of math - False\\nLots of data - False\\n...</td>
-      <td>math, data, expensive computers, PhD</td>
-      <td>## How to Learn Deep Learning\n\n&gt; : A PhD is ...</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>1</td>
-      <td>2</td>
-      <td>Name five areas where deep learning is now the...</td>
-      <td>Any five of the following:\\nNatural Language ...</td>
-      <td>deep learning, state of the art, best, world</td>
-      <td>## Deep Learning Is for Everyone\n\nDeep learn...</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1</td>
-      <td>3</td>
-      <td>What was the name of the first device that was...</td>
-      <td>Mark I perceptron built by Frank Rosenblatt</td>
-      <td>first, device, artificial, neuron</td>
-      <td>## Neural Networks: A Brief History\n\nRosenbl...</td>
-    </tr>
-  </tbody>
+
+<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">chapter</th>
+<th data-quarto-table-cell-role="th">question_number</th>
+<th data-quarto-table-cell-role="th">question_text</th>
+<th data-quarto-table-cell-role="th">answer</th>
+<th data-quarto-table-cell-role="th">keywords</th>
+<th data-quarto-table-cell-role="th">retrieved_context</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0</td>
+<td>1</td>
+<td>1</td>
+<td>Do you need these for deep learning?\\n\\n- Lo...</td>
+<td>Lots of math - False\\nLots of data - False\\n...</td>
+<td>math, data, expensive computers, PhD</td>
+<td>## How to Learn Deep Learning\n\n&gt; : A PhD is ...</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1</td>
+<td>1</td>
+<td>2</td>
+<td>Name five areas where deep learning is now the...</td>
+<td>Any five of the following:\\nNatural Language ...</td>
+<td>deep learning, state of the art, best, world</td>
+<td>## Deep Learning Is for Everyone\n\nDeep learn...</td>
+</tr>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">2</td>
+<td>1</td>
+<td>3</td>
+<td>What was the name of the first device that was...</td>
+<td>Mark I perceptron built by Frank Rosenblatt</td>
+<td>first, device, artificial, neuron</td>
+<td>## Neural Networks: A Brief History\n\nRosenbl...</td>
+</tr>
+</tbody>
 </table>
+
 </div>
     <div class="colab-df-buttons">
 
@@ -2005,7 +1991,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   </div>
 </div>
 </div>
-<div class="cell" data-execution_count="37">
+<div id="cell-60" class="cell" data-execution_count="37">
 <div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a>df.to_csv(<span class="st">'top1_top10-larger_results.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>With this approach (top-1 cosine similarity for the top-10 larger chunks retrieved by keyword search) I was able to answer 19 out of 33 questions, or <strong>58%</strong>.</p>
@@ -2014,14 +2000,14 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <h2 class="anchored" data-anchor-id="weighted-average-between-cosine-similarity-and-bm25-score">Weighted Average Between Cosine Similarity and BM25 Score</h2>
 <p>So far I’ve been applying cosine similarity to the top-n retrieved chunks based on BM25 score. I’ll now try a different approach: pick the top-n chunks based on a weighted average between cosine similarity and BM25 score.</p>
 <p>To do this, I’ll revert back to the smaller chunked database. I’ll get the top-10 chunks based on BM25, then I’ll get the top-10 chunks based on cosine similarity. Finally, I’ll normalize each score within each group and then take a weighted average between the two. I’ll then pick top-1, top-3 and top-5 chunks and see how many questions I can answer with the retrieved context.</p>
-<div class="cell" data-outputid="f1ca7f76-9757-471a-f576-90670f911303" data-execution_count="39">
+<div id="cell-64" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="f1ca7f76-9757-471a-f576-90670f911303" data-execution_count="39">
 <div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>load_data(filtered_chunks)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="39">
 <pre><code>True</code></pre>
 </div>
 </div>
-<div class="cell" data-execution_count="150">
-<details>
+<div id="cell-65" class="cell" data-execution_count="150">
+<details class="code-fold">
 <summary>Show the for-loop + query</summary>
 <div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> []</span>
 <span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>conn <span class="op">=</span> sqlite3.<span class="ex">connect</span>(<span class="st">'fastbook.db'</span>)</span>
@@ -2047,8 +2033,8 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb51-22"><a href="#cb51-22" aria-hidden="true" tabindex="-1"></a>    results.append(res)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-outputid="4d2fb6c4-cf2e-4df1-91a8-f6e51513b20b" data-execution_count="152">
-<details>
+<div id="cell-66" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="4d2fb6c4-cf2e-4df1-91a8-f6e51513b20b" data-execution_count="152">
+<details class="code-fold">
 <summary>Show code to embed the chunks</summary>
 <div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a>data_embs <span class="op">=</span> emb_model.encode(filtered_chunks, convert_to_tensor<span class="op">=</span><span class="va">True</span>)</span>
 <span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a>data_embs.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
@@ -2057,8 +2043,8 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <pre><code>torch.Size([307, 384])</code></pre>
 </div>
 </div>
-<div class="cell" data-execution_count="153">
-<details>
+<div id="cell-67" class="cell" data-execution_count="153">
+<details class="code-fold">
 <summary>Show code calculating cosine similarity</summary>
 <div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a>cs_results <span class="op">=</span> []</span>
 <span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a></span>
@@ -2070,14 +2056,14 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb54-8"><a href="#cb54-8" aria-hidden="true" tabindex="-1"></a>  cs_results.append(res)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-outputid="08c159fb-66a6-4e9f-a43d-61513691cf34" data-execution_count="159">
+<div id="cell-68" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="08c159fb-66a6-4e9f-a43d-61513691cf34" data-execution_count="159">
 <div class="sourceCode cell-code" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(results), <span class="bu">len</span>(cs_results)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="159">
 <pre><code>(33, 33)</code></pre>
 </div>
 </div>
-<div class="cell" data-execution_count="160">
-<details>
+<div id="cell-69" class="cell" data-execution_count="160">
+<details class="code-fold">
 <summary>Show code to create DataFrame from results</summary>
 <div class="sourceCode cell-code" id="cb57"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1"><a href="#cb57-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> create_dataframe(nested_list, label):</span>
 <span id="cb57-2"><a href="#cb57-2" aria-hidden="true" tabindex="-1"></a>    rows <span class="op">=</span> []</span>
@@ -2100,7 +2086,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb57-19"><a href="#cb57-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> pd.DataFrame(rows)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-outputid="b95e4f01-878c-4992-b85c-92a30a87de10" data-execution_count="174">
+<div id="cell-70" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="b95e4f01-878c-4992-b85c-92a30a87de10" data-execution_count="174">
 <div class="sourceCode cell-code" id="cb58"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb58-1"><a href="#cb58-1" aria-hidden="true" tabindex="-1"></a>bm25 <span class="op">=</span> create_dataframe(results, <span class="st">'BM25'</span>)</span>
 <span id="cb58-2"><a href="#cb58-2" aria-hidden="true" tabindex="-1"></a>cs <span class="op">=</span> create_dataframe(cs_results, <span class="st">'CS'</span>)</span>
 <span id="cb58-3"><a href="#cb58-3" aria-hidden="true" tabindex="-1"></a>bm25.shape, cs.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
@@ -2108,8 +2094,8 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <pre><code>((277, 4), (330, 4))</code></pre>
 </div>
 </div>
-<div class="cell" data-execution_count="175">
-<details>
+<div id="cell-71" class="cell" data-execution_count="175">
+<details class="code-fold">
 <summary>Show code to normalize scores within each group</summary>
 <div class="sourceCode cell-code" id="cb60"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb60-1"><a href="#cb60-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> normalize_scores(group):</span>
 <span id="cb60-2"><a href="#cb60-2" aria-hidden="true" tabindex="-1"></a>    min_score <span class="op">=</span> group[<span class="st">'score'</span>].<span class="bu">min</span>()</span>
@@ -2122,8 +2108,8 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb60-9"><a href="#cb60-9" aria-hidden="true" tabindex="-1"></a>cs <span class="op">=</span> cs.groupby(<span class="st">'Question'</span>).<span class="bu">apply</span>(normalize_scores).reset_index(drop<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-execution_count="176">
-<details>
+<div id="cell-72" class="cell" data-execution_count="176">
+<details class="code-fold">
 <summary>Show code to calculate prep data for weighted average calcs</summary>
 <div class="sourceCode cell-code" id="cb61"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb61-1"><a href="#cb61-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Function to process each dataframe</span></span>
 <span id="cb61-2"><a href="#cb61-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> process_df(df):</span>
@@ -2151,12 +2137,12 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb61-24"><a href="#cb61-24" aria-hidden="true" tabindex="-1"></a>cs_scores <span class="op">=</span> get_scores(cs, all_combinations)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-execution_count="177">
+<div id="cell-73" class="cell" data-execution_count="177">
 <div class="sourceCode cell-code" id="cb62"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1" aria-hidden="true" tabindex="-1"></a>weight_bm25 <span class="op">=</span> <span class="fl">0.3</span></span>
 <span id="cb62-2"><a href="#cb62-2" aria-hidden="true" tabindex="-1"></a>weight_cs <span class="op">=</span> <span class="fl">0.7</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-execution_count="178">
-<details>
+<div id="cell-74" class="cell" data-execution_count="178">
+<details class="code-fold">
 <summary>Show code to calculate weighted average</summary>
 <div class="sourceCode cell-code" id="cb63"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1"><a href="#cb63-1" aria-hidden="true" tabindex="-1"></a>weighted_avg <span class="op">=</span> (weight_bm25 <span class="op">*</span> bm25_scores <span class="op">+</span> weight_cs <span class="op">*</span> cs_scores) <span class="op">/</span> (weight_bm25 <span class="op">+</span> weight_cs)</span>
 <span id="cb63-2"><a href="#cb63-2" aria-hidden="true" tabindex="-1"></a></span>
@@ -2173,8 +2159,8 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb63-13"><a href="#cb63-13" aria-hidden="true" tabindex="-1"></a>result <span class="op">=</span> result[[<span class="st">'Question'</span>, <span class="st">'chunk'</span>, <span class="st">'weighted_score'</span>]]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-execution_count="183">
-<details>
+<div id="cell-75" class="cell" data-execution_count="183">
+<details class="code-fold">
 <summary>Show code to get top-n results</summary>
 <div class="sourceCode cell-code" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_top_n_chunks(df, n<span class="op">=</span><span class="dv">5</span>):</span>
 <span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Function to get top N chunks and concatenate them</span></span>
@@ -2194,15 +2180,15 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb64-16"><a href="#cb64-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> result</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-execution_count="184">
+<div id="cell-76" class="cell" data-execution_count="184">
 <div class="sourceCode cell-code" id="cb65"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a>get_top_n_chunks(result, n<span class="op">=</span><span class="dv">1</span>).to_csv(<span class="st">'top1_weighted_average.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>Using the top-1 weighted average between BM25 and Cosine Similarity yielded chunks that allowed me to answer 16 out of 33 questions, or <strong>48%</strong>.</p>
-<div class="cell" data-execution_count="185">
+<div id="cell-78" class="cell" data-execution_count="185">
 <div class="sourceCode cell-code" id="cb66"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb66-1"><a href="#cb66-1" aria-hidden="true" tabindex="-1"></a>get_top_n_chunks(result, n<span class="op">=</span><span class="dv">3</span>).to_csv(<span class="st">'top3_weighted_average.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>Using the top-3 weighted average between BM25 and Cosine Similarity yielded chunks that allowed me to answer 21 out of 33 questions, or <strong>64%</strong> which is the best performing hybrid approach so far.</p>
-<div class="cell" data-execution_count="187">
+<div id="cell-80" class="cell" data-execution_count="187">
 <div class="sourceCode cell-code" id="cb67"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb67-1"><a href="#cb67-1" aria-hidden="true" tabindex="-1"></a>get_top_n_chunks(result, n<span class="op">=</span><span class="dv">5</span>).to_csv(<span class="st">'top5_weighted_average.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>Using the top-5 weighted average between BM25 and Cosine Similarity allowed me to answer 25 out of 33 questions, or <strong>76%</strong>, which is the best performing hybrid approach so far and matches the best Cosine Similarity-only approach.</p>
@@ -2210,8 +2196,8 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="retrieving-top-3-cosine-similarity-and-top-2-keyword-search-results" class="level2">
 <h2 class="anchored" data-anchor-id="retrieving-top-3-cosine-similarity-and-top-2-keyword-search-results">Retrieving top-3 Cosine Similarity and top-2 Keyword Search Results</h2>
 <p>The next approach I’ll try: returning the top-3 chunks retrieved using Cosine Similarity and the top-2 chunks retrieved using Keyword Search.</p>
-<div class="cell" data-execution_count="193">
-<details>
+<div id="cell-84" class="cell" data-execution_count="193">
+<details class="code-fold">
 <summary>Show code to get top-n results</summary>
 <div class="sourceCode cell-code" id="cb68"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb68-1"><a href="#cb68-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_top_n_chunks(df, n<span class="op">=</span><span class="dv">5</span>):</span>
 <span id="cb68-2"><a href="#cb68-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Function to get top N chunks and concatenate them</span></span>
@@ -2231,17 +2217,17 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb68-16"><a href="#cb68-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> result</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-execution_count="202">
+<div id="cell-85" class="cell" data-execution_count="202">
 <div class="sourceCode cell-code" id="cb69"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb69-1"><a href="#cb69-1" aria-hidden="true" tabindex="-1"></a>top2_bm25 <span class="op">=</span> get_top_n_chunks(bm25,n<span class="op">=</span><span class="dv">2</span>)</span>
 <span id="cb69-2"><a href="#cb69-2" aria-hidden="true" tabindex="-1"></a>top3_cs <span class="op">=</span> get_top_n_chunks(cs, n<span class="op">=</span><span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-execution_count="203">
+<div id="cell-86" class="cell" data-execution_count="203">
 <div class="sourceCode cell-code" id="cb70"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb70-1"><a href="#cb70-1" aria-hidden="true" tabindex="-1"></a>top5_combined <span class="op">=</span> pd.concat([top2_bm25, top3_cs]).groupby(<span class="st">'Question'</span>).agg({</span>
 <span id="cb70-2"><a href="#cb70-2" aria-hidden="true" tabindex="-1"></a>        <span class="st">'chunk'</span>: <span class="st">' '</span>.join,  <span class="co"># Concatenate all chunks</span></span>
 <span id="cb70-3"><a href="#cb70-3" aria-hidden="true" tabindex="-1"></a>        <span class="st">'normalized_score'</span>: <span class="st">'mean'</span>  <span class="co"># Take the mean of the normalized scores</span></span>
 <span id="cb70-4"><a href="#cb70-4" aria-hidden="true" tabindex="-1"></a>    }).reset_index()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-execution_count="204">
+<div id="cell-87" class="cell" data-execution_count="204">
 <div class="sourceCode cell-code" id="cb71"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb71-1"><a href="#cb71-1" aria-hidden="true" tabindex="-1"></a>top5_combined.to_csv(<span class="st">'top5_combined.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>Using the top-3 Cosine Similarity + top-2 BM25 chunks allowed me to answer 25 out of 33 questions, or <strong>76%</strong>. These were the same 25 questions I could answer using the top-5 chunks (by weighted average).</p>
@@ -2255,14 +2241,14 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <li>Cosine Similarity: Use the top-5 small (1-paragraph) chunks</li>
 </ul>
 <p>I’ll rewrite the database table to contain the 3-paragraph-long chunks to use for keyword search:</p>
-<div class="cell" data-outputid="458e921c-8ec9-46a7-d6af-5097b516e6af" data-execution_count="207">
+<div id="cell-93" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="458e921c-8ec9-46a7-d6af-5097b516e6af" data-execution_count="207">
 <div class="sourceCode cell-code" id="cb72"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb72-1"><a href="#cb72-1" aria-hidden="true" tabindex="-1"></a>load_data(larger_chunks)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="207">
 <pre><code>True</code></pre>
 </div>
 </div>
-<div class="cell" data-execution_count="247">
-<details>
+<div id="cell-94" class="cell" data-execution_count="247">
+<details class="code-fold">
 <summary>Show the for-loop + query</summary>
 <div class="sourceCode cell-code" id="cb74"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb74-1"><a href="#cb74-1" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> []</span>
 <span id="cb74-2"><a href="#cb74-2" aria-hidden="true" tabindex="-1"></a>conn <span class="op">=</span> sqlite3.<span class="ex">connect</span>(<span class="st">'fastbook.db'</span>)</span>
@@ -2288,7 +2274,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <span id="cb74-22"><a href="#cb74-22" aria-hidden="true" tabindex="-1"></a>    results.append(res)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-outputid="92a5798a-5f5a-418c-a333-332d7774364c" data-execution_count="248">
+<div id="cell-95" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="92a5798a-5f5a-418c-a333-332d7774364c" data-execution_count="248">
 <div class="sourceCode cell-code" id="cb75"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb75-1"><a href="#cb75-1" aria-hidden="true" tabindex="-1"></a>bm25 <span class="op">=</span> create_dataframe(results, <span class="st">'BM25'</span>)</span>
 <span id="cb75-2"><a href="#cb75-2" aria-hidden="true" tabindex="-1"></a>bm25[<span class="st">'normalized_score'</span>] <span class="op">=</span> <span class="op">-</span><span class="dv">1</span> <span class="op">*</span> bm25[<span class="st">'score'</span>]</span>
 <span id="cb75-3"><a href="#cb75-3" aria-hidden="true" tabindex="-1"></a>top3_bm25 <span class="op">=</span> get_top_n_chunks(bm25,n<span class="op">=</span><span class="dv">3</span>)</span>
@@ -2297,7 +2283,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <pre><code>(33, 3)</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="3b49fbf2-5983-4a26-dae1-234b97c78f4f" data-execution_count="249">
+<div id="cell-96" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="3b49fbf2-5983-4a26-dae1-234b97c78f4f" data-execution_count="249">
 <div class="sourceCode cell-code" id="cb77"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb77-1"><a href="#cb77-1" aria-hidden="true" tabindex="-1"></a>top5_cs <span class="op">=</span> get_top_n_chunks(cs, n<span class="op">=</span><span class="dv">5</span>)</span>
 <span id="cb77-2"><a href="#cb77-2" aria-hidden="true" tabindex="-1"></a>top5_cs[<span class="st">'Question'</span>] <span class="op">=</span> top5_cs[<span class="st">'Question'</span>].astype(<span class="bu">int</span>)</span>
 <span id="cb77-3"><a href="#cb77-3" aria-hidden="true" tabindex="-1"></a>top5_cs.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
@@ -2305,7 +2291,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <pre><code>(33, 3)</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="5bd1f032-2bc0-4c04-e9a0-864636f260e6" data-execution_count="250">
+<div id="cell-97" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="5bd1f032-2bc0-4c04-e9a0-864636f260e6" data-execution_count="250">
 <div class="sourceCode cell-code" id="cb79"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb79-1"><a href="#cb79-1" aria-hidden="true" tabindex="-1"></a>top8_combined <span class="op">=</span> pd.concat([top3_bm25, top5_cs]).groupby(<span class="st">'Question'</span>).agg({</span>
 <span id="cb79-2"><a href="#cb79-2" aria-hidden="true" tabindex="-1"></a>        <span class="st">'chunk'</span>: <span class="st">' '</span>.join,  <span class="co"># Concatenate all chunks</span></span>
 <span id="cb79-3"><a href="#cb79-3" aria-hidden="true" tabindex="-1"></a>        <span class="st">'normalized_score'</span>: <span class="st">'mean'</span>  <span class="co"># Take the mean of the normalized scores</span></span>
@@ -2315,7 +2301,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <pre><code>(33, 3)</code></pre>
 </div>
 </div>
-<div class="cell" data-execution_count="251">
+<div id="cell-98" class="cell" data-execution_count="251">
 <div class="sourceCode cell-code" id="cb81"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb81-1"><a href="#cb81-1" aria-hidden="true" tabindex="-1"></a>top8_combined.to_csv(<span class="st">'top8_combined.csv'</span>, index<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>This hybrid approach resulted in the best performance thus far (individual or hybrid)! With the top-8 chunks retrieved for each question (top-5 small chunks for Cosine Similarity, top-3 large chunks for keyword search) I was able to answer 28 out of 33 questions, or <strong>85%</strong>. Factoring in that 3 of the questions are exercises to be done by the reader (and aren’t answerable using the Chapter 1 content), the true percentage is 93%.</p>
@@ -2323,7 +2309,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <section id="final-thoughts" class="level2">
 <h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
 <p>I’ll summarize my results from this notebook in the table below. Cosine Similarity is represented as “CS” and full text search as “BM25”:</p>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;">Approach</th>
@@ -2388,139 +2374,406 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
-window.document.addEventListener("DOMContentLoaded", function (event) {
-  const toggleBodyColorMode = (bsSheetEl) => {
-    const mode = bsSheetEl.getAttribute("data-mode");
-    const bodyEl = window.document.querySelector("body");
-    if (mode === "dark") {
-      bodyEl.classList.add("quarto-dark");
-      bodyEl.classList.remove("quarto-light");
-    } else {
-      bodyEl.classList.add("quarto-light");
-      bodyEl.classList.remove("quarto-dark");
-    }
-  }
-  const toggleBodyColorPrimary = () => {
-    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
-    if (bsSheetEl) {
-      toggleBodyColorMode(bsSheetEl);
-    }
-  }
-  toggleBodyColorPrimary();  
-  const icon = "";
-  const anchorJS = new window.AnchorJS();
-  anchorJS.options = {
-    placement: 'right',
-    icon: icon
-  };
-  anchorJS.add('.anchored');
-  const clipboard = new window.ClipboardJS('.code-copy-button', {
-    target: function(trigger) {
-      return trigger.previousElementSibling;
-    }
-  });
-  clipboard.on('success', function(e) {
-    // button target
-    const button = e.trigger;
-    // don't keep focus
-    button.blur();
-    // flash "checked"
-    button.classList.add('code-copy-button-checked');
-    var currentTitle = button.getAttribute("title");
-    button.setAttribute("title", "Copied!");
-    let tooltip;
-    if (window.bootstrap) {
-      button.setAttribute("data-bs-toggle", "tooltip");
-      button.setAttribute("data-bs-placement", "left");
-      button.setAttribute("data-bs-title", "Copied!");
-      tooltip = new bootstrap.Tooltip(button, 
-        { trigger: "manual", 
-          customClass: "code-copy-button-tooltip",
-          offset: [0, -8]});
-      tooltip.show();    
-    }
-    setTimeout(function() {
-      if (tooltip) {
-        tooltip.hide();
-        button.removeAttribute("data-bs-title");
-        button.removeAttribute("data-bs-toggle");
-        button.removeAttribute("data-bs-placement");
-      }
-      button.setAttribute("title", currentTitle);
-      button.classList.remove('code-copy-button-checked');
-    }, 1000);
-    // clear code selection
-    e.clearSelection();
-  });
-  function tippyHover(el, contentFn) {
-    const config = {
-      allowHTML: true,
-      content: contentFn,
-      maxWidth: 500,
-      delay: 100,
-      arrow: false,
-      appendTo: function(el) {
-          return el.parentElement;
-      },
-      interactive: true,
-      interactiveBorder: 10,
-      theme: 'quarto',
-      placement: 'bottom-start'
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
     };
-    window.tippy(el, config); 
-  }
-  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
-  for (var i=0; i<noterefs.length; i++) {
-    const ref = noterefs[i];
-    tippyHover(ref, function() {
-      // use id or data attribute instead here
-      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
-      try { href = new URL(href).hash; } catch {}
-      const id = href.replace(/^#\/?/, "");
-      const note = window.document.getElementById(id);
-      return note.innerHTML;
-    });
-  }
-  const findCites = (el) => {
-    const parentEl = el.parentElement;
-    if (parentEl) {
-      const cites = parentEl.dataset.cites;
-      if (cites) {
-        return {
-          el,
-          cites: cites.split(' ')
-        };
-      } else {
-        return findCites(el.parentElement)
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
       }
-    } else {
-      return undefined;
+      return false;
     }
-  };
-  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
-  for (var i=0; i<bibliorefs.length; i++) {
-    const ref = bibliorefs[i];
-    const citeInfo = findCites(ref);
-    if (citeInfo) {
-      tippyHover(citeInfo.el, function() {
-        var popup = window.document.createElement('div');
-        citeInfo.cites.forEach(function(cite) {
-          var citeDiv = window.document.createElement('div');
-          citeDiv.classList.add('hanging-indent');
-          citeDiv.classList.add('csl-entry');
-          var biblioDiv = window.document.getElementById('ref-' + cite);
-          if (biblioDiv) {
-            citeDiv.innerHTML = biblioDiv.innerHTML;
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+        const codeEl = trigger.previousElementSibling.cloneNode(true);
+        for (const childEl of codeEl.children) {
+          if (isCodeAnnotation(childEl)) {
+            childEl.remove();
           }
-          popup.appendChild(citeDiv);
-        });
-        return popup.innerHTML;
+        }
+        return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vishalbakshi\.github\.io\/blog");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
       });
     }
-  }
-});
-</script>
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
 </div> <!-- /content -->
+
 
 
 

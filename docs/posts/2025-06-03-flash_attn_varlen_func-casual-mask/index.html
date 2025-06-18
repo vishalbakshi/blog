@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.2.335">
+<meta name="generator" content="quarto-1.7.32">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -10,7 +10,7 @@
 <meta name="dcterms.date" content="2025-06-03">
 <meta name="description" content="A deep dive into understanding flash_attn_varlen_func’s docstring’s causal masks (for seqlen_q != seqlen_k) by exploring Hugging Face’s KV Cache (DynamicCache) in model.generate() with hands-on Q/K shape inspection. Unravels “bottom-right alignment” and why flash_attn_func gets called.">
 
-<title>Vishal Bakshi’s Blog - HuggingFace’s Default KV Cache and the flash_attn_varlen_func Docstring</title>
+<title>HuggingFace’s Default KV Cache and the flash_attn_varlen_func Docstring – Vishal Bakshi's Blog</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -20,9 +20,11 @@ div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
 ul.task-list{list-style: none;}
 ul.task-list li input[type="checkbox"] {
   width: 0.8em;
-  margin: 0 0.8em 0.2em -1.6em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
 pre > code.sourceCode { white-space: pre; position: relative; }
 pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
 pre > code.sourceCode > span:empty { height: 1.2em; }
@@ -49,62 +51,33 @@ pre.numberSource code > span > a:first-child::before
     -khtml-user-select: none; -moz-user-select: none;
     -ms-user-select: none; user-select: none;
     padding: 0 4px; width: 4em;
-    color: #aaaaaa;
   }
-pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
 div.sourceCode
   {   }
 @media screen {
 pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
-code span.al { color: #ff0000; font-weight: bold; } /* Alert */
-code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
-code span.at { color: #7d9029; } /* Attribute */
-code span.bn { color: #40a070; } /* BaseN */
-code span.bu { color: #008000; } /* BuiltIn */
-code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
-code span.ch { color: #4070a0; } /* Char */
-code span.cn { color: #880000; } /* Constant */
-code span.co { color: #60a0b0; font-style: italic; } /* Comment */
-code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
-code span.do { color: #ba2121; font-style: italic; } /* Documentation */
-code span.dt { color: #902000; } /* DataType */
-code span.dv { color: #40a070; } /* DecVal */
-code span.er { color: #ff0000; font-weight: bold; } /* Error */
-code span.ex { } /* Extension */
-code span.fl { color: #40a070; } /* Float */
-code span.fu { color: #06287e; } /* Function */
-code span.im { color: #008000; font-weight: bold; } /* Import */
-code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
-code span.kw { color: #007020; font-weight: bold; } /* Keyword */
-code span.op { color: #666666; } /* Operator */
-code span.ot { color: #007020; } /* Other */
-code span.pp { color: #bc7a00; } /* Preprocessor */
-code span.sc { color: #4070a0; } /* SpecialChar */
-code span.ss { color: #bb6688; } /* SpecialString */
-code span.st { color: #4070a0; } /* String */
-code span.va { color: #19177c; } /* Variable */
-code span.vs { color: #4070a0; } /* VerbatimString */
-code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
 </style>
 
 
-<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="../../site_libs/quarto-nav/headroom.min.js"></script>
 <script src="../../site_libs/clipboard/clipboard.min.js"></script>
 <script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
 <script src="../../site_libs/quarto-search/fuse.min.js"></script>
 <script src="../../site_libs/quarto-search/quarto-search.js"></script>
 <meta name="quarto:offset" content="../../">
-<script src="../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
 <script src="../../site_libs/quarto-html/popper.min.js"></script>
 <script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-37eea08aefeeee20ff55810ff984fec1.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-9c1ae87ad5063dce4f793ccd314a7566.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
 <link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
 <link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
@@ -114,7 +87,13 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   "collapse-after": 3,
   "panel-placement": "end",
   "type": "overlay",
-  "limit": 20,
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
   "language": {
     "search-no-results-text": "No results",
     "search-matching-documents-text": "matching documents",
@@ -123,53 +102,85 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     "search-more-match-text": "more match in this document",
     "search-more-matches-text": "more matches in this document",
     "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
     "search-detached-cancel-button-title": "Cancel",
-    "search-submit-button-title": "Submit"
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
   }
 }</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+
 <script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
 
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
 
 <link rel="stylesheet" href="../../styles.css">
 </head>
 
-<body class="nav-fixed">
+<body class="nav-fixed quarto-light">
 
 <div id="quarto-search-results"></div>
   <header id="quarto-header" class="headroom fixed-top">
-    <nav class="navbar navbar-expand-lg navbar-dark ">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
-      <div class="navbar-brand-container">
+      <div class="navbar-brand-container mx-auto">
     <a class="navbar-brand" href="../../index.html">
     <span class="navbar-title">Vishal Bakshi’s Blog</span>
     </a>
   </div>
-          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
   <span class="navbar-toggler-icon"></span>
 </button>
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll me-auto">
   <li class="nav-item">
-    <a class="nav-link" href="../../index.html">
- <span class="menu-text">Home</span></a>
+    <a class="nav-link" href="../../index.html"> 
+<span class="menu-text">Home</span></a>
   </li>  
   <li class="nav-item">
-    <a class="nav-link" href="../../about.html">
- <span class="menu-text">About</span></a>
+    <a class="nav-link" href="../../about.html"> 
+<span class="menu-text">About</span></a>
   </li>  
 </ul>
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
   <li class="nav-item compact">
-    <a class="nav-link" href="../../index.xml"><i class="bi bi-rss" role="img">
+    <a class="nav-link" href="../../index.xml"> <i class="bi bi-rss" role="img">
 </i> 
- <span class="menu-text"></span></a>
+<span class="menu-text"></span></a>
   </li>  
 </ul>
-              <div id="quarto-search" class="" title="Search"></div>
           </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
       </div> <!-- /container-fluid -->
     </nav>
 </header>
@@ -242,17 +253,19 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   </div>
   
 
+
 </header>
 
-<div class="cell">
+
+<div id="cell-1" class="cell">
 <div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="op">!</span>pip install <span class="op">-</span>qq <span class="op">-</span>U flash<span class="op">-</span>attn <span class="op">--</span>no<span class="op">-</span>build<span class="op">-</span>isolation</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-execution_count="2">
+<div id="cell-2" class="cell" data-execution_count="2">
 <div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers <span class="im">import</span> AutoTokenizer, AutoModelForCausalLM, GenerationConfig</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch.nn <span class="im">as</span> nn</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell">
+<div id="cell-3" class="cell">
 <div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>tokenizer <span class="op">=</span> AutoTokenizer.from_pretrained(<span class="st">"HuggingFaceTB/SmolLM2-135M"</span>)</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> AutoModelForCausalLM.from_pretrained(<span class="st">"HuggingFaceTB/SmolLM2-135M"</span>, attn_implementation<span class="op">=</span><span class="st">"flash_attention_2"</span>, torch_dtype<span class="op">=</span>torch.bfloat16).to(<span class="st">"cuda"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
@@ -321,7 +334,7 @@ If the row of the mask is all zero, the output will be zero.</code></pre>
 <div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>cache_name <span class="op">=</span> <span class="st">"past_key_values"</span> <span class="cf">if</span> <span class="kw">not</span> is_hybrid_cache <span class="cf">else</span> <span class="st">"cache_params"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>I want to inspect what <code>model_kwargs['past_key_values']</code> is.</p>
 <p><a href="https://github.com/huggingface/transformers/blob/1094dd34f73dae1d9a91a6632635934516612490/src/transformers/generation/utils.py#L2369"><code>_prepare_generation_config</code></a> is used in <code>generate</code> to produce <code>generation_config</code> and <code>model_kwargs</code>.</p>
-<div class="cell" data-outputid="d4927381-46b1-42f6-aec8-9e94d36c16a8" data-execution_count="50">
+<div id="cell-14" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="d4927381-46b1-42f6-aec8-9e94d36c16a8" data-execution_count="50">
 <div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>generation_config, model_kwargs <span class="op">=</span> model._prepare_generation_config(<span class="va">None</span>)</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>generation_config, model_kwargs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="50">
@@ -333,10 +346,10 @@ If the row of the mask is all zero, the output will be zero.</code></pre>
 </div>
 </div>
 <p>I can now pass those on to <code>_prepare_cache_for_generation</code>, which will internally modify <code>model_kwargs</code>.</p>
-<div class="cell" data-execution_count="51">
+<div id="cell-16" class="cell" data-execution_count="51">
 <div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>model._prepare_cache_for_generation(generation_config, model_kwargs, <span class="va">None</span>, <span class="dv">1</span>, <span class="dv">8192</span>, <span class="st">"cuda"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-outputid="533d54c0-fad1-4f4a-9b31-4fe867e16454" data-execution_count="53">
+<div id="cell-17" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="533d54c0-fad1-4f4a-9b31-4fe867e16454" data-execution_count="53">
 <div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>model_kwargs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="53">
 <pre><code>{'past_key_values': &lt;transformers.cache_utils.DynamicCache at 0x78c3b80d9850&gt;}</code></pre>
@@ -409,8 +422,8 @@ If the row of the mask is all zero, the output will be zero.</code></pre>
 <section id="visualizing-the-dynamiccache.update" class="level3">
 <h3 class="anchored" data-anchor-id="visualizing-the-dynamiccache.update">Visualizing the <code>DynamicCache.update</code></h3>
 <p>To see how the cache update takes place during autoregressive language generation, I’ll monkey-patch a <code>debug_update</code> method.</p>
-<div class="cell" data-execution_count="58">
-<details>
+<div id="cell-35" class="cell" data-execution_count="58">
+<details class="code-fold">
 <summary>Show `debug_update</summary>
 <div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> typing <span class="im">import</span> Any, Dict, Iterable, List, Optional, Tuple, Union</span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a></span>
@@ -464,7 +477,7 @@ If the row of the mask is all zero, the output will be zero.</code></pre>
 <span id="cb15-50"><a href="#cb15-50" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="va">self</span>.key_cache[layer_idx], <span class="va">self</span>.value_cache[layer_idx]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-execution_count="59">
+<div id="cell-36" class="cell" data-execution_count="59">
 <div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.cache_utils <span class="im">import</span> DynamicCache</span>
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="st">'ORIGINAL_DYNAMIC_CACHE_UPDATE'</span> <span class="kw">not</span> <span class="kw">in</span> <span class="bu">globals</span>():</span>
 <span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    ORIGINAL_DYNAMIC_CACHE_UPDATE <span class="op">=</span> DynamicCache.update</span>
@@ -472,7 +485,7 @@ If the row of the mask is all zero, the output will be zero.</code></pre>
 <span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>DynamicCache.update <span class="op">=</span> debug_update</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-outputid="3bbb53b2-9b89-4361-cb26-e980bb510959" data-execution_count="60">
+<div id="cell-37" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="3bbb53b2-9b89-4361-cb26-e980bb510959" data-execution_count="60">
 <div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>prompt <span class="op">=</span> <span class="st">"The quick brown"</span></span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>input_ids, attention_mask <span class="op">=</span> tokenizer(prompt, return_tensors<span class="op">=</span><span class="st">"pt"</span>).to(<span class="st">"cuda"</span>).values()</span>
 <span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
@@ -541,7 +554,7 @@ DEBUG: updating/concatenating cache for layer_idx 29</code></pre>
 </div>
 <p>As we can see by the printed output, for the first generated token <code>update</code> initializes cache with <code>self.key_cache.append(key_states)</code> and <code>self.value_cache.append(value_states)</code>. For the subsequent tokens, it updates the cache with <code>torch.cat</code>.</p>
 <p>I’ll re-assign the original <code>update</code> to <code>DynamicCache</code> to avoid cluttering with print outs.</p>
-<div class="cell" data-execution_count="61">
+<div id="cell-40" class="cell" data-execution_count="61">
 <div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>DynamicCache.update <span class="op">=</span> ORIGINAL_DYNAMIC_CACHE_UPDATE</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
@@ -549,18 +562,18 @@ DEBUG: updating/concatenating cache for layer_idx 29</code></pre>
 <section id="inspecting-past_key_values-during-model.generate" class="level2">
 <h2 class="anchored" data-anchor-id="inspecting-past_key_values-during-model.generate">Inspecting <code>past_key_values</code> During <code>model.generate</code></h2>
 <p>With an understanding of how KV cache is updated, I’ll now turn my attention to the key and value cache contents during autoregressive generation.</p>
-<div class="cell">
+<div id="cell-43" class="cell">
 <div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>tokenizer <span class="op">=</span> AutoTokenizer.from_pretrained(<span class="st">"HuggingFaceTB/SmolLM2-135M"</span>)</span>
 <span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> AutoModelForCausalLM.from_pretrained(<span class="st">"HuggingFaceTB/SmolLM2-135M"</span>, attn_implementation<span class="op">=</span><span class="st">"flash_attention_2"</span>, torch_dtype<span class="op">=</span>torch.bfloat16).to(<span class="st">"cuda"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-outputid="31e79d9e-72c0-4700-a6eb-7e6f795819b0" data-execution_count="63">
+<div id="cell-44" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:35}}" data-outputid="31e79d9e-72c0-4700-a6eb-7e6f795819b0" data-execution_count="63">
 <div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>prompt <span class="op">=</span> <span class="st">"The quick brown"</span></span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>prompt</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="63">
 <pre><code>'The quick brown'</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="9f2a2d84-afdd-465d-b95e-583cd7a8860a" data-execution_count="64">
+<div id="cell-45" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="9f2a2d84-afdd-465d-b95e-583cd7a8860a" data-execution_count="64">
 <div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>input_ids, attention_mask <span class="op">=</span> tokenizer(prompt, return_tensors<span class="op">=</span><span class="st">"pt"</span>).to(<span class="st">"cuda"</span>).values()</span>
 <span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>input_ids.shape, attention_mask.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="64">
@@ -568,7 +581,7 @@ DEBUG: updating/concatenating cache for layer_idx 29</code></pre>
 </div>
 </div>
 <p>By setting <code>return_dict_in_generate=True</code> we can retrieve <code>past_key_values</code>.</p>
-<div class="cell" data-outputid="8339ed0d-7ce1-45bd-8228-4e3a47f656af" data-execution_count="65">
+<div id="cell-47" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="8339ed0d-7ce1-45bd-8228-4e3a47f656af" data-execution_count="65">
 <div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">5</span>)</span>
 <span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>outputs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="65">
@@ -576,34 +589,34 @@ DEBUG: updating/concatenating cache for layer_idx 29</code></pre>
        device='cuda:0'), scores=None, logits=None, attentions=None, hidden_states=None, past_key_values=&lt;transformers.cache_utils.DynamicCache object at 0x78c4f80c4f50&gt;)</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="df742156-715e-4ca3-f32e-cacc3303d278" data-execution_count="66">
+<div id="cell-48" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:35}}" data-outputid="df742156-715e-4ca3-f32e-cacc3303d278" data-execution_count="66">
 <div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>tokenizer.decode(outputs.sequences[<span class="dv">0</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="66">
 <pre><code>'The quick brown fox jumps over the lazy'</code></pre>
 </div>
 </div>
 <p>We have 8 total tokens—3 from the original prompt and 5 new tokens generated.</p>
-<div class="cell" data-outputid="4e26edc9-2958-47a7-eee0-7cc23ad3b7cd" data-execution_count="67">
+<div id="cell-50" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="4e26edc9-2958-47a7-eee0-7cc23ad3b7cd" data-execution_count="67">
 <div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>outputs.sequences.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="67">
 <pre><code>torch.Size([1, 8])</code></pre>
 </div>
 </div>
 <p>Inspecting the values in the KV cache: there are 30 items in <code>key_cache</code> and <code>value_cache</code>, corresponding to the 30 layers in the model. For the last generated token (the 8th token) there were <code>7</code> <code>seen_tokens</code>.</p>
-<div class="cell" data-outputid="144271c6-c0d9-443f-b11c-537dd82f3a58" data-execution_count="68">
+<div id="cell-52" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="144271c6-c0d9-443f-b11c-537dd82f3a58" data-execution_count="68">
 <div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(outputs.past_key_values.key_cache), <span class="bu">len</span>(outputs.past_key_values.value_cache)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="68">
 <pre><code>(30, 30)</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="d2af89b4-8842-46d2-c6b5-78e8ad4010d7" data-execution_count="69">
+<div id="cell-53" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="d2af89b4-8842-46d2-c6b5-78e8ad4010d7" data-execution_count="69">
 <div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>outputs.past_key_values.seen_tokens</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="69">
 <pre><code>7</code></pre>
 </div>
 </div>
 <p>The <code>key_cache</code> tensors all have the same shape: batch size, num_heads, seen_tokens, head_dim.</p>
-<div class="cell" data-outputid="df7616f9-08fe-4fa3-f527-615bf9f83a1c" data-execution_count="70">
+<div id="cell-55" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="df7616f9-08fe-4fa3-f527-615bf9f83a1c" data-execution_count="70">
 <div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> k <span class="kw">in</span> outputs.past_key_values.key_cache: <span class="bu">print</span>(k.shape)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>torch.Size([1, 3, 7, 64])
@@ -638,7 +651,7 @@ torch.Size([1, 3, 7, 64])
 torch.Size([1, 3, 7, 64])</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="b16b73c8-950b-4443-dcea-4701436d9749" data-execution_count="71">
+<div id="cell-56" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="b16b73c8-950b-4443-dcea-4701436d9749" data-execution_count="71">
 <div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>model.config.num_attention_heads, <span class="op">\</span></span>
 <span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>model.config.num_hidden_layers, <span class="op">\</span></span>
 <span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>model.config.num_key_value_heads</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
@@ -646,20 +659,20 @@ torch.Size([1, 3, 7, 64])</code></pre>
 <pre><code>(9, 30, 3)</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="41b06ce8-7bfc-4bc6-8ade-8ce7084457ac" data-execution_count="72">
+<div id="cell-57" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="41b06ce8-7bfc-4bc6-8ade-8ce7084457ac" data-execution_count="72">
 <div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>model.model.layers[<span class="dv">0</span>].self_attn.k_proj.out_features</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="72">
 <pre><code>192</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="316d31cf-cf8b-49e7-ebc7-1cb061de1468" data-execution_count="73">
+<div id="cell-58" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="316d31cf-cf8b-49e7-ebc7-1cb061de1468" data-execution_count="73">
 <div class="sourceCode cell-code" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="dv">3</span><span class="op">*</span><span class="dv">64</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="73">
 <pre><code>192</code></pre>
 </div>
 </div>
 <p>The <code>value_cache</code> is similarly structured.</p>
-<div class="cell" data-outputid="f772dcaa-63fe-4315-e142-0cebb1c9e260" data-execution_count="74">
+<div id="cell-60" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="f772dcaa-63fe-4315-e142-0cebb1c9e260" data-execution_count="74">
 <div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> v <span class="kw">in</span> outputs.past_key_values.value_cache: <span class="bu">print</span>(v.shape)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>torch.Size([1, 3, 7, 64])
@@ -694,7 +707,7 @@ torch.Size([1, 3, 7, 64])
 torch.Size([1, 3, 7, 64])</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="c4db38cf-43f1-4172-ad94-706d347ecea2" data-execution_count="75">
+<div id="cell-61" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="c4db38cf-43f1-4172-ad94-706d347ecea2" data-execution_count="75">
 <div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>init_k <span class="op">=</span> outputs.past_key_values.key_cache[<span class="dv">0</span>]</span>
 <span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>init_k.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="75">
@@ -702,10 +715,17 @@ torch.Size([1, 3, 7, 64])</code></pre>
 </div>
 </div>
 <p>While the shapes of the <code>key_cache</code> tensors across layers are the same, their contents are not. This is because each layer has its own self attention module with its own <code>k_proj</code> and <code>v_proj</code> layers with their own learned weights.</p>
-<div class="cell" data-outputid="09ec3082-2e2d-44ea-fa9a-1d7517d05b5f" data-execution_count="76">
+<div id="cell-63" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:141}}" data-outputid="09ec3082-2e2d-44ea-fa9a-1d7517d05b5f" data-execution_count="76">
 <div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> k <span class="kw">in</span> outputs.past_key_values.key_cache[<span class="dv">1</span>:]: <span class="cf">assert</span> torch.allclose(init_k, k)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-error">
-<pre><code>AssertionError: </code></pre>
+<div class="ansi-escaped-output">
+<pre><span class="ansi-red-fg">---------------------------------------------------------------------------</span>
+<span class="ansi-red-fg">AssertionError</span>                            Traceback (most recent call last)
+<span class="ansi-green-fg">&lt;ipython-input-76-f08f1c95a8ee&gt;</span> in <span class="ansi-cyan-fg">&lt;cell line: 0&gt;</span><span class="ansi-blue-fg">()</span>
+<span class="ansi-green-fg">----&gt; 1</span><span class="ansi-red-fg"> </span><span class="ansi-green-fg">for</span> k <span class="ansi-green-fg">in</span> outputs<span class="ansi-blue-fg">.</span>past_key_values<span class="ansi-blue-fg">.</span>key_cache<span class="ansi-blue-fg">[</span><span class="ansi-cyan-fg">1</span><span class="ansi-blue-fg">:</span><span class="ansi-blue-fg">]</span><span class="ansi-blue-fg">:</span> <span class="ansi-green-fg">assert</span> torch<span class="ansi-blue-fg">.</span>allclose<span class="ansi-blue-fg">(</span>init_k<span class="ansi-blue-fg">,</span> k<span class="ansi-blue-fg">)</span>
+
+<span class="ansi-red-fg">AssertionError</span>: </pre>
+</div>
 </div>
 </div>
 </section>
@@ -714,21 +734,21 @@ torch.Size([1, 3, 7, 64])</code></pre>
 <p>Now to understand how KV cache is used during generation: I want to inspect the shape of the key and value cache tensors as the prompt increases by one token at a time.</p>
 <p>To achieve this, I’ll add a hook to the first layer’s self attention module’s forward pass using <code>register_forward_hook</code>. I came to an incorrect conclusion in a <a href="https://youtu.be/4OBQkESiL0M?feature=shared&amp;t=965">previous video</a> and <a href="https://vishalbakshi.github.io/blog/posts/2025-04-02-Composer-Callback-Logging-dtypes/#composer-callback-walkthrough:~:text=Self%20attention%20cannot%20utilize%20register_forward_hook%20because%20the%20LlamaDecoderLayer%20does%20not%20call%20self%20attention%20forward%20pass%20with%20any%20positional%20arguments%3A">blog post</a> that you can’t use <code>register_forward_hook</code> for the Llama attention module because it doesn’t capture keyword arguments. What I didn’t realize is that you can capture kwargs with <code>register_forward_hook</code> by setting <code>with_kwargs=True</code>, which I have done below.</p>
 <p>I wrapped <code>hook_fn</code> in <code>create_hook_fn</code> because I wanted to print out the <code>count</code> of total generated tokens.</p>
-<div class="cell" data-outputid="222ac421-f62f-444c-d90f-a65a283d8e7b" data-execution_count="77">
-<div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> create_hook_fn():</span>
-<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>    count <span class="op">=</span> <span class="dv">1</span></span>
-<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> hook_fn(module, args, kwargs, output):</span>
-<span id="cb49-4"><a href="#cb49-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">nonlocal</span> count</span>
-<span id="cb49-5"><a href="#cb49-5" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(count, kwargs[<span class="st">'past_key_value'</span>].key_cache[<span class="dv">0</span>].shape)</span>
-<span id="cb49-6"><a href="#cb49-6" aria-hidden="true" tabindex="-1"></a>        count <span class="op">+=</span> <span class="dv">1</span></span>
-<span id="cb49-7"><a href="#cb49-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> hook_fn</span>
-<span id="cb49-8"><a href="#cb49-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb49-9"><a href="#cb49-9" aria-hidden="true" tabindex="-1"></a>_hook_fn <span class="op">=</span> create_hook_fn()</span>
-<span id="cb49-10"><a href="#cb49-10" aria-hidden="true" tabindex="-1"></a>attn_layer <span class="op">=</span> model.model.layers[<span class="dv">0</span>].self_attn</span>
-<span id="cb49-11"><a href="#cb49-11" aria-hidden="true" tabindex="-1"></a>hook_handle <span class="op">=</span> attn_layer.register_forward_hook(_hook_fn, with_kwargs<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb49-12"><a href="#cb49-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb49-13"><a href="#cb49-13" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">5</span>)</span>
-<span id="cb49-14"><a href="#cb49-14" aria-hidden="true" tabindex="-1"></a>hook_handle.remove()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-67" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="222ac421-f62f-444c-d90f-a65a283d8e7b" data-execution_count="77">
+<div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> create_hook_fn():</span>
+<span id="cb48-2"><a href="#cb48-2" aria-hidden="true" tabindex="-1"></a>    count <span class="op">=</span> <span class="dv">1</span></span>
+<span id="cb48-3"><a href="#cb48-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> hook_fn(module, args, kwargs, output):</span>
+<span id="cb48-4"><a href="#cb48-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">nonlocal</span> count</span>
+<span id="cb48-5"><a href="#cb48-5" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(count, kwargs[<span class="st">'past_key_value'</span>].key_cache[<span class="dv">0</span>].shape)</span>
+<span id="cb48-6"><a href="#cb48-6" aria-hidden="true" tabindex="-1"></a>        count <span class="op">+=</span> <span class="dv">1</span></span>
+<span id="cb48-7"><a href="#cb48-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> hook_fn</span>
+<span id="cb48-8"><a href="#cb48-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb48-9"><a href="#cb48-9" aria-hidden="true" tabindex="-1"></a>_hook_fn <span class="op">=</span> create_hook_fn()</span>
+<span id="cb48-10"><a href="#cb48-10" aria-hidden="true" tabindex="-1"></a>attn_layer <span class="op">=</span> model.model.layers[<span class="dv">0</span>].self_attn</span>
+<span id="cb48-11"><a href="#cb48-11" aria-hidden="true" tabindex="-1"></a>hook_handle <span class="op">=</span> attn_layer.register_forward_hook(_hook_fn, with_kwargs<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb48-12"><a href="#cb48-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb48-13"><a href="#cb48-13" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">5</span>)</span>
+<span id="cb48-14"><a href="#cb48-14" aria-hidden="true" tabindex="-1"></a>hook_handle.remove()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>1 torch.Size([1, 3, 3, 64])
 2 torch.Size([1, 3, 4, 64])
@@ -743,22 +763,22 @@ torch.Size([1, 3, 7, 64])</code></pre>
 <li>Each new token generated sees one more new token, so the third dimension (seen tokens) of <code>key_cache</code> and <code>value_cache</code> increases by <code>1</code></li>
 </ul>
 <p>I’ll slightly modify <code>hook_fn</code> so it prints out the first few shapes of <code>key_cache</code>, allowing us to see what all layers’ cache is storing from the perspective of <code>layer_idx=0</code>.</p>
-<div class="cell" data-outputid="779782e8-dc50-4d92-fc8a-0712826d3cf7" data-execution_count="78">
-<div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> create_hook_fn():</span>
-<span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>    count <span class="op">=</span> <span class="dv">1</span></span>
-<span id="cb51-3"><a href="#cb51-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> hook_fn(module, args, kwargs, output):</span>
-<span id="cb51-4"><a href="#cb51-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">nonlocal</span> count</span>
-<span id="cb51-5"><a href="#cb51-5" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(count)</span>
-<span id="cb51-6"><a href="#cb51-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> k <span class="kw">in</span> kwargs[<span class="st">'past_key_value'</span>].key_cache[:<span class="dv">5</span>]: <span class="bu">print</span>(k.shape)</span>
-<span id="cb51-7"><a href="#cb51-7" aria-hidden="true" tabindex="-1"></a>        count <span class="op">+=</span> <span class="dv">1</span></span>
-<span id="cb51-8"><a href="#cb51-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> hook_fn</span>
-<span id="cb51-9"><a href="#cb51-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb51-10"><a href="#cb51-10" aria-hidden="true" tabindex="-1"></a>_hook_fn <span class="op">=</span> create_hook_fn()</span>
-<span id="cb51-11"><a href="#cb51-11" aria-hidden="true" tabindex="-1"></a>attn_layer <span class="op">=</span> model.model.layers[<span class="dv">0</span>].self_attn</span>
-<span id="cb51-12"><a href="#cb51-12" aria-hidden="true" tabindex="-1"></a>hook_handle <span class="op">=</span> attn_layer.register_forward_hook(_hook_fn, with_kwargs<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb51-13"><a href="#cb51-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb51-14"><a href="#cb51-14" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">5</span>)</span>
-<span id="cb51-15"><a href="#cb51-15" aria-hidden="true" tabindex="-1"></a>hook_handle.remove()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-70" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="779782e8-dc50-4d92-fc8a-0712826d3cf7" data-execution_count="78">
+<div class="sourceCode cell-code" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> create_hook_fn():</span>
+<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a>    count <span class="op">=</span> <span class="dv">1</span></span>
+<span id="cb50-3"><a href="#cb50-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> hook_fn(module, args, kwargs, output):</span>
+<span id="cb50-4"><a href="#cb50-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">nonlocal</span> count</span>
+<span id="cb50-5"><a href="#cb50-5" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(count)</span>
+<span id="cb50-6"><a href="#cb50-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> k <span class="kw">in</span> kwargs[<span class="st">'past_key_value'</span>].key_cache[:<span class="dv">5</span>]: <span class="bu">print</span>(k.shape)</span>
+<span id="cb50-7"><a href="#cb50-7" aria-hidden="true" tabindex="-1"></a>        count <span class="op">+=</span> <span class="dv">1</span></span>
+<span id="cb50-8"><a href="#cb50-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> hook_fn</span>
+<span id="cb50-9"><a href="#cb50-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb50-10"><a href="#cb50-10" aria-hidden="true" tabindex="-1"></a>_hook_fn <span class="op">=</span> create_hook_fn()</span>
+<span id="cb50-11"><a href="#cb50-11" aria-hidden="true" tabindex="-1"></a>attn_layer <span class="op">=</span> model.model.layers[<span class="dv">0</span>].self_attn</span>
+<span id="cb50-12"><a href="#cb50-12" aria-hidden="true" tabindex="-1"></a>hook_handle <span class="op">=</span> attn_layer.register_forward_hook(_hook_fn, with_kwargs<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb50-13"><a href="#cb50-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb50-14"><a href="#cb50-14" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">5</span>)</span>
+<span id="cb50-15"><a href="#cb50-15" aria-hidden="true" tabindex="-1"></a>hook_handle.remove()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>1
 torch.Size([1, 3, 3, 64])
@@ -790,24 +810,24 @@ torch.Size([1, 3, 6, 64])</code></pre>
 </div>
 <p>Since we are capturing the <code>key_cache</code> shapes from the first layer (<code>layer_idx=0</code>), the other subsequent layer’s cache tensors are 1 token “behind”, since the new token’s hidden states have not passed through the model yet.</p>
 <p>Ultimately, I want to tie this all back to the <code>flash_attn_varlen_func</code>’s dostring’s causal mask example, so I’ll take a look at the <code>query_states</code> shape, copying code from the <a href="https://github.com/huggingface/transformers/blob/78d771c3c21922642fc9546ccb973cc7a182ab34/src/transformers/models/llama/modeling_llama.py#L232-L235"><code>LlamaAttention</code> forward pass</a>. I’ll also inspect the length of the <code>key_cache</code> and its shape, and the shape of <code>value_cache</code>.</p>
-<div class="cell" data-outputid="b70a2dd1-b26f-46f9-cf7e-311cccd3d82b" data-execution_count="79">
-<div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> create_hook_fn():</span>
-<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>    count <span class="op">=</span> <span class="dv">1</span></span>
-<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> hook_fn(module, args, kwargs, output):</span>
-<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">nonlocal</span> count</span>
-<span id="cb53-5"><a href="#cb53-5" aria-hidden="true" tabindex="-1"></a>        input_shape <span class="op">=</span> kwargs[<span class="st">'hidden_states'</span>].shape[:<span class="op">-</span><span class="dv">1</span>]</span>
-<span id="cb53-6"><a href="#cb53-6" aria-hidden="true" tabindex="-1"></a>        hidden_shape <span class="op">=</span> (<span class="op">*</span>input_shape, <span class="op">-</span><span class="dv">1</span>, module.head_dim)</span>
-<span id="cb53-7"><a href="#cb53-7" aria-hidden="true" tabindex="-1"></a>        query_states <span class="op">=</span> module.q_proj(kwargs[<span class="st">'hidden_states'</span>]).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
-<span id="cb53-8"><a href="#cb53-8" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(count, <span class="ss">f"len(past_key_value): </span><span class="sc">{</span><span class="bu">len</span>(kwargs[<span class="st">'past_key_value'</span>].key_cache)<span class="sc">}</span><span class="ss">,"</span>, <span class="ss">f"query_states.shape: </span><span class="sc">{</span>query_states<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">,"</span>, <span class="ss">f"k.shape: </span><span class="sc">{</span>kwargs[<span class="st">'past_key_value'</span>]<span class="sc">.</span>key_cache[<span class="dv">0</span>]<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">,"</span>, <span class="ss">f"v.shape: </span><span class="sc">{</span>kwargs[<span class="st">'past_key_value'</span>]<span class="sc">.</span>value_cache[<span class="dv">0</span>]<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb53-9"><a href="#cb53-9" aria-hidden="true" tabindex="-1"></a>        count <span class="op">+=</span> <span class="dv">1</span></span>
-<span id="cb53-10"><a href="#cb53-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> hook_fn</span>
-<span id="cb53-11"><a href="#cb53-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb53-12"><a href="#cb53-12" aria-hidden="true" tabindex="-1"></a>_hook_fn <span class="op">=</span> create_hook_fn()</span>
-<span id="cb53-13"><a href="#cb53-13" aria-hidden="true" tabindex="-1"></a>attn_layer <span class="op">=</span> model.model.layers[<span class="dv">0</span>].self_attn</span>
-<span id="cb53-14"><a href="#cb53-14" aria-hidden="true" tabindex="-1"></a>hook_handle <span class="op">=</span> attn_layer.register_forward_hook(_hook_fn, with_kwargs<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb53-15"><a href="#cb53-15" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb53-16"><a href="#cb53-16" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">5</span>)</span>
-<span id="cb53-17"><a href="#cb53-17" aria-hidden="true" tabindex="-1"></a>hook_handle.remove()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-73" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="b70a2dd1-b26f-46f9-cf7e-311cccd3d82b" data-execution_count="79">
+<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> create_hook_fn():</span>
+<span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a>    count <span class="op">=</span> <span class="dv">1</span></span>
+<span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> hook_fn(module, args, kwargs, output):</span>
+<span id="cb52-4"><a href="#cb52-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">nonlocal</span> count</span>
+<span id="cb52-5"><a href="#cb52-5" aria-hidden="true" tabindex="-1"></a>        input_shape <span class="op">=</span> kwargs[<span class="st">'hidden_states'</span>].shape[:<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb52-6"><a href="#cb52-6" aria-hidden="true" tabindex="-1"></a>        hidden_shape <span class="op">=</span> (<span class="op">*</span>input_shape, <span class="op">-</span><span class="dv">1</span>, module.head_dim)</span>
+<span id="cb52-7"><a href="#cb52-7" aria-hidden="true" tabindex="-1"></a>        query_states <span class="op">=</span> module.q_proj(kwargs[<span class="st">'hidden_states'</span>]).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb52-8"><a href="#cb52-8" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(count, <span class="ss">f"len(past_key_value): </span><span class="sc">{</span><span class="bu">len</span>(kwargs[<span class="st">'past_key_value'</span>].key_cache)<span class="sc">}</span><span class="ss">,"</span>, <span class="ss">f"query_states.shape: </span><span class="sc">{</span>query_states<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">,"</span>, <span class="ss">f"k.shape: </span><span class="sc">{</span>kwargs[<span class="st">'past_key_value'</span>]<span class="sc">.</span>key_cache[<span class="dv">0</span>]<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">,"</span>, <span class="ss">f"v.shape: </span><span class="sc">{</span>kwargs[<span class="st">'past_key_value'</span>]<span class="sc">.</span>value_cache[<span class="dv">0</span>]<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb52-9"><a href="#cb52-9" aria-hidden="true" tabindex="-1"></a>        count <span class="op">+=</span> <span class="dv">1</span></span>
+<span id="cb52-10"><a href="#cb52-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> hook_fn</span>
+<span id="cb52-11"><a href="#cb52-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-12"><a href="#cb52-12" aria-hidden="true" tabindex="-1"></a>_hook_fn <span class="op">=</span> create_hook_fn()</span>
+<span id="cb52-13"><a href="#cb52-13" aria-hidden="true" tabindex="-1"></a>attn_layer <span class="op">=</span> model.model.layers[<span class="dv">0</span>].self_attn</span>
+<span id="cb52-14"><a href="#cb52-14" aria-hidden="true" tabindex="-1"></a>hook_handle <span class="op">=</span> attn_layer.register_forward_hook(_hook_fn, with_kwargs<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb52-15"><a href="#cb52-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-16"><a href="#cb52-16" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">5</span>)</span>
+<span id="cb52-17"><a href="#cb52-17" aria-hidden="true" tabindex="-1"></a>hook_handle.remove()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>1 len(past_key_value): 1, query_states.shape: torch.Size([1, 9, 3, 64]), k.shape: torch.Size([1, 3, 3, 64]), v.shape: torch.Size([1, 3, 3, 64])
 2 len(past_key_value): 30, query_states.shape: torch.Size([1, 9, 1, 64]), k.shape: torch.Size([1, 3, 4, 64]), v.shape: torch.Size([1, 3, 4, 64])
@@ -830,9 +850,9 @@ torch.Size([1, 3, 6, 64])</code></pre>
 </ul>
 <p>How did I know which functions to modify? Well, largely because I <a href="https://vishalbakshi.github.io/blog/posts/2025-05-04-Understanding-Sequence-Packing/">have done this exercise before</a> when I was trying to understand what triggered the use of <code>flash_attn_varlen_func</code>.</p>
 <p>More concisely, I first inspected the forward pass of the attention module:</p>
-<div class="cell" data-outputid="fc396455-d320-43da-9491-a9555f6118a5" data-execution_count="80">
-<div class="sourceCode cell-code" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> inspect <span class="im">import</span> getsource</span>
-<span id="cb55-2"><a href="#cb55-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(getsource(model.model.layers[<span class="dv">0</span>].self_attn.forward))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-79" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="fc396455-d320-43da-9491-a9555f6118a5" data-execution_count="80">
+<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> inspect <span class="im">import</span> getsource</span>
+<span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(getsource(model.model.layers[<span class="dv">0</span>].self_attn.forward))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>    def forward(
         self,
@@ -887,24 +907,24 @@ torch.Size([1, 3, 6, 64])</code></pre>
 </div>
 </div>
 <p>In there I saw the following lines of interest:</p>
-<div class="sourceCode" id="cb57"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1"><a href="#cb57-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="va">self</span>.config._attn_implementation <span class="op">!=</span> <span class="st">"eager"</span>:</span>
-<span id="cb57-2"><a href="#cb57-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="va">self</span>.config._attn_implementation <span class="op">==</span> <span class="st">"sdpa"</span> <span class="kw">and</span> kwargs.get(<span class="st">"output_attentions"</span>, <span class="va">False</span>):</span>
-<span id="cb57-3"><a href="#cb57-3" aria-hidden="true" tabindex="-1"></a>        logger.warning_once(</span>
-<span id="cb57-4"><a href="#cb57-4" aria-hidden="true" tabindex="-1"></a>            <span class="st">"`torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to "</span></span>
-<span id="cb57-5"><a href="#cb57-5" aria-hidden="true" tabindex="-1"></a>            <span class="st">'eager attention. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'</span></span>
-<span id="cb57-6"><a href="#cb57-6" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb57-7"><a href="#cb57-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
-<span id="cb57-8"><a href="#cb57-8" aria-hidden="true" tabindex="-1"></a>        attention_interface <span class="op">=</span> ALL_ATTENTION_FUNCTIONS[<span class="va">self</span>.config._attn_implementation]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="va">self</span>.config._attn_implementation <span class="op">!=</span> <span class="st">"eager"</span>:</span>
+<span id="cb56-2"><a href="#cb56-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="va">self</span>.config._attn_implementation <span class="op">==</span> <span class="st">"sdpa"</span> <span class="kw">and</span> kwargs.get(<span class="st">"output_attentions"</span>, <span class="va">False</span>):</span>
+<span id="cb56-3"><a href="#cb56-3" aria-hidden="true" tabindex="-1"></a>        logger.warning_once(</span>
+<span id="cb56-4"><a href="#cb56-4" aria-hidden="true" tabindex="-1"></a>            <span class="st">"`torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to "</span></span>
+<span id="cb56-5"><a href="#cb56-5" aria-hidden="true" tabindex="-1"></a>            <span class="st">'eager attention. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'</span></span>
+<span id="cb56-6"><a href="#cb56-6" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb56-7"><a href="#cb56-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb56-8"><a href="#cb56-8" aria-hidden="true" tabindex="-1"></a>        attention_interface <span class="op">=</span> ALL_ATTENTION_FUNCTIONS[<span class="va">self</span>.config._attn_implementation]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>In our case, the <code>else</code> block would trigger and <code>ALL_ATTENTION_FUNCTIONS</code> would be accesssed. Looking at that constant directly we can see that for our model’s <code>_attn_implementation</code> (<code>'flash_attention_2'</code>) the attention interface funtion is <code>flash_attention_forward</code>.</p>
-<div class="cell" data-outputid="8d40574b-2e73-4ad6-a6b0-7490e87e4108" data-execution_count="81">
-<div class="sourceCode cell-code" id="cb58"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb58-1"><a href="#cb58-1" aria-hidden="true" tabindex="-1"></a>model.config._attn_implementation</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-82" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:35}}" data-outputid="8d40574b-2e73-4ad6-a6b0-7490e87e4108" data-execution_count="81">
+<div class="sourceCode cell-code" id="cb57"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1"><a href="#cb57-1" aria-hidden="true" tabindex="-1"></a>model.config._attn_implementation</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="81">
 <pre><code>'flash_attention_2'</code></pre>
 </div>
 </div>
-<div class="cell" data-outputid="fc2cd815-84be-44c3-8255-4b6a2f33e5c8" data-execution_count="82">
-<div class="sourceCode cell-code" id="cb60"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb60-1"><a href="#cb60-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.modeling_utils <span class="im">import</span> ALL_ATTENTION_FUNCTIONS</span>
-<span id="cb60-2"><a href="#cb60-2" aria-hidden="true" tabindex="-1"></a>ALL_ATTENTION_FUNCTIONS[model.config._attn_implementation]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-83" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:174}}" data-outputid="fc2cd815-84be-44c3-8255-4b6a2f33e5c8" data-execution_count="82">
+<div class="sourceCode cell-code" id="cb59"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1"><a href="#cb59-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.modeling_utils <span class="im">import</span> ALL_ATTENTION_FUNCTIONS</span>
+<span id="cb59-2"><a href="#cb59-2" aria-hidden="true" tabindex="-1"></a>ALL_ATTENTION_FUNCTIONS[model.config._attn_implementation]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="82">
 <div style="max-width:800px; border: 1px solid var(--colab-border-color);"><style>
       pre.function-repr-contents {
@@ -943,319 +963,319 @@ torch.Size([1, 3, 6, 64])</code></pre>
       </div>
 </div>
 </div>
-<div class="cell" data-execution_count="85">
-<details>
+<div id="cell-84" class="cell" data-execution_count="85">
+<details class="code-fold">
 <summary>Show `_debug_flash_attention_forward</summary>
-<div class="sourceCode cell-code" id="cb61"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb61-1"><a href="#cb61-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> typing <span class="im">import</span> Optional, Tuple</span>
-<span id="cb61-2"><a href="#cb61-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> inspect</span>
-<span id="cb61-3"><a href="#cb61-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> flash_attn <span class="im">import</span> flash_attn_func, flash_attn_varlen_func</span>
-<span id="cb61-4"><a href="#cb61-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
-<span id="cb61-5"><a href="#cb61-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
-<span id="cb61-6"><a href="#cb61-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.modeling_flash_attention_utils <span class="im">import</span> is_flash_attn_greater_or_equal, fa_peft_integration_check, _upad_input, pad_input, prepare_fa2_from_position_ids</span>
-<span id="cb61-7"><a href="#cb61-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-8"><a href="#cb61-8" aria-hidden="true" tabindex="-1"></a>_flash_supports_window_size <span class="op">=</span> <span class="st">"window_size"</span> <span class="kw">in</span> <span class="bu">list</span>(inspect.signature(flash_attn_func).parameters)</span>
-<span id="cb61-9"><a href="#cb61-9" aria-hidden="true" tabindex="-1"></a>flash_241 <span class="op">=</span> is_flash_attn_greater_or_equal(<span class="st">"2.4.1"</span>)</span>
-<span id="cb61-10"><a href="#cb61-10" aria-hidden="true" tabindex="-1"></a>deterministic_g <span class="op">=</span> <span class="va">None</span></span>
-<span id="cb61-11"><a href="#cb61-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-12"><a href="#cb61-12" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _debug_flash_attention_forward(</span>
-<span id="cb61-13"><a href="#cb61-13" aria-hidden="true" tabindex="-1"></a>    query_states: torch.Tensor,</span>
-<span id="cb61-14"><a href="#cb61-14" aria-hidden="true" tabindex="-1"></a>    key_states: torch.Tensor,</span>
-<span id="cb61-15"><a href="#cb61-15" aria-hidden="true" tabindex="-1"></a>    value_states: torch.Tensor,</span>
-<span id="cb61-16"><a href="#cb61-16" aria-hidden="true" tabindex="-1"></a>    attention_mask: Optional[torch.Tensor],</span>
-<span id="cb61-17"><a href="#cb61-17" aria-hidden="true" tabindex="-1"></a>    query_length: <span class="bu">int</span>,</span>
-<span id="cb61-18"><a href="#cb61-18" aria-hidden="true" tabindex="-1"></a>    is_causal: <span class="bu">bool</span>,</span>
-<span id="cb61-19"><a href="#cb61-19" aria-hidden="true" tabindex="-1"></a>    dropout: <span class="bu">float</span> <span class="op">=</span> <span class="fl">0.0</span>,</span>
-<span id="cb61-20"><a href="#cb61-20" aria-hidden="true" tabindex="-1"></a>    position_ids: Optional[torch.Tensor] <span class="op">=</span> <span class="va">None</span>,</span>
-<span id="cb61-21"><a href="#cb61-21" aria-hidden="true" tabindex="-1"></a>    softmax_scale: Optional[<span class="bu">float</span>] <span class="op">=</span> <span class="va">None</span>,</span>
-<span id="cb61-22"><a href="#cb61-22" aria-hidden="true" tabindex="-1"></a>    sliding_window: Optional[<span class="bu">int</span>] <span class="op">=</span> <span class="va">None</span>,</span>
-<span id="cb61-23"><a href="#cb61-23" aria-hidden="true" tabindex="-1"></a>    use_top_left_mask: <span class="bu">bool</span> <span class="op">=</span> <span class="va">False</span>,</span>
-<span id="cb61-24"><a href="#cb61-24" aria-hidden="true" tabindex="-1"></a>    softcap: Optional[<span class="bu">float</span>] <span class="op">=</span> <span class="va">None</span>,</span>
-<span id="cb61-25"><a href="#cb61-25" aria-hidden="true" tabindex="-1"></a>    deterministic: Optional[<span class="bu">bool</span>] <span class="op">=</span> <span class="va">None</span>,</span>
-<span id="cb61-26"><a href="#cb61-26" aria-hidden="true" tabindex="-1"></a>    cu_seq_lens_q: Optional[torch.LongTensor] <span class="op">=</span> <span class="va">None</span>,</span>
-<span id="cb61-27"><a href="#cb61-27" aria-hidden="true" tabindex="-1"></a>    cu_seq_lens_k: Optional[torch.LongTensor] <span class="op">=</span> <span class="va">None</span>,</span>
-<span id="cb61-28"><a href="#cb61-28" aria-hidden="true" tabindex="-1"></a>    max_length_q: Optional[<span class="bu">int</span>] <span class="op">=</span> <span class="va">None</span>,</span>
-<span id="cb61-29"><a href="#cb61-29" aria-hidden="true" tabindex="-1"></a>    max_length_k: Optional[<span class="bu">int</span>] <span class="op">=</span> <span class="va">None</span>,</span>
-<span id="cb61-30"><a href="#cb61-30" aria-hidden="true" tabindex="-1"></a>    target_dtype: Optional[torch.dtype] <span class="op">=</span> <span class="va">None</span>,</span>
-<span id="cb61-31"><a href="#cb61-31" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
-<span id="cb61-32"><a href="#cb61-32" aria-hidden="true" tabindex="-1"></a>):</span>
-<span id="cb61-33"><a href="#cb61-33" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-34"><a href="#cb61-34" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="kw">not</span> use_top_left_mask:</span>
-<span id="cb61-35"><a href="#cb61-35" aria-hidden="true" tabindex="-1"></a>        causal <span class="op">=</span> is_causal</span>
-<span id="cb61-36"><a href="#cb61-36" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
-<span id="cb61-37"><a href="#cb61-37" aria-hidden="true" tabindex="-1"></a>        <span class="co"># </span><span class="al">TODO</span><span class="co">: Remove the `query_length != 1` check once Flash Attention for RoCm is bumped to 2.1.</span></span>
-<span id="cb61-38"><a href="#cb61-38" aria-hidden="true" tabindex="-1"></a>        causal <span class="op">=</span> is_causal <span class="kw">and</span> query_length <span class="op">!=</span> <span class="dv">1</span></span>
-<span id="cb61-39"><a href="#cb61-39" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-40"><a href="#cb61-40" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Assuming 4D tensors, key_states.shape[1] is the key/value sequence length (source length).</span></span>
-<span id="cb61-41"><a href="#cb61-41" aria-hidden="true" tabindex="-1"></a>    use_sliding_windows <span class="op">=</span> (</span>
-<span id="cb61-42"><a href="#cb61-42" aria-hidden="true" tabindex="-1"></a>        _flash_supports_window_size <span class="kw">and</span> sliding_window <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">and</span> key_states.shape[<span class="dv">1</span>] <span class="op">&gt;</span> sliding_window</span>
-<span id="cb61-43"><a href="#cb61-43" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb61-44"><a href="#cb61-44" aria-hidden="true" tabindex="-1"></a>    flash_kwargs <span class="op">=</span> {<span class="st">"window_size"</span>: (sliding_window, sliding_window)} <span class="cf">if</span> use_sliding_windows <span class="cf">else</span> {}</span>
-<span id="cb61-45"><a href="#cb61-45" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-46"><a href="#cb61-46" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> flash_241:</span>
-<span id="cb61-47"><a href="#cb61-47" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> deterministic <span class="kw">is</span> <span class="va">None</span>:</span>
-<span id="cb61-48"><a href="#cb61-48" aria-hidden="true" tabindex="-1"></a>            <span class="kw">global</span> deterministic_g</span>
-<span id="cb61-49"><a href="#cb61-49" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> deterministic_g <span class="kw">is</span> <span class="va">None</span>:</span>
-<span id="cb61-50"><a href="#cb61-50" aria-hidden="true" tabindex="-1"></a>                deterministic_g <span class="op">=</span> os.environ.get(<span class="st">"FLASH_ATTENTION_DETERMINISTIC"</span>, <span class="st">"0"</span>) <span class="op">==</span> <span class="st">"1"</span></span>
-<span id="cb61-51"><a href="#cb61-51" aria-hidden="true" tabindex="-1"></a>            deterministic <span class="op">=</span> deterministic_g</span>
-<span id="cb61-52"><a href="#cb61-52" aria-hidden="true" tabindex="-1"></a>        flash_kwargs[<span class="st">"deterministic"</span>] <span class="op">=</span> deterministic</span>
-<span id="cb61-53"><a href="#cb61-53" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-54"><a href="#cb61-54" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> softcap <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
-<span id="cb61-55"><a href="#cb61-55" aria-hidden="true" tabindex="-1"></a>        flash_kwargs[<span class="st">"softcap"</span>] <span class="op">=</span> softcap</span>
-<span id="cb61-56"><a href="#cb61-56" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-57"><a href="#cb61-57" aria-hidden="true" tabindex="-1"></a>    <span class="co"># PEFT possibly silently casts tensors to fp32, this potentially reconverts to correct dtype or is a no op</span></span>
-<span id="cb61-58"><a href="#cb61-58" aria-hidden="true" tabindex="-1"></a>    query_states, key_states, value_states <span class="op">=</span> fa_peft_integration_check(</span>
-<span id="cb61-59"><a href="#cb61-59" aria-hidden="true" tabindex="-1"></a>        query_states, key_states, value_states, target_dtype</span>
-<span id="cb61-60"><a href="#cb61-60" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb61-61"><a href="#cb61-61" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-62"><a href="#cb61-62" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Contains at least one padding token in the sequence</span></span>
-<span id="cb61-63"><a href="#cb61-63" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> attention_mask <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
-<span id="cb61-64"><a href="#cb61-64" aria-hidden="true" tabindex="-1"></a>        batch_size <span class="op">=</span> query_states.shape[<span class="dv">0</span>]</span>
-<span id="cb61-65"><a href="#cb61-65" aria-hidden="true" tabindex="-1"></a>        query_states, key_states, value_states, indices_q, cu_seq_lens, max_seq_lens <span class="op">=</span> _upad_input(</span>
-<span id="cb61-66"><a href="#cb61-66" aria-hidden="true" tabindex="-1"></a>            query_states, key_states, value_states, attention_mask, query_length</span>
-<span id="cb61-67"><a href="#cb61-67" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb61-68"><a href="#cb61-68" aria-hidden="true" tabindex="-1"></a>        cu_seqlens_q, cu_seqlens_k <span class="op">=</span> cu_seq_lens</span>
-<span id="cb61-69"><a href="#cb61-69" aria-hidden="true" tabindex="-1"></a>        max_seqlen_in_batch_q, max_seqlen_in_batch_k <span class="op">=</span> max_seq_lens</span>
-<span id="cb61-70"><a href="#cb61-70" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"if attention_mask is not None: flash_attn_varlen_func is being used"</span>)</span>
-<span id="cb61-71"><a href="#cb61-71" aria-hidden="true" tabindex="-1"></a>        attn_output_unpad <span class="op">=</span> flash_attn_varlen_func(</span>
-<span id="cb61-72"><a href="#cb61-72" aria-hidden="true" tabindex="-1"></a>            query_states,</span>
-<span id="cb61-73"><a href="#cb61-73" aria-hidden="true" tabindex="-1"></a>            key_states,</span>
-<span id="cb61-74"><a href="#cb61-74" aria-hidden="true" tabindex="-1"></a>            value_states,</span>
-<span id="cb61-75"><a href="#cb61-75" aria-hidden="true" tabindex="-1"></a>            cu_seqlens_q<span class="op">=</span>cu_seqlens_q,</span>
-<span id="cb61-76"><a href="#cb61-76" aria-hidden="true" tabindex="-1"></a>            cu_seqlens_k<span class="op">=</span>cu_seqlens_k,</span>
-<span id="cb61-77"><a href="#cb61-77" aria-hidden="true" tabindex="-1"></a>            max_seqlen_q<span class="op">=</span>max_seqlen_in_batch_q,</span>
-<span id="cb61-78"><a href="#cb61-78" aria-hidden="true" tabindex="-1"></a>            max_seqlen_k<span class="op">=</span>max_seqlen_in_batch_k,</span>
-<span id="cb61-79"><a href="#cb61-79" aria-hidden="true" tabindex="-1"></a>            dropout_p<span class="op">=</span>dropout,</span>
-<span id="cb61-80"><a href="#cb61-80" aria-hidden="true" tabindex="-1"></a>            softmax_scale<span class="op">=</span>softmax_scale,</span>
-<span id="cb61-81"><a href="#cb61-81" aria-hidden="true" tabindex="-1"></a>            causal<span class="op">=</span>causal,</span>
-<span id="cb61-82"><a href="#cb61-82" aria-hidden="true" tabindex="-1"></a>            <span class="op">**</span>flash_kwargs,</span>
-<span id="cb61-83"><a href="#cb61-83" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb61-84"><a href="#cb61-84" aria-hidden="true" tabindex="-1"></a>        attn_output <span class="op">=</span> pad_input(attn_output_unpad, indices_q, batch_size, query_length)</span>
-<span id="cb61-85"><a href="#cb61-85" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-86"><a href="#cb61-86" aria-hidden="true" tabindex="-1"></a>    <span class="co"># If position_ids is provided and check all examples do not contain only 1 sequence, If tensor in increasing</span></span>
-<span id="cb61-87"><a href="#cb61-87" aria-hidden="true" tabindex="-1"></a>    <span class="co"># then we probably have one sequence, otherwise it is packed. Additionally check we are in pre-fill/training stage.</span></span>
-<span id="cb61-88"><a href="#cb61-88" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Use `flash_attn_varlen_func` to prevent cross-example attention and also allow padding free approach</span></span>
-<span id="cb61-89"><a href="#cb61-89" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> position_ids <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">and</span> (</span>
-<span id="cb61-90"><a href="#cb61-90" aria-hidden="true" tabindex="-1"></a>        max_length_q <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">or</span> (query_length <span class="op">!=</span> <span class="dv">1</span> <span class="kw">and</span> <span class="kw">not</span> (torch.diff(position_ids, dim<span class="op">=-</span><span class="dv">1</span>) <span class="op">&gt;=</span> <span class="dv">0</span>).<span class="bu">all</span>())</span>
-<span id="cb61-91"><a href="#cb61-91" aria-hidden="true" tabindex="-1"></a>    ):</span>
-<span id="cb61-92"><a href="#cb61-92" aria-hidden="true" tabindex="-1"></a>        batch_size <span class="op">=</span> query_states.size(<span class="dv">0</span>)</span>
-<span id="cb61-93"><a href="#cb61-93" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-94"><a href="#cb61-94" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> cu_seq_lens_q <span class="kw">is</span> <span class="va">None</span> <span class="kw">or</span> cu_seq_lens_k <span class="kw">is</span> <span class="va">None</span>:</span>
-<span id="cb61-95"><a href="#cb61-95" aria-hidden="true" tabindex="-1"></a>            query_states, key_states, value_states, indices_q, cu_seq_lens, max_seq_lens <span class="op">=</span> (</span>
-<span id="cb61-96"><a href="#cb61-96" aria-hidden="true" tabindex="-1"></a>                prepare_fa2_from_position_ids(query_states, key_states, value_states, position_ids)</span>
-<span id="cb61-97"><a href="#cb61-97" aria-hidden="true" tabindex="-1"></a>            )</span>
-<span id="cb61-98"><a href="#cb61-98" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-99"><a href="#cb61-99" aria-hidden="true" tabindex="-1"></a>            cu_seq_lens_q, cu_seq_lens_k <span class="op">=</span> cu_seq_lens</span>
-<span id="cb61-100"><a href="#cb61-100" aria-hidden="true" tabindex="-1"></a>            max_length_q, max_length_k <span class="op">=</span> max_seq_lens</span>
-<span id="cb61-101"><a href="#cb61-101" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-102"><a href="#cb61-102" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
-<span id="cb61-103"><a href="#cb61-103" aria-hidden="true" tabindex="-1"></a>            query_states <span class="op">=</span> query_states.reshape(<span class="op">-</span><span class="dv">1</span>, query_states.size(<span class="op">-</span><span class="dv">2</span>), query_states.size(<span class="op">-</span><span class="dv">1</span>))</span>
-<span id="cb61-104"><a href="#cb61-104" aria-hidden="true" tabindex="-1"></a>            key_states <span class="op">=</span> key_states.reshape(<span class="op">-</span><span class="dv">1</span>, key_states.size(<span class="op">-</span><span class="dv">2</span>), key_states.size(<span class="op">-</span><span class="dv">1</span>))</span>
-<span id="cb61-105"><a href="#cb61-105" aria-hidden="true" tabindex="-1"></a>            value_states <span class="op">=</span> value_states.reshape(<span class="op">-</span><span class="dv">1</span>, value_states.size(<span class="op">-</span><span class="dv">2</span>), value_states.size(<span class="op">-</span><span class="dv">1</span>))</span>
-<span id="cb61-106"><a href="#cb61-106" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-107"><a href="#cb61-107" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"position_ids is not None: flash_attn_varlen_func is being used"</span>)</span>
-<span id="cb61-108"><a href="#cb61-108" aria-hidden="true" tabindex="-1"></a>        attn_output <span class="op">=</span> flash_attn_varlen_func(</span>
-<span id="cb61-109"><a href="#cb61-109" aria-hidden="true" tabindex="-1"></a>            query_states,</span>
-<span id="cb61-110"><a href="#cb61-110" aria-hidden="true" tabindex="-1"></a>            key_states,</span>
-<span id="cb61-111"><a href="#cb61-111" aria-hidden="true" tabindex="-1"></a>            value_states,</span>
-<span id="cb61-112"><a href="#cb61-112" aria-hidden="true" tabindex="-1"></a>            cu_seqlens_q<span class="op">=</span>cu_seq_lens_q,</span>
-<span id="cb61-113"><a href="#cb61-113" aria-hidden="true" tabindex="-1"></a>            cu_seqlens_k<span class="op">=</span>cu_seq_lens_k,</span>
-<span id="cb61-114"><a href="#cb61-114" aria-hidden="true" tabindex="-1"></a>            max_seqlen_q<span class="op">=</span>max_length_q,</span>
-<span id="cb61-115"><a href="#cb61-115" aria-hidden="true" tabindex="-1"></a>            max_seqlen_k<span class="op">=</span>max_length_k,</span>
-<span id="cb61-116"><a href="#cb61-116" aria-hidden="true" tabindex="-1"></a>            dropout_p<span class="op">=</span>dropout,</span>
-<span id="cb61-117"><a href="#cb61-117" aria-hidden="true" tabindex="-1"></a>            softmax_scale<span class="op">=</span>softmax_scale,</span>
-<span id="cb61-118"><a href="#cb61-118" aria-hidden="true" tabindex="-1"></a>            causal<span class="op">=</span>causal,</span>
-<span id="cb61-119"><a href="#cb61-119" aria-hidden="true" tabindex="-1"></a>            <span class="op">**</span>flash_kwargs,</span>
-<span id="cb61-120"><a href="#cb61-120" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb61-121"><a href="#cb61-121" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-122"><a href="#cb61-122" aria-hidden="true" tabindex="-1"></a>        attn_output <span class="op">=</span> attn_output.view(batch_size, <span class="op">-</span><span class="dv">1</span>, attn_output.size(<span class="op">-</span><span class="dv">2</span>), attn_output.size(<span class="op">-</span><span class="dv">1</span>))</span>
-<span id="cb61-123"><a href="#cb61-123" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-124"><a href="#cb61-124" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
-<span id="cb61-125"><a href="#cb61-125" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"flash_attn_func is being used"</span>)</span>
-<span id="cb61-126"><a href="#cb61-126" aria-hidden="true" tabindex="-1"></a>        attn_output <span class="op">=</span> flash_attn_func(</span>
-<span id="cb61-127"><a href="#cb61-127" aria-hidden="true" tabindex="-1"></a>            query_states, key_states, value_states, dropout, softmax_scale<span class="op">=</span>softmax_scale, causal<span class="op">=</span>causal, <span class="op">**</span>flash_kwargs</span>
-<span id="cb61-128"><a href="#cb61-128" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb61-129"><a href="#cb61-129" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb61-130"><a href="#cb61-130" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> attn_output</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb60"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb60-1"><a href="#cb60-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> typing <span class="im">import</span> Optional, Tuple</span>
+<span id="cb60-2"><a href="#cb60-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> inspect</span>
+<span id="cb60-3"><a href="#cb60-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> flash_attn <span class="im">import</span> flash_attn_func, flash_attn_varlen_func</span>
+<span id="cb60-4"><a href="#cb60-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
+<span id="cb60-5"><a href="#cb60-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb60-6"><a href="#cb60-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.modeling_flash_attention_utils <span class="im">import</span> is_flash_attn_greater_or_equal, fa_peft_integration_check, _upad_input, pad_input, prepare_fa2_from_position_ids</span>
+<span id="cb60-7"><a href="#cb60-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-8"><a href="#cb60-8" aria-hidden="true" tabindex="-1"></a>_flash_supports_window_size <span class="op">=</span> <span class="st">"window_size"</span> <span class="kw">in</span> <span class="bu">list</span>(inspect.signature(flash_attn_func).parameters)</span>
+<span id="cb60-9"><a href="#cb60-9" aria-hidden="true" tabindex="-1"></a>flash_241 <span class="op">=</span> is_flash_attn_greater_or_equal(<span class="st">"2.4.1"</span>)</span>
+<span id="cb60-10"><a href="#cb60-10" aria-hidden="true" tabindex="-1"></a>deterministic_g <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb60-11"><a href="#cb60-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-12"><a href="#cb60-12" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _debug_flash_attention_forward(</span>
+<span id="cb60-13"><a href="#cb60-13" aria-hidden="true" tabindex="-1"></a>    query_states: torch.Tensor,</span>
+<span id="cb60-14"><a href="#cb60-14" aria-hidden="true" tabindex="-1"></a>    key_states: torch.Tensor,</span>
+<span id="cb60-15"><a href="#cb60-15" aria-hidden="true" tabindex="-1"></a>    value_states: torch.Tensor,</span>
+<span id="cb60-16"><a href="#cb60-16" aria-hidden="true" tabindex="-1"></a>    attention_mask: Optional[torch.Tensor],</span>
+<span id="cb60-17"><a href="#cb60-17" aria-hidden="true" tabindex="-1"></a>    query_length: <span class="bu">int</span>,</span>
+<span id="cb60-18"><a href="#cb60-18" aria-hidden="true" tabindex="-1"></a>    is_causal: <span class="bu">bool</span>,</span>
+<span id="cb60-19"><a href="#cb60-19" aria-hidden="true" tabindex="-1"></a>    dropout: <span class="bu">float</span> <span class="op">=</span> <span class="fl">0.0</span>,</span>
+<span id="cb60-20"><a href="#cb60-20" aria-hidden="true" tabindex="-1"></a>    position_ids: Optional[torch.Tensor] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb60-21"><a href="#cb60-21" aria-hidden="true" tabindex="-1"></a>    softmax_scale: Optional[<span class="bu">float</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb60-22"><a href="#cb60-22" aria-hidden="true" tabindex="-1"></a>    sliding_window: Optional[<span class="bu">int</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb60-23"><a href="#cb60-23" aria-hidden="true" tabindex="-1"></a>    use_top_left_mask: <span class="bu">bool</span> <span class="op">=</span> <span class="va">False</span>,</span>
+<span id="cb60-24"><a href="#cb60-24" aria-hidden="true" tabindex="-1"></a>    softcap: Optional[<span class="bu">float</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb60-25"><a href="#cb60-25" aria-hidden="true" tabindex="-1"></a>    deterministic: Optional[<span class="bu">bool</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb60-26"><a href="#cb60-26" aria-hidden="true" tabindex="-1"></a>    cu_seq_lens_q: Optional[torch.LongTensor] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb60-27"><a href="#cb60-27" aria-hidden="true" tabindex="-1"></a>    cu_seq_lens_k: Optional[torch.LongTensor] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb60-28"><a href="#cb60-28" aria-hidden="true" tabindex="-1"></a>    max_length_q: Optional[<span class="bu">int</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb60-29"><a href="#cb60-29" aria-hidden="true" tabindex="-1"></a>    max_length_k: Optional[<span class="bu">int</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb60-30"><a href="#cb60-30" aria-hidden="true" tabindex="-1"></a>    target_dtype: Optional[torch.dtype] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb60-31"><a href="#cb60-31" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
+<span id="cb60-32"><a href="#cb60-32" aria-hidden="true" tabindex="-1"></a>):</span>
+<span id="cb60-33"><a href="#cb60-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-34"><a href="#cb60-34" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="kw">not</span> use_top_left_mask:</span>
+<span id="cb60-35"><a href="#cb60-35" aria-hidden="true" tabindex="-1"></a>        causal <span class="op">=</span> is_causal</span>
+<span id="cb60-36"><a href="#cb60-36" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb60-37"><a href="#cb60-37" aria-hidden="true" tabindex="-1"></a>        <span class="co"># </span><span class="al">TODO</span><span class="co">: Remove the `query_length != 1` check once Flash Attention for RoCm is bumped to 2.1.</span></span>
+<span id="cb60-38"><a href="#cb60-38" aria-hidden="true" tabindex="-1"></a>        causal <span class="op">=</span> is_causal <span class="kw">and</span> query_length <span class="op">!=</span> <span class="dv">1</span></span>
+<span id="cb60-39"><a href="#cb60-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-40"><a href="#cb60-40" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Assuming 4D tensors, key_states.shape[1] is the key/value sequence length (source length).</span></span>
+<span id="cb60-41"><a href="#cb60-41" aria-hidden="true" tabindex="-1"></a>    use_sliding_windows <span class="op">=</span> (</span>
+<span id="cb60-42"><a href="#cb60-42" aria-hidden="true" tabindex="-1"></a>        _flash_supports_window_size <span class="kw">and</span> sliding_window <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">and</span> key_states.shape[<span class="dv">1</span>] <span class="op">&gt;</span> sliding_window</span>
+<span id="cb60-43"><a href="#cb60-43" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb60-44"><a href="#cb60-44" aria-hidden="true" tabindex="-1"></a>    flash_kwargs <span class="op">=</span> {<span class="st">"window_size"</span>: (sliding_window, sliding_window)} <span class="cf">if</span> use_sliding_windows <span class="cf">else</span> {}</span>
+<span id="cb60-45"><a href="#cb60-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-46"><a href="#cb60-46" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> flash_241:</span>
+<span id="cb60-47"><a href="#cb60-47" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> deterministic <span class="kw">is</span> <span class="va">None</span>:</span>
+<span id="cb60-48"><a href="#cb60-48" aria-hidden="true" tabindex="-1"></a>            <span class="kw">global</span> deterministic_g</span>
+<span id="cb60-49"><a href="#cb60-49" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> deterministic_g <span class="kw">is</span> <span class="va">None</span>:</span>
+<span id="cb60-50"><a href="#cb60-50" aria-hidden="true" tabindex="-1"></a>                deterministic_g <span class="op">=</span> os.environ.get(<span class="st">"FLASH_ATTENTION_DETERMINISTIC"</span>, <span class="st">"0"</span>) <span class="op">==</span> <span class="st">"1"</span></span>
+<span id="cb60-51"><a href="#cb60-51" aria-hidden="true" tabindex="-1"></a>            deterministic <span class="op">=</span> deterministic_g</span>
+<span id="cb60-52"><a href="#cb60-52" aria-hidden="true" tabindex="-1"></a>        flash_kwargs[<span class="st">"deterministic"</span>] <span class="op">=</span> deterministic</span>
+<span id="cb60-53"><a href="#cb60-53" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-54"><a href="#cb60-54" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> softcap <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb60-55"><a href="#cb60-55" aria-hidden="true" tabindex="-1"></a>        flash_kwargs[<span class="st">"softcap"</span>] <span class="op">=</span> softcap</span>
+<span id="cb60-56"><a href="#cb60-56" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-57"><a href="#cb60-57" aria-hidden="true" tabindex="-1"></a>    <span class="co"># PEFT possibly silently casts tensors to fp32, this potentially reconverts to correct dtype or is a no op</span></span>
+<span id="cb60-58"><a href="#cb60-58" aria-hidden="true" tabindex="-1"></a>    query_states, key_states, value_states <span class="op">=</span> fa_peft_integration_check(</span>
+<span id="cb60-59"><a href="#cb60-59" aria-hidden="true" tabindex="-1"></a>        query_states, key_states, value_states, target_dtype</span>
+<span id="cb60-60"><a href="#cb60-60" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb60-61"><a href="#cb60-61" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-62"><a href="#cb60-62" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Contains at least one padding token in the sequence</span></span>
+<span id="cb60-63"><a href="#cb60-63" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> attention_mask <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb60-64"><a href="#cb60-64" aria-hidden="true" tabindex="-1"></a>        batch_size <span class="op">=</span> query_states.shape[<span class="dv">0</span>]</span>
+<span id="cb60-65"><a href="#cb60-65" aria-hidden="true" tabindex="-1"></a>        query_states, key_states, value_states, indices_q, cu_seq_lens, max_seq_lens <span class="op">=</span> _upad_input(</span>
+<span id="cb60-66"><a href="#cb60-66" aria-hidden="true" tabindex="-1"></a>            query_states, key_states, value_states, attention_mask, query_length</span>
+<span id="cb60-67"><a href="#cb60-67" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb60-68"><a href="#cb60-68" aria-hidden="true" tabindex="-1"></a>        cu_seqlens_q, cu_seqlens_k <span class="op">=</span> cu_seq_lens</span>
+<span id="cb60-69"><a href="#cb60-69" aria-hidden="true" tabindex="-1"></a>        max_seqlen_in_batch_q, max_seqlen_in_batch_k <span class="op">=</span> max_seq_lens</span>
+<span id="cb60-70"><a href="#cb60-70" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"if attention_mask is not None: flash_attn_varlen_func is being used"</span>)</span>
+<span id="cb60-71"><a href="#cb60-71" aria-hidden="true" tabindex="-1"></a>        attn_output_unpad <span class="op">=</span> flash_attn_varlen_func(</span>
+<span id="cb60-72"><a href="#cb60-72" aria-hidden="true" tabindex="-1"></a>            query_states,</span>
+<span id="cb60-73"><a href="#cb60-73" aria-hidden="true" tabindex="-1"></a>            key_states,</span>
+<span id="cb60-74"><a href="#cb60-74" aria-hidden="true" tabindex="-1"></a>            value_states,</span>
+<span id="cb60-75"><a href="#cb60-75" aria-hidden="true" tabindex="-1"></a>            cu_seqlens_q<span class="op">=</span>cu_seqlens_q,</span>
+<span id="cb60-76"><a href="#cb60-76" aria-hidden="true" tabindex="-1"></a>            cu_seqlens_k<span class="op">=</span>cu_seqlens_k,</span>
+<span id="cb60-77"><a href="#cb60-77" aria-hidden="true" tabindex="-1"></a>            max_seqlen_q<span class="op">=</span>max_seqlen_in_batch_q,</span>
+<span id="cb60-78"><a href="#cb60-78" aria-hidden="true" tabindex="-1"></a>            max_seqlen_k<span class="op">=</span>max_seqlen_in_batch_k,</span>
+<span id="cb60-79"><a href="#cb60-79" aria-hidden="true" tabindex="-1"></a>            dropout_p<span class="op">=</span>dropout,</span>
+<span id="cb60-80"><a href="#cb60-80" aria-hidden="true" tabindex="-1"></a>            softmax_scale<span class="op">=</span>softmax_scale,</span>
+<span id="cb60-81"><a href="#cb60-81" aria-hidden="true" tabindex="-1"></a>            causal<span class="op">=</span>causal,</span>
+<span id="cb60-82"><a href="#cb60-82" aria-hidden="true" tabindex="-1"></a>            <span class="op">**</span>flash_kwargs,</span>
+<span id="cb60-83"><a href="#cb60-83" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb60-84"><a href="#cb60-84" aria-hidden="true" tabindex="-1"></a>        attn_output <span class="op">=</span> pad_input(attn_output_unpad, indices_q, batch_size, query_length)</span>
+<span id="cb60-85"><a href="#cb60-85" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-86"><a href="#cb60-86" aria-hidden="true" tabindex="-1"></a>    <span class="co"># If position_ids is provided and check all examples do not contain only 1 sequence, If tensor in increasing</span></span>
+<span id="cb60-87"><a href="#cb60-87" aria-hidden="true" tabindex="-1"></a>    <span class="co"># then we probably have one sequence, otherwise it is packed. Additionally check we are in pre-fill/training stage.</span></span>
+<span id="cb60-88"><a href="#cb60-88" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Use `flash_attn_varlen_func` to prevent cross-example attention and also allow padding free approach</span></span>
+<span id="cb60-89"><a href="#cb60-89" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> position_ids <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">and</span> (</span>
+<span id="cb60-90"><a href="#cb60-90" aria-hidden="true" tabindex="-1"></a>        max_length_q <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">or</span> (query_length <span class="op">!=</span> <span class="dv">1</span> <span class="kw">and</span> <span class="kw">not</span> (torch.diff(position_ids, dim<span class="op">=-</span><span class="dv">1</span>) <span class="op">&gt;=</span> <span class="dv">0</span>).<span class="bu">all</span>())</span>
+<span id="cb60-91"><a href="#cb60-91" aria-hidden="true" tabindex="-1"></a>    ):</span>
+<span id="cb60-92"><a href="#cb60-92" aria-hidden="true" tabindex="-1"></a>        batch_size <span class="op">=</span> query_states.size(<span class="dv">0</span>)</span>
+<span id="cb60-93"><a href="#cb60-93" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-94"><a href="#cb60-94" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> cu_seq_lens_q <span class="kw">is</span> <span class="va">None</span> <span class="kw">or</span> cu_seq_lens_k <span class="kw">is</span> <span class="va">None</span>:</span>
+<span id="cb60-95"><a href="#cb60-95" aria-hidden="true" tabindex="-1"></a>            query_states, key_states, value_states, indices_q, cu_seq_lens, max_seq_lens <span class="op">=</span> (</span>
+<span id="cb60-96"><a href="#cb60-96" aria-hidden="true" tabindex="-1"></a>                prepare_fa2_from_position_ids(query_states, key_states, value_states, position_ids)</span>
+<span id="cb60-97"><a href="#cb60-97" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb60-98"><a href="#cb60-98" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-99"><a href="#cb60-99" aria-hidden="true" tabindex="-1"></a>            cu_seq_lens_q, cu_seq_lens_k <span class="op">=</span> cu_seq_lens</span>
+<span id="cb60-100"><a href="#cb60-100" aria-hidden="true" tabindex="-1"></a>            max_length_q, max_length_k <span class="op">=</span> max_seq_lens</span>
+<span id="cb60-101"><a href="#cb60-101" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-102"><a href="#cb60-102" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
+<span id="cb60-103"><a href="#cb60-103" aria-hidden="true" tabindex="-1"></a>            query_states <span class="op">=</span> query_states.reshape(<span class="op">-</span><span class="dv">1</span>, query_states.size(<span class="op">-</span><span class="dv">2</span>), query_states.size(<span class="op">-</span><span class="dv">1</span>))</span>
+<span id="cb60-104"><a href="#cb60-104" aria-hidden="true" tabindex="-1"></a>            key_states <span class="op">=</span> key_states.reshape(<span class="op">-</span><span class="dv">1</span>, key_states.size(<span class="op">-</span><span class="dv">2</span>), key_states.size(<span class="op">-</span><span class="dv">1</span>))</span>
+<span id="cb60-105"><a href="#cb60-105" aria-hidden="true" tabindex="-1"></a>            value_states <span class="op">=</span> value_states.reshape(<span class="op">-</span><span class="dv">1</span>, value_states.size(<span class="op">-</span><span class="dv">2</span>), value_states.size(<span class="op">-</span><span class="dv">1</span>))</span>
+<span id="cb60-106"><a href="#cb60-106" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-107"><a href="#cb60-107" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"position_ids is not None: flash_attn_varlen_func is being used"</span>)</span>
+<span id="cb60-108"><a href="#cb60-108" aria-hidden="true" tabindex="-1"></a>        attn_output <span class="op">=</span> flash_attn_varlen_func(</span>
+<span id="cb60-109"><a href="#cb60-109" aria-hidden="true" tabindex="-1"></a>            query_states,</span>
+<span id="cb60-110"><a href="#cb60-110" aria-hidden="true" tabindex="-1"></a>            key_states,</span>
+<span id="cb60-111"><a href="#cb60-111" aria-hidden="true" tabindex="-1"></a>            value_states,</span>
+<span id="cb60-112"><a href="#cb60-112" aria-hidden="true" tabindex="-1"></a>            cu_seqlens_q<span class="op">=</span>cu_seq_lens_q,</span>
+<span id="cb60-113"><a href="#cb60-113" aria-hidden="true" tabindex="-1"></a>            cu_seqlens_k<span class="op">=</span>cu_seq_lens_k,</span>
+<span id="cb60-114"><a href="#cb60-114" aria-hidden="true" tabindex="-1"></a>            max_seqlen_q<span class="op">=</span>max_length_q,</span>
+<span id="cb60-115"><a href="#cb60-115" aria-hidden="true" tabindex="-1"></a>            max_seqlen_k<span class="op">=</span>max_length_k,</span>
+<span id="cb60-116"><a href="#cb60-116" aria-hidden="true" tabindex="-1"></a>            dropout_p<span class="op">=</span>dropout,</span>
+<span id="cb60-117"><a href="#cb60-117" aria-hidden="true" tabindex="-1"></a>            softmax_scale<span class="op">=</span>softmax_scale,</span>
+<span id="cb60-118"><a href="#cb60-118" aria-hidden="true" tabindex="-1"></a>            causal<span class="op">=</span>causal,</span>
+<span id="cb60-119"><a href="#cb60-119" aria-hidden="true" tabindex="-1"></a>            <span class="op">**</span>flash_kwargs,</span>
+<span id="cb60-120"><a href="#cb60-120" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb60-121"><a href="#cb60-121" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-122"><a href="#cb60-122" aria-hidden="true" tabindex="-1"></a>        attn_output <span class="op">=</span> attn_output.view(batch_size, <span class="op">-</span><span class="dv">1</span>, attn_output.size(<span class="op">-</span><span class="dv">2</span>), attn_output.size(<span class="op">-</span><span class="dv">1</span>))</span>
+<span id="cb60-123"><a href="#cb60-123" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-124"><a href="#cb60-124" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb60-125"><a href="#cb60-125" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"flash_attn_func is being used"</span>)</span>
+<span id="cb60-126"><a href="#cb60-126" aria-hidden="true" tabindex="-1"></a>        attn_output <span class="op">=</span> flash_attn_func(</span>
+<span id="cb60-127"><a href="#cb60-127" aria-hidden="true" tabindex="-1"></a>            query_states, key_states, value_states, dropout, softmax_scale<span class="op">=</span>softmax_scale, causal<span class="op">=</span>causal, <span class="op">**</span>flash_kwargs</span>
+<span id="cb60-128"><a href="#cb60-128" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb60-129"><a href="#cb60-129" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb60-130"><a href="#cb60-130" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> attn_output</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-execution_count="86">
-<details>
+<div id="cell-85" class="cell" data-execution_count="86">
+<details class="code-fold">
 <summary>Show `debug_flash_attention_forward</summary>
-<div class="sourceCode cell-code" id="cb62"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> typing <span class="im">import</span> Optional, Tuple</span>
-<span id="cb62-2"><a href="#cb62-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
-<span id="cb62-3"><a href="#cb62-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.modeling_flash_attention_utils <span class="im">import</span> _flash_attention_forward, flash_attn_supports_top_left_mask</span>
-<span id="cb62-4"><a href="#cb62-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb62-5"><a href="#cb62-5" aria-hidden="true" tabindex="-1"></a>_use_top_left_mask <span class="op">=</span> flash_attn_supports_top_left_mask()</span>
-<span id="cb62-6"><a href="#cb62-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb62-7"><a href="#cb62-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb62-8"><a href="#cb62-8" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> debug_flash_attention_forward(</span>
-<span id="cb62-9"><a href="#cb62-9" aria-hidden="true" tabindex="-1"></a>    module: torch.nn.Module,</span>
-<span id="cb62-10"><a href="#cb62-10" aria-hidden="true" tabindex="-1"></a>    query: torch.Tensor,</span>
-<span id="cb62-11"><a href="#cb62-11" aria-hidden="true" tabindex="-1"></a>    key: torch.Tensor,</span>
-<span id="cb62-12"><a href="#cb62-12" aria-hidden="true" tabindex="-1"></a>    value: torch.Tensor,</span>
-<span id="cb62-13"><a href="#cb62-13" aria-hidden="true" tabindex="-1"></a>    attention_mask: Optional[torch.Tensor],</span>
-<span id="cb62-14"><a href="#cb62-14" aria-hidden="true" tabindex="-1"></a>    dropout: <span class="bu">float</span> <span class="op">=</span> <span class="fl">0.0</span>,</span>
-<span id="cb62-15"><a href="#cb62-15" aria-hidden="true" tabindex="-1"></a>    scaling: Optional[<span class="bu">float</span>] <span class="op">=</span> <span class="va">None</span>,</span>
-<span id="cb62-16"><a href="#cb62-16" aria-hidden="true" tabindex="-1"></a>    sliding_window: Optional[<span class="bu">int</span>] <span class="op">=</span> <span class="va">None</span>,</span>
-<span id="cb62-17"><a href="#cb62-17" aria-hidden="true" tabindex="-1"></a>    softcap: Optional[<span class="bu">float</span>] <span class="op">=</span> <span class="va">None</span>,</span>
-<span id="cb62-18"><a href="#cb62-18" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
-<span id="cb62-19"><a href="#cb62-19" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> Tuple[torch.Tensor, <span class="va">None</span>]:</span>
-<span id="cb62-20"><a href="#cb62-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> kwargs.get(<span class="st">"output_attentions"</span>, <span class="va">False</span>) <span class="kw">or</span> kwargs.get(<span class="st">"head_mask"</span>, <span class="va">None</span>) <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
-<span id="cb62-21"><a href="#cb62-21" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(</span>
-<span id="cb62-22"><a href="#cb62-22" aria-hidden="true" tabindex="-1"></a>            <span class="st">"`flash_attention_2` does not support `output_attentions=True` or `head_mask`."</span></span>
-<span id="cb62-23"><a href="#cb62-23" aria-hidden="true" tabindex="-1"></a>            <span class="st">" Please set your attention to `eager` if you want any of these features."</span></span>
-<span id="cb62-24"><a href="#cb62-24" aria-hidden="true" tabindex="-1"></a>        )</span>
-<span id="cb62-25"><a href="#cb62-25" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb62-26"><a href="#cb62-26" aria-hidden="true" tabindex="-1"></a>    <span class="co"># This is before the transpose</span></span>
-<span id="cb62-27"><a href="#cb62-27" aria-hidden="true" tabindex="-1"></a>    seq_len <span class="op">=</span> query.shape[<span class="dv">2</span>]</span>
-<span id="cb62-28"><a href="#cb62-28" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb62-29"><a href="#cb62-29" aria-hidden="true" tabindex="-1"></a>    <span class="co"># FA2 uses non-transposed inputs</span></span>
-<span id="cb62-30"><a href="#cb62-30" aria-hidden="true" tabindex="-1"></a>    query <span class="op">=</span> query.transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
-<span id="cb62-31"><a href="#cb62-31" aria-hidden="true" tabindex="-1"></a>    key <span class="op">=</span> key.transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
-<span id="cb62-32"><a href="#cb62-32" aria-hidden="true" tabindex="-1"></a>    value <span class="op">=</span> value.transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
-<span id="cb62-33"><a href="#cb62-33" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb62-34"><a href="#cb62-34" aria-hidden="true" tabindex="-1"></a>    <span class="co"># In PEFT, usually we cast the layer norms in float32 for training stability reasons</span></span>
-<span id="cb62-35"><a href="#cb62-35" aria-hidden="true" tabindex="-1"></a>    <span class="co"># therefore the input hidden states gets silently casted in float32. Hence, we need</span></span>
-<span id="cb62-36"><a href="#cb62-36" aria-hidden="true" tabindex="-1"></a>    <span class="co"># cast them back in the correct dtype just to be sure everything works as expected.</span></span>
-<span id="cb62-37"><a href="#cb62-37" aria-hidden="true" tabindex="-1"></a>    <span class="co"># This might slowdown training &amp; inference so it is recommended to not cast the LayerNorms</span></span>
-<span id="cb62-38"><a href="#cb62-38" aria-hidden="true" tabindex="-1"></a>    <span class="co"># in fp32. (usually our RMSNorm modules handle it correctly)</span></span>
-<span id="cb62-39"><a href="#cb62-39" aria-hidden="true" tabindex="-1"></a>    target_dtype <span class="op">=</span> <span class="va">None</span></span>
-<span id="cb62-40"><a href="#cb62-40" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> query.dtype <span class="op">==</span> torch.float32:</span>
-<span id="cb62-41"><a href="#cb62-41" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> torch.is_autocast_enabled():</span>
-<span id="cb62-42"><a href="#cb62-42" aria-hidden="true" tabindex="-1"></a>            target_dtype <span class="op">=</span> torch.get_autocast_gpu_dtype()</span>
-<span id="cb62-43"><a href="#cb62-43" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Handle the case where the model is quantized</span></span>
-<span id="cb62-44"><a href="#cb62-44" aria-hidden="true" tabindex="-1"></a>        <span class="cf">elif</span> <span class="bu">hasattr</span>(module.config, <span class="st">"_pre_quantization_dtype"</span>):</span>
-<span id="cb62-45"><a href="#cb62-45" aria-hidden="true" tabindex="-1"></a>            target_dtype <span class="op">=</span> module.config._pre_quantization_dtype</span>
-<span id="cb62-46"><a href="#cb62-46" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
-<span id="cb62-47"><a href="#cb62-47" aria-hidden="true" tabindex="-1"></a>            target_dtype <span class="op">=</span> <span class="bu">next</span>(layer <span class="cf">for</span> layer <span class="kw">in</span> module.modules() <span class="cf">if</span> <span class="bu">isinstance</span>(layer, torch.nn.Linear)).weight.dtype</span>
-<span id="cb62-48"><a href="#cb62-48" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb62-49"><a href="#cb62-49" aria-hidden="true" tabindex="-1"></a>    <span class="co"># FA2 always relies on the value set in the module, so remove it if present in kwargs to avoid passing it twice</span></span>
-<span id="cb62-50"><a href="#cb62-50" aria-hidden="true" tabindex="-1"></a>    kwargs.pop(<span class="st">"is_causal"</span>, <span class="va">None</span>)</span>
-<span id="cb62-51"><a href="#cb62-51" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb62-52"><a href="#cb62-52" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"DEBUG: calling _flash_attention_forward"</span>)</span>
-<span id="cb62-53"><a href="#cb62-53" aria-hidden="true" tabindex="-1"></a>    attn_output <span class="op">=</span> _debug_flash_attention_forward(</span>
-<span id="cb62-54"><a href="#cb62-54" aria-hidden="true" tabindex="-1"></a>        query,</span>
-<span id="cb62-55"><a href="#cb62-55" aria-hidden="true" tabindex="-1"></a>        key,</span>
-<span id="cb62-56"><a href="#cb62-56" aria-hidden="true" tabindex="-1"></a>        value,</span>
-<span id="cb62-57"><a href="#cb62-57" aria-hidden="true" tabindex="-1"></a>        attention_mask,</span>
-<span id="cb62-58"><a href="#cb62-58" aria-hidden="true" tabindex="-1"></a>        query_length<span class="op">=</span>seq_len,</span>
-<span id="cb62-59"><a href="#cb62-59" aria-hidden="true" tabindex="-1"></a>        is_causal<span class="op">=</span>module.is_causal,</span>
-<span id="cb62-60"><a href="#cb62-60" aria-hidden="true" tabindex="-1"></a>        dropout<span class="op">=</span>dropout,</span>
-<span id="cb62-61"><a href="#cb62-61" aria-hidden="true" tabindex="-1"></a>        softmax_scale<span class="op">=</span>scaling,</span>
-<span id="cb62-62"><a href="#cb62-62" aria-hidden="true" tabindex="-1"></a>        sliding_window<span class="op">=</span>sliding_window,</span>
-<span id="cb62-63"><a href="#cb62-63" aria-hidden="true" tabindex="-1"></a>        softcap<span class="op">=</span>softcap,</span>
-<span id="cb62-64"><a href="#cb62-64" aria-hidden="true" tabindex="-1"></a>        use_top_left_mask<span class="op">=</span>_use_top_left_mask,</span>
-<span id="cb62-65"><a href="#cb62-65" aria-hidden="true" tabindex="-1"></a>        target_dtype<span class="op">=</span>target_dtype,</span>
-<span id="cb62-66"><a href="#cb62-66" aria-hidden="true" tabindex="-1"></a>        <span class="op">**</span>kwargs,</span>
-<span id="cb62-67"><a href="#cb62-67" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb62-68"><a href="#cb62-68" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb62-69"><a href="#cb62-69" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> attn_output, <span class="va">None</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb61"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb61-1"><a href="#cb61-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> typing <span class="im">import</span> Optional, Tuple</span>
+<span id="cb61-2"><a href="#cb61-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
+<span id="cb61-3"><a href="#cb61-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.modeling_flash_attention_utils <span class="im">import</span> _flash_attention_forward, flash_attn_supports_top_left_mask</span>
+<span id="cb61-4"><a href="#cb61-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-5"><a href="#cb61-5" aria-hidden="true" tabindex="-1"></a>_use_top_left_mask <span class="op">=</span> flash_attn_supports_top_left_mask()</span>
+<span id="cb61-6"><a href="#cb61-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-7"><a href="#cb61-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-8"><a href="#cb61-8" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> debug_flash_attention_forward(</span>
+<span id="cb61-9"><a href="#cb61-9" aria-hidden="true" tabindex="-1"></a>    module: torch.nn.Module,</span>
+<span id="cb61-10"><a href="#cb61-10" aria-hidden="true" tabindex="-1"></a>    query: torch.Tensor,</span>
+<span id="cb61-11"><a href="#cb61-11" aria-hidden="true" tabindex="-1"></a>    key: torch.Tensor,</span>
+<span id="cb61-12"><a href="#cb61-12" aria-hidden="true" tabindex="-1"></a>    value: torch.Tensor,</span>
+<span id="cb61-13"><a href="#cb61-13" aria-hidden="true" tabindex="-1"></a>    attention_mask: Optional[torch.Tensor],</span>
+<span id="cb61-14"><a href="#cb61-14" aria-hidden="true" tabindex="-1"></a>    dropout: <span class="bu">float</span> <span class="op">=</span> <span class="fl">0.0</span>,</span>
+<span id="cb61-15"><a href="#cb61-15" aria-hidden="true" tabindex="-1"></a>    scaling: Optional[<span class="bu">float</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb61-16"><a href="#cb61-16" aria-hidden="true" tabindex="-1"></a>    sliding_window: Optional[<span class="bu">int</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb61-17"><a href="#cb61-17" aria-hidden="true" tabindex="-1"></a>    softcap: Optional[<span class="bu">float</span>] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb61-18"><a href="#cb61-18" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
+<span id="cb61-19"><a href="#cb61-19" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> Tuple[torch.Tensor, <span class="va">None</span>]:</span>
+<span id="cb61-20"><a href="#cb61-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> kwargs.get(<span class="st">"output_attentions"</span>, <span class="va">False</span>) <span class="kw">or</span> kwargs.get(<span class="st">"head_mask"</span>, <span class="va">None</span>) <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb61-21"><a href="#cb61-21" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(</span>
+<span id="cb61-22"><a href="#cb61-22" aria-hidden="true" tabindex="-1"></a>            <span class="st">"`flash_attention_2` does not support `output_attentions=True` or `head_mask`."</span></span>
+<span id="cb61-23"><a href="#cb61-23" aria-hidden="true" tabindex="-1"></a>            <span class="st">" Please set your attention to `eager` if you want any of these features."</span></span>
+<span id="cb61-24"><a href="#cb61-24" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb61-25"><a href="#cb61-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-26"><a href="#cb61-26" aria-hidden="true" tabindex="-1"></a>    <span class="co"># This is before the transpose</span></span>
+<span id="cb61-27"><a href="#cb61-27" aria-hidden="true" tabindex="-1"></a>    seq_len <span class="op">=</span> query.shape[<span class="dv">2</span>]</span>
+<span id="cb61-28"><a href="#cb61-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-29"><a href="#cb61-29" aria-hidden="true" tabindex="-1"></a>    <span class="co"># FA2 uses non-transposed inputs</span></span>
+<span id="cb61-30"><a href="#cb61-30" aria-hidden="true" tabindex="-1"></a>    query <span class="op">=</span> query.transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb61-31"><a href="#cb61-31" aria-hidden="true" tabindex="-1"></a>    key <span class="op">=</span> key.transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb61-32"><a href="#cb61-32" aria-hidden="true" tabindex="-1"></a>    value <span class="op">=</span> value.transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb61-33"><a href="#cb61-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-34"><a href="#cb61-34" aria-hidden="true" tabindex="-1"></a>    <span class="co"># In PEFT, usually we cast the layer norms in float32 for training stability reasons</span></span>
+<span id="cb61-35"><a href="#cb61-35" aria-hidden="true" tabindex="-1"></a>    <span class="co"># therefore the input hidden states gets silently casted in float32. Hence, we need</span></span>
+<span id="cb61-36"><a href="#cb61-36" aria-hidden="true" tabindex="-1"></a>    <span class="co"># cast them back in the correct dtype just to be sure everything works as expected.</span></span>
+<span id="cb61-37"><a href="#cb61-37" aria-hidden="true" tabindex="-1"></a>    <span class="co"># This might slowdown training &amp; inference so it is recommended to not cast the LayerNorms</span></span>
+<span id="cb61-38"><a href="#cb61-38" aria-hidden="true" tabindex="-1"></a>    <span class="co"># in fp32. (usually our RMSNorm modules handle it correctly)</span></span>
+<span id="cb61-39"><a href="#cb61-39" aria-hidden="true" tabindex="-1"></a>    target_dtype <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb61-40"><a href="#cb61-40" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> query.dtype <span class="op">==</span> torch.float32:</span>
+<span id="cb61-41"><a href="#cb61-41" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> torch.is_autocast_enabled():</span>
+<span id="cb61-42"><a href="#cb61-42" aria-hidden="true" tabindex="-1"></a>            target_dtype <span class="op">=</span> torch.get_autocast_gpu_dtype()</span>
+<span id="cb61-43"><a href="#cb61-43" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Handle the case where the model is quantized</span></span>
+<span id="cb61-44"><a href="#cb61-44" aria-hidden="true" tabindex="-1"></a>        <span class="cf">elif</span> <span class="bu">hasattr</span>(module.config, <span class="st">"_pre_quantization_dtype"</span>):</span>
+<span id="cb61-45"><a href="#cb61-45" aria-hidden="true" tabindex="-1"></a>            target_dtype <span class="op">=</span> module.config._pre_quantization_dtype</span>
+<span id="cb61-46"><a href="#cb61-46" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
+<span id="cb61-47"><a href="#cb61-47" aria-hidden="true" tabindex="-1"></a>            target_dtype <span class="op">=</span> <span class="bu">next</span>(layer <span class="cf">for</span> layer <span class="kw">in</span> module.modules() <span class="cf">if</span> <span class="bu">isinstance</span>(layer, torch.nn.Linear)).weight.dtype</span>
+<span id="cb61-48"><a href="#cb61-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-49"><a href="#cb61-49" aria-hidden="true" tabindex="-1"></a>    <span class="co"># FA2 always relies on the value set in the module, so remove it if present in kwargs to avoid passing it twice</span></span>
+<span id="cb61-50"><a href="#cb61-50" aria-hidden="true" tabindex="-1"></a>    kwargs.pop(<span class="st">"is_causal"</span>, <span class="va">None</span>)</span>
+<span id="cb61-51"><a href="#cb61-51" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-52"><a href="#cb61-52" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"DEBUG: calling _flash_attention_forward"</span>)</span>
+<span id="cb61-53"><a href="#cb61-53" aria-hidden="true" tabindex="-1"></a>    attn_output <span class="op">=</span> _debug_flash_attention_forward(</span>
+<span id="cb61-54"><a href="#cb61-54" aria-hidden="true" tabindex="-1"></a>        query,</span>
+<span id="cb61-55"><a href="#cb61-55" aria-hidden="true" tabindex="-1"></a>        key,</span>
+<span id="cb61-56"><a href="#cb61-56" aria-hidden="true" tabindex="-1"></a>        value,</span>
+<span id="cb61-57"><a href="#cb61-57" aria-hidden="true" tabindex="-1"></a>        attention_mask,</span>
+<span id="cb61-58"><a href="#cb61-58" aria-hidden="true" tabindex="-1"></a>        query_length<span class="op">=</span>seq_len,</span>
+<span id="cb61-59"><a href="#cb61-59" aria-hidden="true" tabindex="-1"></a>        is_causal<span class="op">=</span>module.is_causal,</span>
+<span id="cb61-60"><a href="#cb61-60" aria-hidden="true" tabindex="-1"></a>        dropout<span class="op">=</span>dropout,</span>
+<span id="cb61-61"><a href="#cb61-61" aria-hidden="true" tabindex="-1"></a>        softmax_scale<span class="op">=</span>scaling,</span>
+<span id="cb61-62"><a href="#cb61-62" aria-hidden="true" tabindex="-1"></a>        sliding_window<span class="op">=</span>sliding_window,</span>
+<span id="cb61-63"><a href="#cb61-63" aria-hidden="true" tabindex="-1"></a>        softcap<span class="op">=</span>softcap,</span>
+<span id="cb61-64"><a href="#cb61-64" aria-hidden="true" tabindex="-1"></a>        use_top_left_mask<span class="op">=</span>_use_top_left_mask,</span>
+<span id="cb61-65"><a href="#cb61-65" aria-hidden="true" tabindex="-1"></a>        target_dtype<span class="op">=</span>target_dtype,</span>
+<span id="cb61-66"><a href="#cb61-66" aria-hidden="true" tabindex="-1"></a>        <span class="op">**</span>kwargs,</span>
+<span id="cb61-67"><a href="#cb61-67" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb61-68"><a href="#cb61-68" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb61-69"><a href="#cb61-69" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> attn_output, <span class="va">None</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell" data-execution_count="87">
-<details>
+<div id="cell-86" class="cell" data-execution_count="87">
+<details class="code-fold">
 <summary>Show `debug_forward</summary>
-<div class="sourceCode cell-code" id="cb63"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1"><a href="#cb63-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> typing <span class="im">import</span> Callable, Optional, Tuple, Union</span>
-<span id="cb63-2"><a href="#cb63-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.modeling_flash_attention_utils <span class="im">import</span> FlashAttentionKwargs</span>
-<span id="cb63-3"><a href="#cb63-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.cache_utils <span class="im">import</span> Cache, DynamicCache</span>
-<span id="cb63-4"><a href="#cb63-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.processing_utils <span class="im">import</span> Unpack</span>
-<span id="cb63-5"><a href="#cb63-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.models.llama.modeling_llama <span class="im">import</span> apply_rotary_pos_emb</span>
-<span id="cb63-6"><a href="#cb63-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.models.llama.modeling_llama <span class="im">import</span> eager_attention_forward</span>
-<span id="cb63-7"><a href="#cb63-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.modeling_utils <span class="im">import</span> ALL_ATTENTION_FUNCTIONS</span>
-<span id="cb63-8"><a href="#cb63-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb63-9"><a href="#cb63-9" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> debug_forward(</span>
-<span id="cb63-10"><a href="#cb63-10" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>,</span>
-<span id="cb63-11"><a href="#cb63-11" aria-hidden="true" tabindex="-1"></a>    hidden_states: torch.Tensor,</span>
-<span id="cb63-12"><a href="#cb63-12" aria-hidden="true" tabindex="-1"></a>    position_embeddings: Tuple[torch.Tensor, torch.Tensor],</span>
-<span id="cb63-13"><a href="#cb63-13" aria-hidden="true" tabindex="-1"></a>    attention_mask: Optional[torch.Tensor],</span>
-<span id="cb63-14"><a href="#cb63-14" aria-hidden="true" tabindex="-1"></a>    past_key_value: Optional[Cache] <span class="op">=</span> <span class="va">None</span>,</span>
-<span id="cb63-15"><a href="#cb63-15" aria-hidden="true" tabindex="-1"></a>    cache_position: Optional[torch.LongTensor] <span class="op">=</span> <span class="va">None</span>,</span>
-<span id="cb63-16"><a href="#cb63-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs: Unpack[FlashAttentionKwargs],</span>
-<span id="cb63-17"><a href="#cb63-17" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:</span>
-<span id="cb63-18"><a href="#cb63-18" aria-hidden="true" tabindex="-1"></a>    input_shape <span class="op">=</span> hidden_states.shape[:<span class="op">-</span><span class="dv">1</span>]</span>
-<span id="cb63-19"><a href="#cb63-19" aria-hidden="true" tabindex="-1"></a>    hidden_shape <span class="op">=</span> (<span class="op">*</span>input_shape, <span class="op">-</span><span class="dv">1</span>, <span class="va">self</span>.head_dim)</span>
-<span id="cb63-20"><a href="#cb63-20" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb63-21"><a href="#cb63-21" aria-hidden="true" tabindex="-1"></a>    query_states <span class="op">=</span> <span class="va">self</span>.q_proj(hidden_states).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
-<span id="cb63-22"><a href="#cb63-22" aria-hidden="true" tabindex="-1"></a>    key_states <span class="op">=</span> <span class="va">self</span>.k_proj(hidden_states).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
-<span id="cb63-23"><a href="#cb63-23" aria-hidden="true" tabindex="-1"></a>    value_states <span class="op">=</span> <span class="va">self</span>.v_proj(hidden_states).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
-<span id="cb63-24"><a href="#cb63-24" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb63-25"><a href="#cb63-25" aria-hidden="true" tabindex="-1"></a>    cos, sin <span class="op">=</span> position_embeddings</span>
-<span id="cb63-26"><a href="#cb63-26" aria-hidden="true" tabindex="-1"></a>    query_states, key_states <span class="op">=</span> apply_rotary_pos_emb(query_states, key_states, cos, sin)</span>
-<span id="cb63-27"><a href="#cb63-27" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb63-28"><a href="#cb63-28" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> past_key_value <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
-<span id="cb63-29"><a href="#cb63-29" aria-hidden="true" tabindex="-1"></a>        <span class="co"># sin and cos are specific to RoPE models; cache_position needed for the static cache</span></span>
-<span id="cb63-30"><a href="#cb63-30" aria-hidden="true" tabindex="-1"></a>        cache_kwargs <span class="op">=</span> {<span class="st">"sin"</span>: sin, <span class="st">"cos"</span>: cos, <span class="st">"cache_position"</span>: cache_position}</span>
-<span id="cb63-31"><a href="#cb63-31" aria-hidden="true" tabindex="-1"></a>        key_states, value_states <span class="op">=</span> past_key_value.update(key_states, value_states, <span class="va">self</span>.layer_idx, cache_kwargs)</span>
-<span id="cb63-32"><a href="#cb63-32" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb63-33"><a href="#cb63-33" aria-hidden="true" tabindex="-1"></a>    attention_interface: Callable <span class="op">=</span> eager_attention_forward</span>
-<span id="cb63-34"><a href="#cb63-34" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb63-35"><a href="#cb63-35" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="va">self</span>.config._attn_implementation <span class="op">!=</span> <span class="st">"eager"</span>:</span>
-<span id="cb63-36"><a href="#cb63-36" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="va">self</span>.config._attn_implementation <span class="op">==</span> <span class="st">"sdpa"</span> <span class="kw">and</span> kwargs.get(<span class="st">"output_attentions"</span>, <span class="va">False</span>):</span>
-<span id="cb63-37"><a href="#cb63-37" aria-hidden="true" tabindex="-1"></a>            <span class="bu">print</span>(</span>
-<span id="cb63-38"><a href="#cb63-38" aria-hidden="true" tabindex="-1"></a>                <span class="st">"`torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to "</span></span>
-<span id="cb63-39"><a href="#cb63-39" aria-hidden="true" tabindex="-1"></a>                <span class="st">'eager attention. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'</span></span>
-<span id="cb63-40"><a href="#cb63-40" aria-hidden="true" tabindex="-1"></a>            )</span>
-<span id="cb63-41"><a href="#cb63-41" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
-<span id="cb63-42"><a href="#cb63-42" aria-hidden="true" tabindex="-1"></a>            <span class="co">#attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]</span></span>
-<span id="cb63-43"><a href="#cb63-43" aria-hidden="true" tabindex="-1"></a>            attention_interface <span class="op">=</span> debug_flash_attention_forward</span>
-<span id="cb63-44"><a href="#cb63-44" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb63-45"><a href="#cb63-45" aria-hidden="true" tabindex="-1"></a>    attn_output, attn_weights <span class="op">=</span> attention_interface(</span>
-<span id="cb63-46"><a href="#cb63-46" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>,</span>
-<span id="cb63-47"><a href="#cb63-47" aria-hidden="true" tabindex="-1"></a>        query_states,</span>
-<span id="cb63-48"><a href="#cb63-48" aria-hidden="true" tabindex="-1"></a>        key_states,</span>
-<span id="cb63-49"><a href="#cb63-49" aria-hidden="true" tabindex="-1"></a>        value_states,</span>
-<span id="cb63-50"><a href="#cb63-50" aria-hidden="true" tabindex="-1"></a>        attention_mask,</span>
-<span id="cb63-51"><a href="#cb63-51" aria-hidden="true" tabindex="-1"></a>        dropout<span class="op">=</span><span class="fl">0.0</span> <span class="cf">if</span> <span class="kw">not</span> <span class="va">self</span>.training <span class="cf">else</span> <span class="va">self</span>.attention_dropout,</span>
-<span id="cb63-52"><a href="#cb63-52" aria-hidden="true" tabindex="-1"></a>        scaling<span class="op">=</span><span class="va">self</span>.scaling,</span>
-<span id="cb63-53"><a href="#cb63-53" aria-hidden="true" tabindex="-1"></a>        <span class="op">**</span>kwargs,</span>
-<span id="cb63-54"><a href="#cb63-54" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb63-55"><a href="#cb63-55" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb63-56"><a href="#cb63-56" aria-hidden="true" tabindex="-1"></a>    attn_output <span class="op">=</span> attn_output.reshape(<span class="op">*</span>input_shape, <span class="op">-</span><span class="dv">1</span>).contiguous()</span>
-<span id="cb63-57"><a href="#cb63-57" aria-hidden="true" tabindex="-1"></a>    attn_output <span class="op">=</span> <span class="va">self</span>.o_proj(attn_output)</span>
-<span id="cb63-58"><a href="#cb63-58" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> attn_output, attn_weights</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb62"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> typing <span class="im">import</span> Callable, Optional, Tuple, Union</span>
+<span id="cb62-2"><a href="#cb62-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.modeling_flash_attention_utils <span class="im">import</span> FlashAttentionKwargs</span>
+<span id="cb62-3"><a href="#cb62-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.cache_utils <span class="im">import</span> Cache, DynamicCache</span>
+<span id="cb62-4"><a href="#cb62-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.processing_utils <span class="im">import</span> Unpack</span>
+<span id="cb62-5"><a href="#cb62-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.models.llama.modeling_llama <span class="im">import</span> apply_rotary_pos_emb</span>
+<span id="cb62-6"><a href="#cb62-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.models.llama.modeling_llama <span class="im">import</span> eager_attention_forward</span>
+<span id="cb62-7"><a href="#cb62-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers.modeling_utils <span class="im">import</span> ALL_ATTENTION_FUNCTIONS</span>
+<span id="cb62-8"><a href="#cb62-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-9"><a href="#cb62-9" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> debug_forward(</span>
+<span id="cb62-10"><a href="#cb62-10" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>,</span>
+<span id="cb62-11"><a href="#cb62-11" aria-hidden="true" tabindex="-1"></a>    hidden_states: torch.Tensor,</span>
+<span id="cb62-12"><a href="#cb62-12" aria-hidden="true" tabindex="-1"></a>    position_embeddings: Tuple[torch.Tensor, torch.Tensor],</span>
+<span id="cb62-13"><a href="#cb62-13" aria-hidden="true" tabindex="-1"></a>    attention_mask: Optional[torch.Tensor],</span>
+<span id="cb62-14"><a href="#cb62-14" aria-hidden="true" tabindex="-1"></a>    past_key_value: Optional[Cache] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb62-15"><a href="#cb62-15" aria-hidden="true" tabindex="-1"></a>    cache_position: Optional[torch.LongTensor] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb62-16"><a href="#cb62-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs: Unpack[FlashAttentionKwargs],</span>
+<span id="cb62-17"><a href="#cb62-17" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:</span>
+<span id="cb62-18"><a href="#cb62-18" aria-hidden="true" tabindex="-1"></a>    input_shape <span class="op">=</span> hidden_states.shape[:<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb62-19"><a href="#cb62-19" aria-hidden="true" tabindex="-1"></a>    hidden_shape <span class="op">=</span> (<span class="op">*</span>input_shape, <span class="op">-</span><span class="dv">1</span>, <span class="va">self</span>.head_dim)</span>
+<span id="cb62-20"><a href="#cb62-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-21"><a href="#cb62-21" aria-hidden="true" tabindex="-1"></a>    query_states <span class="op">=</span> <span class="va">self</span>.q_proj(hidden_states).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb62-22"><a href="#cb62-22" aria-hidden="true" tabindex="-1"></a>    key_states <span class="op">=</span> <span class="va">self</span>.k_proj(hidden_states).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb62-23"><a href="#cb62-23" aria-hidden="true" tabindex="-1"></a>    value_states <span class="op">=</span> <span class="va">self</span>.v_proj(hidden_states).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb62-24"><a href="#cb62-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-25"><a href="#cb62-25" aria-hidden="true" tabindex="-1"></a>    cos, sin <span class="op">=</span> position_embeddings</span>
+<span id="cb62-26"><a href="#cb62-26" aria-hidden="true" tabindex="-1"></a>    query_states, key_states <span class="op">=</span> apply_rotary_pos_emb(query_states, key_states, cos, sin)</span>
+<span id="cb62-27"><a href="#cb62-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-28"><a href="#cb62-28" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> past_key_value <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb62-29"><a href="#cb62-29" aria-hidden="true" tabindex="-1"></a>        <span class="co"># sin and cos are specific to RoPE models; cache_position needed for the static cache</span></span>
+<span id="cb62-30"><a href="#cb62-30" aria-hidden="true" tabindex="-1"></a>        cache_kwargs <span class="op">=</span> {<span class="st">"sin"</span>: sin, <span class="st">"cos"</span>: cos, <span class="st">"cache_position"</span>: cache_position}</span>
+<span id="cb62-31"><a href="#cb62-31" aria-hidden="true" tabindex="-1"></a>        key_states, value_states <span class="op">=</span> past_key_value.update(key_states, value_states, <span class="va">self</span>.layer_idx, cache_kwargs)</span>
+<span id="cb62-32"><a href="#cb62-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-33"><a href="#cb62-33" aria-hidden="true" tabindex="-1"></a>    attention_interface: Callable <span class="op">=</span> eager_attention_forward</span>
+<span id="cb62-34"><a href="#cb62-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-35"><a href="#cb62-35" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="va">self</span>.config._attn_implementation <span class="op">!=</span> <span class="st">"eager"</span>:</span>
+<span id="cb62-36"><a href="#cb62-36" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="va">self</span>.config._attn_implementation <span class="op">==</span> <span class="st">"sdpa"</span> <span class="kw">and</span> kwargs.get(<span class="st">"output_attentions"</span>, <span class="va">False</span>):</span>
+<span id="cb62-37"><a href="#cb62-37" aria-hidden="true" tabindex="-1"></a>            <span class="bu">print</span>(</span>
+<span id="cb62-38"><a href="#cb62-38" aria-hidden="true" tabindex="-1"></a>                <span class="st">"`torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to "</span></span>
+<span id="cb62-39"><a href="#cb62-39" aria-hidden="true" tabindex="-1"></a>                <span class="st">'eager attention. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'</span></span>
+<span id="cb62-40"><a href="#cb62-40" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb62-41"><a href="#cb62-41" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
+<span id="cb62-42"><a href="#cb62-42" aria-hidden="true" tabindex="-1"></a>            <span class="co">#attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]</span></span>
+<span id="cb62-43"><a href="#cb62-43" aria-hidden="true" tabindex="-1"></a>            attention_interface <span class="op">=</span> debug_flash_attention_forward</span>
+<span id="cb62-44"><a href="#cb62-44" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-45"><a href="#cb62-45" aria-hidden="true" tabindex="-1"></a>    attn_output, attn_weights <span class="op">=</span> attention_interface(</span>
+<span id="cb62-46"><a href="#cb62-46" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>,</span>
+<span id="cb62-47"><a href="#cb62-47" aria-hidden="true" tabindex="-1"></a>        query_states,</span>
+<span id="cb62-48"><a href="#cb62-48" aria-hidden="true" tabindex="-1"></a>        key_states,</span>
+<span id="cb62-49"><a href="#cb62-49" aria-hidden="true" tabindex="-1"></a>        value_states,</span>
+<span id="cb62-50"><a href="#cb62-50" aria-hidden="true" tabindex="-1"></a>        attention_mask,</span>
+<span id="cb62-51"><a href="#cb62-51" aria-hidden="true" tabindex="-1"></a>        dropout<span class="op">=</span><span class="fl">0.0</span> <span class="cf">if</span> <span class="kw">not</span> <span class="va">self</span>.training <span class="cf">else</span> <span class="va">self</span>.attention_dropout,</span>
+<span id="cb62-52"><a href="#cb62-52" aria-hidden="true" tabindex="-1"></a>        scaling<span class="op">=</span><span class="va">self</span>.scaling,</span>
+<span id="cb62-53"><a href="#cb62-53" aria-hidden="true" tabindex="-1"></a>        <span class="op">**</span>kwargs,</span>
+<span id="cb62-54"><a href="#cb62-54" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb62-55"><a href="#cb62-55" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb62-56"><a href="#cb62-56" aria-hidden="true" tabindex="-1"></a>    attn_output <span class="op">=</span> attn_output.reshape(<span class="op">*</span>input_shape, <span class="op">-</span><span class="dv">1</span>).contiguous()</span>
+<span id="cb62-57"><a href="#cb62-57" aria-hidden="true" tabindex="-1"></a>    attn_output <span class="op">=</span> <span class="va">self</span>.o_proj(attn_output)</span>
+<span id="cb62-58"><a href="#cb62-58" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> attn_output, attn_weights</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 </div>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a>tokenizer <span class="op">=</span> AutoTokenizer.from_pretrained(<span class="st">"HuggingFaceTB/SmolLM2-135M"</span>)</span>
-<span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> AutoModelForCausalLM.from_pretrained(<span class="st">"HuggingFaceTB/SmolLM2-135M"</span>, attn_implementation<span class="op">=</span><span class="st">"flash_attention_2"</span>, torch_dtype<span class="op">=</span>torch.bfloat16).to(<span class="st">"cuda"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-87" class="cell">
+<div class="sourceCode cell-code" id="cb63"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1"><a href="#cb63-1" aria-hidden="true" tabindex="-1"></a>tokenizer <span class="op">=</span> AutoTokenizer.from_pretrained(<span class="st">"HuggingFaceTB/SmolLM2-135M"</span>)</span>
+<span id="cb63-2"><a href="#cb63-2" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> AutoModelForCausalLM.from_pretrained(<span class="st">"HuggingFaceTB/SmolLM2-135M"</span>, attn_implementation<span class="op">=</span><span class="st">"flash_attention_2"</span>, torch_dtype<span class="op">=</span>torch.bfloat16).to(<span class="st">"cuda"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p><code>types.MethodType</code> binds a function (<code>debug_forward</code>) as a method for a class (<code>attn_layer_instance</code>).</p>
-<div class="cell" data-execution_count="89">
-<div class="sourceCode cell-code" id="cb65"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> types</span>
-<span id="cb65-2"><a href="#cb65-2" aria-hidden="true" tabindex="-1"></a>types.MethodType??</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-89" class="cell" data-execution_count="89">
+<div class="sourceCode cell-code" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> types</span>
+<span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a>types.MethodType??</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <pre><code>Init signature: types.MethodType(self, /, *args, **kwargs)
 Docstring:      Create a bound instance method object.
 Type:           type
 Subclasses:    </code></pre>
-<div class="cell" data-execution_count="90">
-<div class="sourceCode cell-code" id="cb67"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb67-1"><a href="#cb67-1" aria-hidden="true" tabindex="-1"></a>attn_layer_instance <span class="op">=</span> model.model.layers[<span class="dv">0</span>].self_attn</span>
-<span id="cb67-2"><a href="#cb67-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb67-3"><a href="#cb67-3" aria-hidden="true" tabindex="-1"></a>original_layer_forward <span class="op">=</span> attn_layer_instance.forward</span>
-<span id="cb67-4"><a href="#cb67-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb67-5"><a href="#cb67-5" aria-hidden="true" tabindex="-1"></a>attn_layer_instance.forward <span class="op">=</span> types.MethodType(debug_forward, attn_layer_instance)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-91" class="cell" data-execution_count="90">
+<div class="sourceCode cell-code" id="cb66"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb66-1"><a href="#cb66-1" aria-hidden="true" tabindex="-1"></a>attn_layer_instance <span class="op">=</span> model.model.layers[<span class="dv">0</span>].self_attn</span>
+<span id="cb66-2"><a href="#cb66-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb66-3"><a href="#cb66-3" aria-hidden="true" tabindex="-1"></a>original_layer_forward <span class="op">=</span> attn_layer_instance.forward</span>
+<span id="cb66-4"><a href="#cb66-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb66-5"><a href="#cb66-5" aria-hidden="true" tabindex="-1"></a>attn_layer_instance.forward <span class="op">=</span> types.MethodType(debug_forward, attn_layer_instance)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell" data-outputid="f9c3e320-4cc7-4467-bd12-727167ceb4b9" data-execution_count="91">
-<div class="sourceCode cell-code" id="cb68"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb68-1"><a href="#cb68-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> create_hook_fn():</span>
-<span id="cb68-2"><a href="#cb68-2" aria-hidden="true" tabindex="-1"></a>    count <span class="op">=</span> <span class="dv">1</span></span>
-<span id="cb68-3"><a href="#cb68-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> hook_fn(module, args, kwargs, output):</span>
-<span id="cb68-4"><a href="#cb68-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">nonlocal</span> count</span>
-<span id="cb68-5"><a href="#cb68-5" aria-hidden="true" tabindex="-1"></a>        input_shape <span class="op">=</span> kwargs[<span class="st">'hidden_states'</span>].shape[:<span class="op">-</span><span class="dv">1</span>]</span>
-<span id="cb68-6"><a href="#cb68-6" aria-hidden="true" tabindex="-1"></a>        hidden_shape <span class="op">=</span> (<span class="op">*</span>input_shape, <span class="op">-</span><span class="dv">1</span>, module.head_dim)</span>
-<span id="cb68-7"><a href="#cb68-7" aria-hidden="true" tabindex="-1"></a>        query_states <span class="op">=</span> module.q_proj(kwargs[<span class="st">'hidden_states'</span>]).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
-<span id="cb68-8"><a href="#cb68-8" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(count, <span class="bu">len</span>(kwargs[<span class="st">'past_key_value'</span>].key_cache), <span class="ss">f"query_states.shape: </span><span class="sc">{</span>query_states<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">"</span>, <span class="ss">f"k.shape: </span><span class="sc">{</span>kwargs[<span class="st">'past_key_value'</span>]<span class="sc">.</span>key_cache[<span class="dv">0</span>]<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb68-9"><a href="#cb68-9" aria-hidden="true" tabindex="-1"></a>        <span class="co"># for k in kwargs['past_key_value'].key_cache: print(k.shape) # do this for v as well</span></span>
-<span id="cb68-10"><a href="#cb68-10" aria-hidden="true" tabindex="-1"></a>        count <span class="op">+=</span> <span class="dv">1</span></span>
-<span id="cb68-11"><a href="#cb68-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> hook_fn</span>
-<span id="cb68-12"><a href="#cb68-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb68-13"><a href="#cb68-13" aria-hidden="true" tabindex="-1"></a>_hook_fn <span class="op">=</span> create_hook_fn()</span>
-<span id="cb68-14"><a href="#cb68-14" aria-hidden="true" tabindex="-1"></a>attn_layer <span class="op">=</span> model.model.layers[<span class="dv">0</span>].self_attn</span>
-<span id="cb68-15"><a href="#cb68-15" aria-hidden="true" tabindex="-1"></a>hook_handle <span class="op">=</span> attn_layer.register_forward_hook(_hook_fn, with_kwargs<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb68-16"><a href="#cb68-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb68-17"><a href="#cb68-17" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">5</span>)</span>
-<span id="cb68-18"><a href="#cb68-18" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(outputs.sequences[<span class="dv">0</span>].shape)</span>
-<span id="cb68-19"><a href="#cb68-19" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb68-20"><a href="#cb68-20" aria-hidden="true" tabindex="-1"></a>hook_handle.remove()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-92" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="f9c3e320-4cc7-4467-bd12-727167ceb4b9" data-execution_count="91">
+<div class="sourceCode cell-code" id="cb67"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb67-1"><a href="#cb67-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> create_hook_fn():</span>
+<span id="cb67-2"><a href="#cb67-2" aria-hidden="true" tabindex="-1"></a>    count <span class="op">=</span> <span class="dv">1</span></span>
+<span id="cb67-3"><a href="#cb67-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> hook_fn(module, args, kwargs, output):</span>
+<span id="cb67-4"><a href="#cb67-4" aria-hidden="true" tabindex="-1"></a>        <span class="kw">nonlocal</span> count</span>
+<span id="cb67-5"><a href="#cb67-5" aria-hidden="true" tabindex="-1"></a>        input_shape <span class="op">=</span> kwargs[<span class="st">'hidden_states'</span>].shape[:<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb67-6"><a href="#cb67-6" aria-hidden="true" tabindex="-1"></a>        hidden_shape <span class="op">=</span> (<span class="op">*</span>input_shape, <span class="op">-</span><span class="dv">1</span>, module.head_dim)</span>
+<span id="cb67-7"><a href="#cb67-7" aria-hidden="true" tabindex="-1"></a>        query_states <span class="op">=</span> module.q_proj(kwargs[<span class="st">'hidden_states'</span>]).view(hidden_shape).transpose(<span class="dv">1</span>, <span class="dv">2</span>)</span>
+<span id="cb67-8"><a href="#cb67-8" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(count, <span class="bu">len</span>(kwargs[<span class="st">'past_key_value'</span>].key_cache), <span class="ss">f"query_states.shape: </span><span class="sc">{</span>query_states<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">"</span>, <span class="ss">f"k.shape: </span><span class="sc">{</span>kwargs[<span class="st">'past_key_value'</span>]<span class="sc">.</span>key_cache[<span class="dv">0</span>]<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb67-9"><a href="#cb67-9" aria-hidden="true" tabindex="-1"></a>        <span class="co"># for k in kwargs['past_key_value'].key_cache: print(k.shape) # do this for v as well</span></span>
+<span id="cb67-10"><a href="#cb67-10" aria-hidden="true" tabindex="-1"></a>        count <span class="op">+=</span> <span class="dv">1</span></span>
+<span id="cb67-11"><a href="#cb67-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> hook_fn</span>
+<span id="cb67-12"><a href="#cb67-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb67-13"><a href="#cb67-13" aria-hidden="true" tabindex="-1"></a>_hook_fn <span class="op">=</span> create_hook_fn()</span>
+<span id="cb67-14"><a href="#cb67-14" aria-hidden="true" tabindex="-1"></a>attn_layer <span class="op">=</span> model.model.layers[<span class="dv">0</span>].self_attn</span>
+<span id="cb67-15"><a href="#cb67-15" aria-hidden="true" tabindex="-1"></a>hook_handle <span class="op">=</span> attn_layer.register_forward_hook(_hook_fn, with_kwargs<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb67-16"><a href="#cb67-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb67-17"><a href="#cb67-17" aria-hidden="true" tabindex="-1"></a>outputs <span class="op">=</span> model.generate(input_ids, pad_token_id<span class="op">=</span>tokenizer.eos_token_id, do_sample<span class="op">=</span><span class="va">False</span>, return_dict_in_generate<span class="op">=</span><span class="va">True</span>, max_new_tokens<span class="op">=</span><span class="dv">5</span>)</span>
+<span id="cb67-18"><a href="#cb67-18" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(outputs.sequences[<span class="dv">0</span>].shape)</span>
+<span id="cb67-19"><a href="#cb67-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb67-20"><a href="#cb67-20" aria-hidden="true" tabindex="-1"></a>hook_handle.remove()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>DEBUG: calling _flash_attention_forward
 flash_attn_func is being used
@@ -1301,7 +1321,7 @@ If the row of the mask is all zero, the output will be zero.</code></pre>
 <p>I’ll annotate the causal mask examples a bit:</p>
 <section id="seqlen_q2-and-seqlen_k5" class="level3">
 <h3 class="anchored" data-anchor-id="seqlen_q2-and-seqlen_k5"><code>seqlen_q=2</code> and <code>seqlen_k=5</code></h3>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;"></th>
@@ -1335,7 +1355,7 @@ If the row of the mask is all zero, the output will be zero.</code></pre>
 </section>
 <section id="seqlen_q5-and-seqlen_k2" class="level3">
 <h3 class="anchored" data-anchor-id="seqlen_q5-and-seqlen_k2"><code>seqlen_q=5</code> and <code>seqlen_k=2</code></h3>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;"></th>
@@ -1378,8 +1398,8 @@ If the row of the mask is all zero, the output will be zero.</code></pre>
 </blockquote>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="Annotated casual masks"><img src="1.png" class="img-fluid figure-img"></a></p>
-<p></p><figcaption class="figure-caption">Annotated casual masks</figcaption><p></p>
+<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="Annotated casual masks"><img src="1.png" class="img-fluid figure-img" alt="Annotated casual masks"></a></p>
+<figcaption>Annotated casual masks</figcaption>
 </figure>
 </div>
 <p>In the first case, the query sequence is shorter so we offset it by 3 positions to align with the last two tokens of the key sequence. The “offset” positions are 1s (this satisfies the rule of causality <code>j &lt;= i</code>, query tokens can look back). In the second case, the key sequence is shorter so we offset it by 3 positions to align with the last two tokens of the query sequence. The offset positions are 0s (again, this satisfies causality, the query tokens have nothing to look back to).</p>
@@ -1391,7 +1411,7 @@ If the row of the mask is all zero, the output will be zero.</code></pre>
 <p>Causality (in language modeling) means that a query token vector at the i-th position can only see its own and previous tokens’ key vectors. Having different sequence lengths for Q and K (5 and 2 or 2 and 5 in the <code>flash_attn_varlen_func</code> docstring example or 1 and 3-7 in my inspections above) requires you to pick <em>how</em> Q and K are aligned. In the case of <code>flash_attn_varlen_func</code> they choose to align Q and K such as <em>the last Q token vector is aligned with the last K token vector</em>. This becomes our “present moment” <code>P</code> with causality allowing access to previous tokens only.</p>
 <p>Let’s define <code>i</code> as the position of query tokens and <code>j</code> as the position of key tokens. Causality is defined as token pairs that follow the inequality: <code>j &lt;= i + (seqlen_k - seqlen_q)</code>.</p>
 <p>For the first causal mask example:</p>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;"><code>j</code></th>
@@ -1454,7 +1474,7 @@ If the row of the mask is all zero, the output will be zero.</code></pre>
 </table>
 <p>Where does <code>j &lt;= i + (seqlen_k - seqlen_q)</code> come from?</p>
 <p>Let <code>q_i</code> be a query that is <code>seqlen_q - 1 - i</code> steps before the end of the query sequence, and <code>k_j</code> be a key that is <code>seqlen_k - 1 - j</code> steps before the end of the key sequence. More concretely, for the example where <code>seqlen_q = 2</code> and <code>seqlen_k=5</code>:</p>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;">q_i</th>
@@ -1476,7 +1496,7 @@ If the row of the mask is all zero, the output will be zero.</code></pre>
 </tbody>
 </table>
 <p><br></p>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;">k_j</th>
@@ -1522,7 +1542,7 @@ If the row of the mask is all zero, the output will be zero.</code></pre>
 <p><code>j &lt;= i + (seqlen_k - seqlen_q)</code></p>
 <p>We can think of this <code>(seqlen_k - seqlen_q)</code> to be an “offset” term between the two sequences.</p>
 <p>Looking at this concretely for the second causal mask:</p>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;"></th>
@@ -1559,7 +1579,7 @@ If the row of the mask is all zero, the output will be zero.</code></pre>
 </tbody>
 </table>
 <p><br></p>
-<table class="table">
+<table class="caption-top table">
 <thead>
 <tr class="header">
 <th style="text-align: center;"><code>j</code></th>
@@ -1643,140 +1663,438 @@ If the row of the mask is all zero, the output will be zero.</code></pre>
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
-window.document.addEventListener("DOMContentLoaded", function (event) {
-  const toggleBodyColorMode = (bsSheetEl) => {
-    const mode = bsSheetEl.getAttribute("data-mode");
-    const bodyEl = window.document.querySelector("body");
-    if (mode === "dark") {
-      bodyEl.classList.add("quarto-dark");
-      bodyEl.classList.remove("quarto-light");
-    } else {
-      bodyEl.classList.add("quarto-light");
-      bodyEl.classList.remove("quarto-dark");
-    }
-  }
-  const toggleBodyColorPrimary = () => {
-    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
-    if (bsSheetEl) {
-      toggleBodyColorMode(bsSheetEl);
-    }
-  }
-  toggleBodyColorPrimary();  
-  const icon = "";
-  const anchorJS = new window.AnchorJS();
-  anchorJS.options = {
-    placement: 'right',
-    icon: icon
-  };
-  anchorJS.add('.anchored');
-  const clipboard = new window.ClipboardJS('.code-copy-button', {
-    target: function(trigger) {
-      return trigger.previousElementSibling;
-    }
-  });
-  clipboard.on('success', function(e) {
-    // button target
-    const button = e.trigger;
-    // don't keep focus
-    button.blur();
-    // flash "checked"
-    button.classList.add('code-copy-button-checked');
-    var currentTitle = button.getAttribute("title");
-    button.setAttribute("title", "Copied!");
-    let tooltip;
-    if (window.bootstrap) {
-      button.setAttribute("data-bs-toggle", "tooltip");
-      button.setAttribute("data-bs-placement", "left");
-      button.setAttribute("data-bs-title", "Copied!");
-      tooltip = new bootstrap.Tooltip(button, 
-        { trigger: "manual", 
-          customClass: "code-copy-button-tooltip",
-          offset: [0, -8]});
-      tooltip.show();    
-    }
-    setTimeout(function() {
-      if (tooltip) {
-        tooltip.hide();
-        button.removeAttribute("data-bs-title");
-        button.removeAttribute("data-bs-toggle");
-        button.removeAttribute("data-bs-placement");
-      }
-      button.setAttribute("title", currentTitle);
-      button.classList.remove('code-copy-button-checked');
-    }, 1000);
-    // clear code selection
-    e.clearSelection();
-  });
-  function tippyHover(el, contentFn) {
-    const config = {
-      allowHTML: true,
-      content: contentFn,
-      maxWidth: 500,
-      delay: 100,
-      arrow: false,
-      appendTo: function(el) {
-          return el.parentElement;
-      },
-      interactive: true,
-      interactiveBorder: 10,
-      theme: 'quarto',
-      placement: 'bottom-start'
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
     };
-    window.tippy(el, config); 
-  }
-  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
-  for (var i=0; i<noterefs.length; i++) {
-    const ref = noterefs[i];
-    tippyHover(ref, function() {
-      // use id or data attribute instead here
-      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
-      try { href = new URL(href).hash; } catch {}
-      const id = href.replace(/^#\/?/, "");
-      const note = window.document.getElementById(id);
-      return note.innerHTML;
-    });
-  }
-  const findCites = (el) => {
-    const parentEl = el.parentElement;
-    if (parentEl) {
-      const cites = parentEl.dataset.cites;
-      if (cites) {
-        return {
-          el,
-          cites: cites.split(' ')
-        };
-      } else {
-        return findCites(el.parentElement)
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
       }
-    } else {
-      return undefined;
+      return false;
     }
-  };
-  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
-  for (var i=0; i<bibliorefs.length; i++) {
-    const ref = bibliorefs[i];
-    const citeInfo = findCites(ref);
-    if (citeInfo) {
-      tippyHover(citeInfo.el, function() {
-        var popup = window.document.createElement('div');
-        citeInfo.cites.forEach(function(cite) {
-          var citeDiv = window.document.createElement('div');
-          citeDiv.classList.add('hanging-indent');
-          citeDiv.classList.add('csl-entry');
-          var biblioDiv = window.document.getElementById('ref-' + cite);
-          if (biblioDiv) {
-            citeDiv.innerHTML = biblioDiv.innerHTML;
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+        const codeEl = trigger.previousElementSibling.cloneNode(true);
+        for (const childEl of codeEl.children) {
+          if (isCodeAnnotation(childEl)) {
+            childEl.remove();
           }
-          popup.appendChild(citeDiv);
-        });
-        return popup.innerHTML;
+        }
+        return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vishalbakshi\.github\.io\/blog");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
       });
     }
-  }
-});
-</script>
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
 </div> <!-- /content -->
-<script>var lightboxQuarto = GLightbox({"selector":".lightbox","descPosition":"bottom","loop":true,"closeEffect":"zoom","openEffect":"zoom"});</script>
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","descPosition":"bottom","loop":false,"openEffect":"zoom","selector":".lightbox"});
+(function() {
+  let previousOnload = window.onload;
+  window.onload = () => {
+    if (previousOnload) {
+      previousOnload();
+    }
+    lightboxQuarto.on('slide_before_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      const href = trigger.getAttribute('href');
+      if (href !== null) {
+        const imgEl = window.document.querySelector(`a[href="${href}"] img`);
+        if (imgEl !== null) {
+          const srcAttr = imgEl.getAttribute("src");
+          if (srcAttr && srcAttr.startsWith("data:")) {
+            slideConfig.href = srcAttr;
+          }
+        }
+      } 
+    });
+  
+    lightboxQuarto.on('slide_after_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(slideNode);
+      }
+    });
+  
+  };
+  
+})();
+          </script>
+
 
 
 

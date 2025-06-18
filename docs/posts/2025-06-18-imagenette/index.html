@@ -6,8 +6,11 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2025-06-18">
+<meta name="description" content="I continue my Imagenette experiments to gain some intuition on how batch size, learning rate and accuracy interact. I find that for all three models too low or too high of a batch size plummets performance, while batch sizes in the 8-32 range maximize accuracy for a range of learning rates.">
 
-<title>Background – Vishal Bakshi’s Blog</title>
+<title>An Analysis of Batch Size vs.&nbsp;Learning Rate on Imagenette – Vishal Bakshi's Blog</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -75,6 +78,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../../site_libs/bootstrap/bootstrap-9c1ae87ad5063dce4f793ccd314a7566.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -158,7 +164,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#results" id="toc-results" class="nav-link active" data-scroll-target="#results">Results</a></li>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#results" id="toc-results" class="nav-link" data-scroll-target="#results">Results</a></li>
   <li><a href="#next-steps" id="toc-next-steps" class="nav-link" data-scroll-target="#next-steps">Next Steps</a></li>
   <li><a href="#appendix-training-code" id="toc-appendix-training-code" class="nav-link" data-scroll-target="#appendix-training-code">Appendix: Training Code</a></li>
   </ul>
@@ -169,14 +176,38 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Background</h1>
-</div>
+<h1 class="title">An Analysis of Batch Size vs.&nbsp;Learning Rate on Imagenette</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">python</div>
+    <div class="quarto-category">fastai</div>
+    <div class="quarto-category">deep learning</div>
+    <div class="quarto-category">TinyScaleLab</div>
+    <div class="quarto-category">imagenette</div>
+  </div>
+  </div>
 
+<div>
+  <div class="description">
+    I continue my Imagenette experiments to gain some intuition on how batch size, learning rate and accuracy interact. I find that for all three models too low or too high of a batch size plummets performance, while batch sizes in the 8-32 range maximize accuracy for a range of learning rates.
+  </div>
+</div>
 
 
 <div class="quarto-title-meta">
 
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
     
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">June 18, 2025</p>
+    </div>
+  </div>
   
     
   </div>
@@ -186,30 +217,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </header>
 
 
-<div id="cell-1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;vscode&quot;,&quot;value&quot;:{&quot;languageId&quot;:&quot;plaintext&quot;}}">
-<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="op">---</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>title: An Analysis of Batch Size vs. Learning Rate on Imagenette</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>date: <span class="st">"2025-06-18"</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>author: Vishal Bakshi</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>description: I <span class="cf">continue</span> my Imagenette experiments to gain some intuition on how batch size, learning rate <span class="kw">and</span> accuracy interact. I find that <span class="cf">for</span> <span class="bu">all</span> three models too low <span class="kw">or</span> too high of a batch size plummets performance, <span class="cf">while</span> batch sizes <span class="kw">in</span> the <span class="dv">8</span><span class="op">-</span><span class="dv">32</span> <span class="bu">range</span> maximize accuracy <span class="cf">for</span> a <span class="bu">range</span> of learning rates.</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>filters:</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>   <span class="op">-</span> lightbox</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>lightbox: auto</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>categories:</span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="op">-</span> python</span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="op">-</span> fastai</span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">-</span> deep learning</span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="op">-</span> TinyScaleLab</span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    <span class="op">-</span> imagenette</span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="op">---</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-1" class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fastai.vision.<span class="bu">all</span> <span class="im">import</span> <span class="op">*</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fastai.callback.wandb <span class="im">import</span> WandbCallback</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> wandb</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div id="cell-2" class="cell">
-<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fastai.vision.<span class="bu">all</span> <span class="im">import</span> <span class="op">*</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fastai.callback.wandb <span class="im">import</span> WandbCallback</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> wandb</span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
 <p>In <a href="https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/">my previous blog post</a> and <a href="https://youtu.be/5xCUEaowcTE">video</a> I worked through my initial imagenette experiments.</p>
 <blockquote class="blockquote">
 <p>Imagenette is a subset of 10 easily classified classes from Imagenet (tench, English springer, cassette player, chain saw, church, French horn, garbage truck, gas pump, golf ball, parachute).</p>
@@ -267,32 +283,33 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </table>
 <p>There was a hierarchy of LRs: 1e-2 performed best, followed by 1e-3 and 1e-4.</p>
 <p>In this notebook I’m going to expand my training runs to more batch sizes: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]. In each case, I’ll use <code>lr_find</code> to determine three stable learning rates.</p>
+</section>
 <section id="results" class="level2">
 <h2 class="anchored" data-anchor-id="results">Results</h2>
-<div id="cell-8" class="cell" data-execution_count="1">
-<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pd.read_csv(<span class="st">"/content/2025-06-04-imagenette-runs.csv"</span>)</span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>df[<span class="st">"model"</span>] <span class="op">=</span> df[<span class="st">"run"</span>].<span class="bu">apply</span>(<span class="kw">lambda</span> x: x.split(<span class="st">"-"</span>)[<span class="dv">1</span>])</span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>df[<span class="st">"bs"</span>] <span class="op">=</span> df[<span class="st">"run"</span>].<span class="bu">apply</span>(<span class="kw">lambda</span> x: x.split(<span class="st">"-"</span>)[<span class="dv">3</span>]).astype(<span class="bu">int</span>)</span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _lr(x):</span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    _map <span class="op">=</span> {<span class="st">"05"</span>: <span class="st">"1e-5"</span>, <span class="st">"06"</span>: <span class="st">"1e-6"</span>, <span class="st">"07"</span>: <span class="st">"1e-7"</span>, <span class="st">"0.0001"</span>: <span class="st">"1e-4"</span>, <span class="st">"0.001"</span>: <span class="st">"1e-3"</span>, <span class="st">"0.01"</span>: <span class="st">"1e-2"</span>, <span class="st">"0.1"</span>: <span class="st">"1e-1"</span>}</span>
-<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> _map[x.split(<span class="st">"-"</span>)[<span class="op">-</span><span class="dv">1</span>]]</span>
-<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>df[<span class="st">"lr"</span>] <span class="op">=</span> df[<span class="st">"run"</span>].<span class="bu">apply</span>(<span class="kw">lambda</span> x: _lr(x))</span>
-<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>df[<span class="st">"lr"</span>] <span class="op">=</span> pd.Categorical(df[<span class="st">"lr"</span>], categories<span class="op">=</span>[<span class="st">"1e-7"</span>, <span class="st">"1e-6"</span>, <span class="st">"1e-5"</span>, <span class="st">"1e-4"</span>, <span class="st">"1e-3"</span>, <span class="st">"1e-2"</span>, <span class="st">"1e-1"</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-7" class="cell" data-execution_count="1">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pd.read_csv(<span class="st">"/content/2025-06-04-imagenette-runs.csv"</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>df[<span class="st">"model"</span>] <span class="op">=</span> df[<span class="st">"run"</span>].<span class="bu">apply</span>(<span class="kw">lambda</span> x: x.split(<span class="st">"-"</span>)[<span class="dv">1</span>])</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>df[<span class="st">"bs"</span>] <span class="op">=</span> df[<span class="st">"run"</span>].<span class="bu">apply</span>(<span class="kw">lambda</span> x: x.split(<span class="st">"-"</span>)[<span class="dv">3</span>]).astype(<span class="bu">int</span>)</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _lr(x):</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    _map <span class="op">=</span> {<span class="st">"05"</span>: <span class="st">"1e-5"</span>, <span class="st">"06"</span>: <span class="st">"1e-6"</span>, <span class="st">"07"</span>: <span class="st">"1e-7"</span>, <span class="st">"0.0001"</span>: <span class="st">"1e-4"</span>, <span class="st">"0.001"</span>: <span class="st">"1e-3"</span>, <span class="st">"0.01"</span>: <span class="st">"1e-2"</span>, <span class="st">"0.1"</span>: <span class="st">"1e-1"</span>}</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> _map[x.split(<span class="st">"-"</span>)[<span class="op">-</span><span class="dv">1</span>]]</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>df[<span class="st">"lr"</span>] <span class="op">=</span> df[<span class="st">"run"</span>].<span class="bu">apply</span>(<span class="kw">lambda</span> x: _lr(x))</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>df[<span class="st">"lr"</span>] <span class="op">=</span> pd.Categorical(df[<span class="st">"lr"</span>], categories<span class="op">=</span>[<span class="st">"1e-7"</span>, <span class="st">"1e-6"</span>, <span class="st">"1e-5"</span>, <span class="st">"1e-4"</span>, <span class="st">"1e-3"</span>, <span class="st">"1e-2"</span>, <span class="st">"1e-1"</span>])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>In total there were 123 training runs.</p>
-<div id="cell-10" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="8d4136e7-853b-4711-a504-aeb14b3ff108" data-execution_count="10">
-<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>df.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="8d4136e7-853b-4711-a504-aeb14b3ff108" data-execution_count="10">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>df.shape</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="10">
 <pre><code>(123, 5)</code></pre>
 </div>
 </div>
 <p>The best training run goes to xresnet34 with a batch size of 16 and a learning rate of 1e-3.</p>
-<div id="cell-12" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:81}}" data-outputid="2e30e554-1c1a-495f-9be6-aa7b0fe29193" data-execution_count="11">
-<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>df[df[<span class="st">'acc'</span>] <span class="op">==</span> df[<span class="st">'acc'</span>].<span class="bu">max</span>()]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-11" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:81}}" data-outputid="2e30e554-1c1a-495f-9be6-aa7b0fe29193" data-execution_count="11">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>df[df[<span class="st">'acc'</span>] <span class="op">==</span> df[<span class="st">'acc'</span>].<span class="bu">max</span>()]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="11">
 <div id="df-bd697f8f-dc53-42ec-9e0e-ea34025e8e15" class="colab-df-container">
     <div>
@@ -405,8 +422,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The top 10 training runs were for a LR of 1e-3 or 1e-2.</p>
-<div id="cell-14" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:363}}" data-outputid="c8fa0fa4-c586-4b1c-c1cd-c541e1b8a267" data-execution_count="12">
-<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>df.sort_values(<span class="st">"acc"</span>, ascending<span class="op">=</span><span class="va">False</span>).head(<span class="dv">10</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-13" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:363}}" data-outputid="c8fa0fa4-c586-4b1c-c1cd-c541e1b8a267" data-execution_count="12">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>df.sort_values(<span class="st">"acc"</span>, ascending<span class="op">=</span><span class="va">False</span>).head(<span class="dv">10</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="12">
 <div id="df-77f8aa8d-c052-47a9-9bb5-915ebc8e4364" class="colab-df-container">
     <div>
@@ -715,8 +732,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>All three models achieved a max accuracy within 1.2% of each other.</p>
-<div id="cell-16" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:210}}" data-outputid="1bff0dea-551a-4909-d258-99917c965ff5" data-execution_count="14">
-<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>df.groupby([<span class="st">"model"</span>])[<span class="st">"acc"</span>].<span class="bu">max</span>().sort_values(ascending<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-15" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:210}}" data-outputid="1bff0dea-551a-4909-d258-99917c965ff5" data-execution_count="14">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>df.groupby([<span class="st">"model"</span>])[<span class="st">"acc"</span>].<span class="bu">max</span>().sort_values(ascending<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="14">
 <div>
 
@@ -752,8 +769,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>A batch size of 16 yielded the highest accuracy, with 8, 32, 64 and 128 within 1%. Accuracy drops significantly for a batch size of 1, 1024 and 2048 showing that too large or too small a batch size is detrimental to training.</p>
-<div id="cell-18" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:492}}" data-outputid="aca37107-cb01-462f-d674-f85c9ce8b482" data-execution_count="16">
-<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>df.groupby([<span class="st">"bs"</span>])[<span class="st">"acc"</span>].<span class="bu">max</span>().sort_values(ascending<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-17" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:492}}" data-outputid="aca37107-cb01-462f-d674-f85c9ce8b482" data-execution_count="16">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>df.groupby([<span class="st">"bs"</span>])[<span class="st">"acc"</span>].<span class="bu">max</span>().sort_values(ascending<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="16">
 <div>
 
@@ -825,8 +842,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>As we saw earlier, the highest accuracy was achieved with a learning rate of 1e-3, with 1e-2 right on its tail.</p>
-<div id="cell-20" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:304}}" data-outputid="4ed7d42b-5d78-43c1-bade-052f414da0ed" data-execution_count="18">
-<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>df.groupby([<span class="st">"lr"</span>], observed<span class="op">=</span><span class="va">True</span>)[<span class="st">"acc"</span>].<span class="bu">max</span>().sort_values(ascending<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-19" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:304}}" data-outputid="4ed7d42b-5d78-43c1-bade-052f414da0ed" data-execution_count="18">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>df.groupby([<span class="st">"lr"</span>], observed<span class="op">=</span><span class="va">True</span>)[<span class="st">"acc"</span>].<span class="bu">max</span>().sort_values(ascending<span class="op">=</span><span class="va">False</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="18">
 <div>
 
@@ -883,9 +900,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li>1e-2: acc increases up to bs=32 then decreases</li>
 </ul></li>
 </ul>
-<div id="cell-23" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:175}}" data-outputid="53e68ba5-db55-4fcf-f64e-2de3b94683f5" data-execution_count="21">
-<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>_df <span class="op">=</span> df.query(<span class="st">"model == 'xresnet18'"</span>)</span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>pd.crosstab(df[<span class="st">"lr"</span>], _df[<span class="st">"bs"</span>], values<span class="op">=</span>_df[<span class="st">"acc"</span>], aggfunc<span class="op">=</span><span class="st">"max"</span>).sort_index(ascending<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-22" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:175}}" data-outputid="53e68ba5-db55-4fcf-f64e-2de3b94683f5" data-execution_count="21">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>_df <span class="op">=</span> df.query(<span class="st">"model == 'xresnet18'"</span>)</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>pd.crosstab(df[<span class="st">"lr"</span>], _df[<span class="st">"bs"</span>], values<span class="op">=</span>_df[<span class="st">"acc"</span>], aggfunc<span class="op">=</span><span class="st">"max"</span>).sort_index(ascending<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="21">
 <div id="df-a8a72bd5-679d-4766-8624-a87fadf17809" class="colab-df-container">
     <div>
@@ -1181,12 +1198,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p><strong>xresnet18</strong></p>
-<div id="cell-25" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:454}}" data-outputid="d3906c9e-8828-4625-b89c-4e4fc9dc3488" data-execution_count="22">
-<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>pd.crosstab(df[<span class="st">"lr"</span>], _df[<span class="st">"bs"</span>], values<span class="op">=</span>_df[<span class="st">"acc"</span>], aggfunc<span class="op">=</span><span class="st">"max"</span>).sort_index(ascending<span class="op">=</span><span class="va">True</span>).T.plot(logx<span class="op">=</span><span class="va">True</span>)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-24" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:454}}" data-outputid="d3906c9e-8828-4625-b89c-4e4fc9dc3488" data-execution_count="22">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>pd.crosstab(df[<span class="st">"lr"</span>], _df[<span class="st">"bs"</span>], values<span class="op">=</span>_df[<span class="st">"acc"</span>], aggfunc<span class="op">=</span><span class="st">"max"</span>).sort_index(ascending<span class="op">=</span><span class="va">True</span>).T.plot(logx<span class="op">=</span><span class="va">True</span>)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="index_files/figure-html/cell-12-output-1.png" class="img-fluid figure-img"></p>
+<p><a href="index_files/figure-html/cell-11-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="index_files/figure-html/cell-11-output-1.png" class="img-fluid figure-img"></a></p>
 </figure>
 </div>
 </div>
@@ -1226,9 +1243,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 </tbody>
 </table>
-<div id="cell-27" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:269}}" data-outputid="69811696-90e6-49a5-f85d-68a2c7fbfcf1" data-execution_count="23">
-<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>_df <span class="op">=</span> df.query(<span class="st">"model == 'xresnet34'"</span>)</span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>pd.crosstab(df[<span class="st">"lr"</span>], _df[<span class="st">"bs"</span>], values<span class="op">=</span>_df[<span class="st">"acc"</span>], aggfunc<span class="op">=</span><span class="st">"max"</span>).sort_index(ascending<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-26" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:269}}" data-outputid="69811696-90e6-49a5-f85d-68a2c7fbfcf1" data-execution_count="23">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>_df <span class="op">=</span> df.query(<span class="st">"model == 'xresnet34'"</span>)</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>pd.crosstab(df[<span class="st">"lr"</span>], _df[<span class="st">"bs"</span>], values<span class="op">=</span>_df[<span class="st">"acc"</span>], aggfunc<span class="op">=</span><span class="st">"max"</span>).sort_index(ascending<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="23">
 <div id="df-20fd735d-8058-4aeb-ae6c-3a7dc3eee40d" class="colab-df-container">
     <div>
@@ -1569,12 +1586,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p><strong>xresnet34</strong></p>
-<div id="cell-29" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:454}}" data-outputid="926c22f9-ed42-4eba-81ef-f61a16f7884e" data-execution_count="24">
-<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>pd.crosstab(df[<span class="st">"lr"</span>], _df[<span class="st">"bs"</span>], values<span class="op">=</span>_df[<span class="st">"acc"</span>], aggfunc<span class="op">=</span><span class="st">"max"</span>).sort_index(ascending<span class="op">=</span><span class="va">True</span>).T.plot(logx<span class="op">=</span><span class="va">True</span>)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-28" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:454}}" data-outputid="926c22f9-ed42-4eba-81ef-f61a16f7884e" data-execution_count="24">
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>pd.crosstab(df[<span class="st">"lr"</span>], _df[<span class="st">"bs"</span>], values<span class="op">=</span>_df[<span class="st">"acc"</span>], aggfunc<span class="op">=</span><span class="st">"max"</span>).sort_index(ascending<span class="op">=</span><span class="va">True</span>).T.plot(logx<span class="op">=</span><span class="va">True</span>)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="index_files/figure-html/cell-14-output-1.png" class="img-fluid figure-img"></p>
+<p><a href="index_files/figure-html/cell-13-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2"><img src="index_files/figure-html/cell-13-output-1.png" class="img-fluid figure-img"></a></p>
 </figure>
 </div>
 </div>
@@ -1614,9 +1631,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 </tbody>
 </table>
-<div id="cell-31" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:269}}" data-outputid="bb96c37f-36d4-4ad4-ef06-4ad434436263" data-execution_count="25">
-<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>_df <span class="op">=</span> df.query(<span class="st">"model == 'xse_resnext50'"</span>)</span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>pd.crosstab(df[<span class="st">"lr"</span>], _df[<span class="st">"bs"</span>], values<span class="op">=</span>_df[<span class="st">"acc"</span>], aggfunc<span class="op">=</span><span class="st">"max"</span>).sort_index(ascending<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-30" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:269}}" data-outputid="bb96c37f-36d4-4ad4-ef06-4ad434436263" data-execution_count="25">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>_df <span class="op">=</span> df.query(<span class="st">"model == 'xse_resnext50'"</span>)</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>pd.crosstab(df[<span class="st">"lr"</span>], _df[<span class="st">"bs"</span>], values<span class="op">=</span>_df[<span class="st">"acc"</span>], aggfunc<span class="op">=</span><span class="st">"max"</span>).sort_index(ascending<span class="op">=</span><span class="va">True</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="25">
 <div id="df-0c642622-075f-4525-b8d2-f0b575de9eb9" class="colab-df-container">
     <div>
@@ -1934,12 +1951,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 <p><strong>xse_xresnet50</strong></p>
 <p>Looking at the accuracy curves for xse_resnext50 we see that it’s more robust to larger batch sizes (the accuracy tapers off slower than xresnet34 and xresnet18 as batch size increases past the inflection point).</p>
-<div id="cell-34" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:454}}" data-outputid="dd37f3b1-85fe-45d0-b83e-cb3c9652442b" data-execution_count="26">
-<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>pd.crosstab(df[<span class="st">"lr"</span>], _df[<span class="st">"bs"</span>], values<span class="op">=</span>_df[<span class="st">"acc"</span>], aggfunc<span class="op">=</span><span class="st">"max"</span>).sort_index(ascending<span class="op">=</span><span class="va">True</span>).T.plot(logx<span class="op">=</span><span class="va">True</span>)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-33" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:454}}" data-outputid="dd37f3b1-85fe-45d0-b83e-cb3c9652442b" data-execution_count="26">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>pd.crosstab(df[<span class="st">"lr"</span>], _df[<span class="st">"bs"</span>], values<span class="op">=</span>_df[<span class="st">"acc"</span>], aggfunc<span class="op">=</span><span class="st">"max"</span>).sort_index(ascending<span class="op">=</span><span class="va">True</span>).T.plot(logx<span class="op">=</span><span class="va">True</span>)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="index_files/figure-html/cell-16-output-1.png" class="img-fluid figure-img"></p>
+<p><a href="index_files/figure-html/cell-15-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3"><img src="index_files/figure-html/cell-15-output-1.png" class="img-fluid figure-img"></a></p>
 </figure>
 </div>
 </div>
@@ -1975,8 +1992,8 @@ That’s a great question! Stable low bs training isn’t easy, but it’s a goo
 <h2 class="anchored" data-anchor-id="appendix-training-code">Appendix: Training Code</h2>
 <p>Since I’m going to run a significantly larger number of trainings than my initial notebook, I’ll wrap my code into functions/dictionaries for a tighter loop, similar to what Jeremy did in his <a href="https://www.kaggle.com/code/jhoward/scaling-up-road-to-the-top-part-3?scriptVersionId=99313071&amp;cellId=31">Scaling Up: Road to the Top, Part 3</a> notebook.</p>
 <p>I ran <code>lr_find</code> for each model/batch size combination and checked that for all combinations, the loss curve was stable for the selected learning rates.</p>
-<div id="cell-42" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:37}}" data-outputid="d8684f08-2d75-4679-bf77-4a8360d5a756">
-<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>path <span class="op">=</span> untar_data(URLs.IMAGENETTE_160)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-41" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:37}}" data-outputid="d8684f08-2d75-4679-bf77-4a8360d5a756">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>path <span class="op">=</span> untar_data(URLs.IMAGENETTE_160)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 
 <style>
@@ -2004,65 +2021,85 @@ That’s a great question! Stable low bs training isn’t easy, but it’s a goo
     
 </div>
 </div>
+<div id="cell-42" class="cell">
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>lbl_dict <span class="op">=</span> <span class="bu">dict</span>(</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    n01440764<span class="op">=</span><span class="st">'tench'</span>,</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    n02102040<span class="op">=</span><span class="st">'English springer'</span>,</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    n02979186<span class="op">=</span><span class="st">'cassette player'</span>,</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>    n03000684<span class="op">=</span><span class="st">'chain saw'</span>,</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>    n03028079<span class="op">=</span><span class="st">'church'</span>,</span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>    n03394916<span class="op">=</span><span class="st">'French horn'</span>,</span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>    n03417042<span class="op">=</span><span class="st">'garbage truck'</span>,</span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>    n03425413<span class="op">=</span><span class="st">'gas pump'</span>,</span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>    n03445777<span class="op">=</span><span class="st">'golf ball'</span>,</span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>    n03888257<span class="op">=</span><span class="st">'parachute'</span></span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
 <div id="cell-43" class="cell">
-<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>lbl_dict <span class="op">=</span> <span class="bu">dict</span>(</span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    n01440764<span class="op">=</span><span class="st">'tench'</span>,</span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    n02102040<span class="op">=</span><span class="st">'English springer'</span>,</span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    n02979186<span class="op">=</span><span class="st">'cassette player'</span>,</span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>    n03000684<span class="op">=</span><span class="st">'chain saw'</span>,</span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>    n03028079<span class="op">=</span><span class="st">'church'</span>,</span>
-<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>    n03394916<span class="op">=</span><span class="st">'French horn'</span>,</span>
-<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>    n03417042<span class="op">=</span><span class="st">'garbage truck'</span>,</span>
-<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>    n03425413<span class="op">=</span><span class="st">'gas pump'</span>,</span>
-<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>    n03445777<span class="op">=</span><span class="st">'golf ball'</span>,</span>
-<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>    n03888257<span class="op">=</span><span class="st">'parachute'</span></span>
-<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>imagenette <span class="op">=</span> DataBlock(blocks <span class="op">=</span> (ImageBlock, CategoryBlock),</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>                       get_items <span class="op">=</span> get_image_files,</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>                       get_y <span class="op">=</span> Pipeline([parent_label, lbl_dict.<span class="fu">__getitem__</span>]),</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>                       splitter <span class="op">=</span> GrandparentSplitter(valid_name<span class="op">=</span><span class="st">'val'</span>),</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>                       item_tfms <span class="op">=</span> RandomResizedCrop(<span class="dv">128</span>, min_scale<span class="op">=</span><span class="fl">0.35</span>),</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>                       batch_tfms <span class="op">=</span> Normalize.from_stats(<span class="op">*</span>imagenet_stats))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="cell-44" class="cell">
-<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>imagenette <span class="op">=</span> DataBlock(blocks <span class="op">=</span> (ImageBlock, CategoryBlock),</span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>                       get_items <span class="op">=</span> get_image_files,</span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>                       get_y <span class="op">=</span> Pipeline([parent_label, lbl_dict.<span class="fu">__getitem__</span>]),</span>
-<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>                       splitter <span class="op">=</span> GrandparentSplitter(valid_name<span class="op">=</span><span class="st">'val'</span>),</span>
-<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>                       item_tfms <span class="op">=</span> RandomResizedCrop(<span class="dv">128</span>, min_scale<span class="op">=</span><span class="fl">0.35</span>),</span>
-<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>                       batch_tfms <span class="op">=</span> Normalize.from_stats(<span class="op">*</span>imagenet_stats))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _dls(bs): <span class="cf">return</span> imagenette.dataloaders(path, bs<span class="op">=</span>bs)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div id="cell-45" class="cell">
-<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _dls(bs): <span class="cf">return</span> imagenette.dataloaders(path, bs<span class="op">=</span>bs)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<div id="cell-46" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="618ee92e-6b22-4fe4-c71c-3c5fab4c5c3e">
-<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>_dls(<span class="dv">64</span>).bs, _dls(<span class="dv">128</span>).bs, _dls(<span class="dv">256</span>).bs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-45" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="618ee92e-6b22-4fe4-c71c-3c5fab4c5c3e">
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>_dls(<span class="dv">64</span>).bs, _dls(<span class="dv">128</span>).bs, _dls(<span class="dv">256</span>).bs</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="7">
 <pre><code>(64, 128, 256)</code></pre>
 </div>
 </div>
-<div id="cell-47" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:752}}" data-outputid="785bbfd1-dc53-45c7-ae6b-d7ed244e2e18">
-<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>_dls(<span class="dv">64</span>).show_batch()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="cell-46" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:752}}" data-outputid="785bbfd1-dc53-45c7-ae6b-d7ed244e2e18">
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>_dls(<span class="dv">64</span>).show_batch()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="index_files/figure-html/cell-22-output-1.png" class="img-fluid figure-img"></p>
+<p><a href="index_files/figure-html/cell-21-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4"><img src="index_files/figure-html/cell-21-output-1.png" class="img-fluid figure-img"></a></p>
 </figure>
 </div>
 </div>
 </div>
+<div id="cell-47" class="cell">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>models <span class="op">=</span> [<span class="st">'xresnet34'</span>, <span class="st">'xse_resnext50'</span>, <span class="st">'xresnet18'</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
 <div id="cell-48" class="cell">
-<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>models <span class="op">=</span> [<span class="st">'xresnet34'</span>, <span class="st">'xse_resnext50'</span>, <span class="st">'xresnet18'</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co">#batch_sizes = (32, 64, 128, 256, 512, 1024, 2048)</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>batch_sizes <span class="op">=</span> (<span class="dv">2</span>, <span class="dv">4</span>, <span class="dv">8</span>, <span class="dv">16</span>)</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>lrs <span class="op">=</span> (<span class="fl">1e-4</span>, <span class="fl">1e-3</span>, <span class="fl">1e-2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="cell-49" class="cell">
-<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="co">#batch_sizes = (32, 64, 128, 256, 512, 1024, 2048)</span></span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>batch_sizes <span class="op">=</span> (<span class="dv">2</span>, <span class="dv">4</span>, <span class="dv">8</span>, <span class="dv">16</span>)</span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>lrs <span class="op">=</span> (<span class="fl">1e-4</span>, <span class="fl">1e-3</span>, <span class="fl">1e-2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>wandb.login()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="cell-50" class="cell">
-<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>wandb.login()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> bs <span class="kw">in</span> batch_sizes:</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>    dls <span class="op">=</span> _dls(bs)</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> dls.bs <span class="op">==</span> bs</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> model <span class="kw">in</span> models:</span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> model <span class="op">==</span> <span class="st">'xse_resnext50'</span> <span class="kw">and</span> bs <span class="op">&lt;</span> <span class="dv">2</span>: <span class="cf">continue</span> <span class="co"># avoid Expected more than 1 value per channel when training, got input size torch.Size([1, 4096])</span></span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> lr <span class="kw">in</span> lrs:</span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>            wandb.init(</span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a>                project<span class="op">=</span><span class="st">"tinyscale-lab"</span>,</span>
+<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a>                name<span class="op">=</span><span class="ss">f"imagenette-</span><span class="sc">{</span>model<span class="sc">}</span><span class="ss">-bs-</span><span class="sc">{</span>bs<span class="sc">}</span><span class="ss">-lr-</span><span class="sc">{</span>lr<span class="sc">}</span><span class="ss">"</span>,</span>
+<span id="cb26-10"><a href="#cb26-10" aria-hidden="true" tabindex="-1"></a>                tags<span class="op">=</span>[<span class="ss">f"bs=</span><span class="sc">{</span>bs<span class="sc">}</span><span class="ss">"</span>, <span class="ss">f"model=</span><span class="sc">{</span>model<span class="sc">}</span><span class="ss">"</span>, <span class="ss">f"lr=</span><span class="sc">{</span>lr<span class="sc">}</span><span class="ss">"</span>]</span>
+<span id="cb26-11"><a href="#cb26-11" aria-hidden="true" tabindex="-1"></a>                )</span>
+<span id="cb26-12"><a href="#cb26-12" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> model <span class="op">==</span> <span class="st">'xse_resnext50'</span>: learn <span class="op">=</span> vision_learner(dls, xse_resnext50, metrics<span class="op">=</span>accuracy, pretrained<span class="op">=</span><span class="va">False</span>, cbs<span class="op">=</span>WandbCallback())</span>
+<span id="cb26-13"><a href="#cb26-13" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> model <span class="op">==</span> <span class="st">'xresnet18'</span>: learn <span class="op">=</span> Learner(dls, xresnet18(), metrics<span class="op">=</span>accuracy, cbs<span class="op">=</span>WandbCallback())</span>
+<span id="cb26-14"><a href="#cb26-14" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> model <span class="op">==</span> <span class="st">'xresnet34'</span>: learn <span class="op">=</span> Learner(dls, xresnet34(n_out<span class="op">=</span><span class="dv">10</span>), metrics<span class="op">=</span>accuracy, cbs<span class="op">=</span>WandbCallback())</span>
+<span id="cb26-15"><a href="#cb26-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-16"><a href="#cb26-16" aria-hidden="true" tabindex="-1"></a>            <span class="cf">with</span> learn.no_logging() <span class="kw">and</span> learn.no_mbar(): learn.fit_one_cycle(<span class="dv">5</span>, lr)</span>
+<span id="cb26-17"><a href="#cb26-17" aria-hidden="true" tabindex="-1"></a>            wandb.finish()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div id="cell-51" class="cell">
+<p>Using <code>lr_find</code>, I found that xresnet18 was stable for 1e-4, 1e-3 and 1e-2 LRs but the other two were not. Instead, they were stable for LRs of 1e-7, 1e-6 and 1e-5. So I ran training runs for those two models and LRs for batch sizes of 2, 4, 8 and 16.</p>
+<div id="cell-52" class="cell">
 <div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> bs <span class="kw">in</span> batch_sizes:</span>
 <span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>    dls <span class="op">=</span> _dls(bs)</span>
 <span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> dls.bs <span class="op">==</span> bs</span>
-<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> model <span class="kw">in</span> models:</span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> model <span class="kw">in</span> [<span class="st">'xresnet34'</span>, <span class="st">'xse_resnext50'</span>]:</span>
 <span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> model <span class="op">==</span> <span class="st">'xse_resnext50'</span> <span class="kw">and</span> bs <span class="op">&lt;</span> <span class="dv">2</span>: <span class="cf">continue</span> <span class="co"># avoid Expected more than 1 value per channel when training, got input size torch.Size([1, 4096])</span></span>
-<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> lr <span class="kw">in</span> lrs:</span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> lr <span class="kw">in</span> [<span class="fl">1e-7</span>, <span class="fl">1e-6</span>, <span class="fl">1e-5</span>]:</span>
 <span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>            wandb.init(</span>
 <span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a>                project<span class="op">=</span><span class="st">"tinyscale-lab"</span>,</span>
 <span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a>                name<span class="op">=</span><span class="ss">f"imagenette-</span><span class="sc">{</span>model<span class="sc">}</span><span class="ss">-bs-</span><span class="sc">{</span>bs<span class="sc">}</span><span class="ss">-lr-</span><span class="sc">{</span>lr<span class="sc">}</span><span class="ss">"</span>,</span>
@@ -2074,26 +2111,6 @@ That’s a great question! Stable low bs training isn’t easy, but it’s a goo
 <span id="cb27-15"><a href="#cb27-15" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb27-16"><a href="#cb27-16" aria-hidden="true" tabindex="-1"></a>            <span class="cf">with</span> learn.no_logging() <span class="kw">and</span> learn.no_mbar(): learn.fit_one_cycle(<span class="dv">5</span>, lr)</span>
 <span id="cb27-17"><a href="#cb27-17" aria-hidden="true" tabindex="-1"></a>            wandb.finish()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
-<p>Using <code>lr_find</code>, I found that xresnet18 was stable for 1e-4, 1e-3 and 1e-2 LRs but the other two were not. Instead, they were stable for LRs of 1e-7, 1e-6 and 1e-5. So I ran training runs for those two models and LRs for batch sizes of 2, 4, 8 and 16.</p>
-<div id="cell-53" class="cell">
-<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> bs <span class="kw">in</span> batch_sizes:</span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>    dls <span class="op">=</span> _dls(bs)</span>
-<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> dls.bs <span class="op">==</span> bs</span>
-<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> model <span class="kw">in</span> [<span class="st">'xresnet34'</span>, <span class="st">'xse_resnext50'</span>]:</span>
-<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> model <span class="op">==</span> <span class="st">'xse_resnext50'</span> <span class="kw">and</span> bs <span class="op">&lt;</span> <span class="dv">2</span>: <span class="cf">continue</span> <span class="co"># avoid Expected more than 1 value per channel when training, got input size torch.Size([1, 4096])</span></span>
-<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> lr <span class="kw">in</span> [<span class="fl">1e-7</span>, <span class="fl">1e-6</span>, <span class="fl">1e-5</span>]:</span>
-<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>            wandb.init(</span>
-<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>                project<span class="op">=</span><span class="st">"tinyscale-lab"</span>,</span>
-<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a>                name<span class="op">=</span><span class="ss">f"imagenette-</span><span class="sc">{</span>model<span class="sc">}</span><span class="ss">-bs-</span><span class="sc">{</span>bs<span class="sc">}</span><span class="ss">-lr-</span><span class="sc">{</span>lr<span class="sc">}</span><span class="ss">"</span>,</span>
-<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a>                tags<span class="op">=</span>[<span class="ss">f"bs=</span><span class="sc">{</span>bs<span class="sc">}</span><span class="ss">"</span>, <span class="ss">f"model=</span><span class="sc">{</span>model<span class="sc">}</span><span class="ss">"</span>, <span class="ss">f"lr=</span><span class="sc">{</span>lr<span class="sc">}</span><span class="ss">"</span>]</span>
-<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a>                )</span>
-<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> model <span class="op">==</span> <span class="st">'xse_resnext50'</span>: learn <span class="op">=</span> vision_learner(dls, xse_resnext50, metrics<span class="op">=</span>accuracy, pretrained<span class="op">=</span><span class="va">False</span>, cbs<span class="op">=</span>WandbCallback())</span>
-<span id="cb28-13"><a href="#cb28-13" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> model <span class="op">==</span> <span class="st">'xresnet18'</span>: learn <span class="op">=</span> Learner(dls, xresnet18(), metrics<span class="op">=</span>accuracy, cbs<span class="op">=</span>WandbCallback())</span>
-<span id="cb28-14"><a href="#cb28-14" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> model <span class="op">==</span> <span class="st">'xresnet34'</span>: learn <span class="op">=</span> Learner(dls, xresnet34(n_out<span class="op">=</span><span class="dv">10</span>), metrics<span class="op">=</span>accuracy, cbs<span class="op">=</span>WandbCallback())</span>
-<span id="cb28-15"><a href="#cb28-15" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb28-16"><a href="#cb28-16" aria-hidden="true" tabindex="-1"></a>            <span class="cf">with</span> learn.no_logging() <span class="kw">and</span> learn.no_mbar(): learn.fit_one_cycle(<span class="dv">5</span>, lr)</span>
-<span id="cb28-17"><a href="#cb28-17" aria-hidden="true" tabindex="-1"></a>            wandb.finish()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 
 
@@ -2500,6 +2517,38 @@ That’s a great question! Stable low bs training isn’t easy, but it’s a goo
   });
   </script>
 </div> <!-- /content -->
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","descPosition":"bottom","loop":false,"openEffect":"zoom","selector":".lightbox"});
+(function() {
+  let previousOnload = window.onload;
+  window.onload = () => {
+    if (previousOnload) {
+      previousOnload();
+    }
+    lightboxQuarto.on('slide_before_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      const href = trigger.getAttribute('href');
+      if (href !== null) {
+        const imgEl = window.document.querySelector(`a[href="${href}"] img`);
+        if (imgEl !== null) {
+          const srcAttr = imgEl.getAttribute("src");
+          if (srcAttr && srcAttr.startsWith("data:")) {
+            slideConfig.href = srcAttr;
+          }
+        }
+      } 
+    });
+  
+    lightboxQuarto.on('slide_after_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(slideNode);
+      }
+    });
+  
+  };
+  
+})();
+          </script>
 
 
 
