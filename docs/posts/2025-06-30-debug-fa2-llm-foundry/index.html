@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.7.32">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2025-06-30">
+<meta name="description" content="flash_attn_varlen_func in LLM Foundry resulted in a surprising 20% training slowdown. This post details the debugging process that uncovered the cause : significant overhead from the HuggingFace implementation repeatedly un-padding and re-padding the batch at every layer.">
+
+<title>Debugging Flash Attention in LLM-Foundry (and a 20% Slow Down!) – Vishal Bakshi’s Blog</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-37eea08aefeeee20ff55810ff984fec1.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap-9c1ae87ad5063dce4f793ccd314a7566.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Vishal Bakshi’s Blog</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html"> 
+<span class="menu-text">About</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"> <i class="bi bi-rss" role="img">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#what-is-the-value-of-the-attention_mask" id="toc-what-is-the-value-of-the-attention_mask" class="nav-link" data-scroll-target="#what-is-the-value-of-the-attention_mask">What is the value of the <code>attention_mask</code>?</a></li>
+  <li><a href="#when-is-flash_attn_varlen_func-called" id="toc-when-is-flash_attn_varlen_func-called" class="nav-link" data-scroll-target="#when-is-flash_attn_varlen_func-called">When is <code>flash_attn_varlen_func</code> called?</a></li>
+  <li><a href="#how-do-we-check-the-value-of-attention_mask-during-training" id="toc-how-do-we-check-the-value-of-attention_mask-during-training" class="nav-link" data-scroll-target="#how-do-we-check-the-value-of-attention_mask-during-training">How do we check the value of <code>attention_mask</code> during training?</a></li>
+  <li><a href="#how-do-we-create-an-attention_mask-with-0.0s" id="toc-how-do-we-create-an-attention_mask-with-0.0s" class="nav-link" data-scroll-target="#how-do-we-create-an-attention_mask-with-0.0s">How do we create an <code>attention_mask</code> with <code>0.0</code>s?</a></li>
+  <li><a href="#how-do-we-know-if-flash_attn_varlen_func-is-being-used" id="toc-how-do-we-know-if-flash_attn_varlen_func-is-being-used" class="nav-link" data-scroll-target="#how-do-we-know-if-flash_attn_varlen_func-is-being-used">How do we know if <code>flash_attn_varlen_func</code> is being used?</a></li>
+  <li><a href="#wait-flash_attn_varlen_func-slows-down-training" id="toc-wait-flash_attn_varlen_func-slows-down-training" class="nav-link" data-scroll-target="#wait-flash_attn_varlen_func-slows-down-training">Wait, <code>flash_attn_varlen_func</code> slows down training?</a></li>
+  <li><a href="#closing-thoughts" id="toc-closing-thoughts" class="nav-link" data-scroll-target="#closing-thoughts">Closing Thoughts</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Debugging Flash Attention in LLM-Foundry (and a 20% Slow Down!)</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">python</div>
+    <div class="quarto-category">deep learning</div>
+    <div class="quarto-category">LLM-Foundry</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    flash_attn_varlen_func in LLM Foundry resulted in a surprising 20% training slowdown. This post details the debugging process that uncovered the cause : significant overhead from the HuggingFace implementation repeatedly un-padding and re-padding the batch at every layer.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">June 30, 2025</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>I’m learning a lot about LLM-Foundry while working on a group research project. In this blog post I’ll walk through how we figured out two things:</p>
+<ol type="1">
+<li>LLM-Foundry, by default when using a HuggingFace LlamaModel, does not use <code>flash_attn_varlen_func</code> and instead uses <code>flash_attn_func</code>. In other words, it doesn’t unpad the batch by default.</li>
+<li>When forcing LLM-Foundry to use <code>flash_attn_varlen_func</code>, it slows down training time.</li>
+</ol>
+<p>I’ll start by walking through the forward pass of the HuggingFace <code>LlamaModel</code> down to the attention mechanism which uses the <code>_flash_attention_forward</code> utility function which decides which Flash Attention interface is being used.</p>
+<iframe width="560" height="315" src="https://www.youtube.com/embed/BWO5guW7Kl4?si=l30jswKSmduhzd2g" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
+</iframe>
+</section>
+<section id="what-is-the-value-of-the-attention_mask" class="level2">
+<h2 class="anchored" data-anchor-id="what-is-the-value-of-the-attention_mask">What is the value of the <code>attention_mask</code>?</h2>
+<p>The model we’re using is SmolLM2-135M which uses the now-deprecated <a href="https://github.com/huggingface/transformers/blob/d363e71d0e32f44d7a5b3571d4921371907bd0ee/src/transformers/models/llama/modeling_llama.py#L324"><code>LlamaFlashAttention2</code> module</a>.</p>
+<p>Inspecting the <a href="https://github.com/huggingface/transformers/blob/d363e71d0e32f44d7a5b3571d4921371907bd0ee/src/transformers/models/llama/modeling_llama.py#L828"><code>LlamaModel</code> forward pass</a>, the first instance of where the <code>attention_mask</code> is used:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>causal_mask <span class="op">=</span> <span class="va">self</span>._update_causal_mask(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Looking at <code>_update_causal_mask</code>:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="va">self</span>.config._attn_implementation <span class="op">==</span> <span class="st">"flash_attention_2"</span>:</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> attention_mask <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">and</span> <span class="fl">0.0</span> <span class="kw">in</span> attention_mask:</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> attention_mask</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="va">None</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>If <code>0.0 in attention_mask</code> then the <code>attention_mask</code> will be returned, other <code>None</code> is returned.</p>
+<p>We’ll come back to this point later on.</p>
+</section>
+<section id="when-is-flash_attn_varlen_func-called" class="level2">
+<h2 class="anchored" data-anchor-id="when-is-flash_attn_varlen_func-called">When is <code>flash_attn_varlen_func</code> called?</h2>
+<p>Let’s assume <code>0.0 in attention_mask</code> is <code>True</code>, so the <code>attention_mask</code> is kept as is and is passed onto the <code>LlamaDecoderLayer</code> and eventually the attention mechanism <a href="https://github.com/huggingface/transformers/blob/d363e71d0e32f44d7a5b3571d4921371907bd0ee/src/transformers/models/llama/modeling_llama.py#L414">which calls <code>_flash_attention_forward</code></a>. <code>flash_attention_forward</code> is <a href="https://github.com/huggingface/transformers/blob/ea0ea392e57f8816f9ab8e5f740577a0343a1594/src/transformers/modeling_flash_attention_utils.py#L409">defined in transformers/modeling_flash_utils.py</a>, and triggers the use of <code>flash_attn_varlen_func</code> if one of two conditions are true:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> attention_mask <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>or</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">elif</span> (</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    position_ids <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">and</span> query_states.shape[<span class="dv">0</span>] <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">and</span> (max_length_q <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span> <span class="kw">or</span> (query_length <span class="op">!=</span> <span class="dv">1</span> <span class="kw">and</span> <span class="kw">not</span> (torch.diff(position_ids, dim<span class="op">=-</span><span class="dv">1</span>) <span class="op">&gt;=</span> <span class="dv">0</span>).<span class="bu">all</span>()))</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The <code>elif</code> condition is <code>True</code> if <code>position_ids is not None</code> and <code>query_states.shape[0] == 1</code> and either <code>max_length_q is not None</code> or <code>(query_length != 1 and not (torch.diff(position_ids, dim=-1) &gt;= 0).all())</code>. The <code>torch.diff</code> expression is <code>False</code> if the difference in consecutive values in <code>position_ids</code> are not greater than <code>0</code>. For example, the following <code>position_ids</code> would yield <code>False</code>:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>[<span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>, <span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>, <span class="dv">4</span>, <span class="dv">5</span>, <span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">2</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><code>torch.diff</code> for the 4th and 5th position (<code>3</code> to <code>0</code>) is <code>-3</code>. We would expect such a <code>position_ids</code> sequence when you have packed sequences.</p>
+</section>
+<section id="how-do-we-check-the-value-of-attention_mask-during-training" class="level2">
+<h2 class="anchored" data-anchor-id="how-do-we-check-the-value-of-attention_mask-during-training">How do we check the value of <code>attention_mask</code> during training?</h2>
+<p>To do so, I wrote the following Composer callback:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> FlashAttentionDebug(Callback):</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> before_forward(<span class="va">self</span>, state: State, logger: Logger) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>      model <span class="op">=</span> state.model</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>      <span class="bu">print</span>(model.config._attn_implementation)</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.hooks <span class="op">=</span> []</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>      <span class="kw">def</span> create_hook_fn(name):</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>          <span class="kw">def</span> hook_fn(module, args, kwargs, output):</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>              <span class="cf">if</span> <span class="st">'attention_mask'</span> <span class="kw">in</span> kwargs:</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>                  <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>name<span class="sc">}</span><span class="ss"> FlashAttentionDebug: attention_mask is None:"</span>, kwargs[<span class="st">'attention_mask'</span>] <span class="kw">is</span> <span class="va">None</span>)</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>                  <span class="cf">if</span> kwargs[<span class="st">'attention_mask'</span>] <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>                      <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>name<span class="sc">}</span><span class="ss"> FlashAttentionDebug: attention_mask:"</span>, kwargs[<span class="st">'attention_mask'</span>])</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>                      <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>name<span class="sc">}</span><span class="ss"> FlashAttentionDebug: 0.0 in attention_mask:"</span>, <span class="fl">0.0</span> <span class="kw">in</span> kwargs[<span class="st">'attention_mask'</span>])</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>                      <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>name<span class="sc">}</span><span class="ss"> FlashAttentionDebug: attention_mask.shape:"</span>, kwargs[<span class="st">'attention_mask'</span>].shape)</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>                      <span class="bu">print</span>(<span class="ss">f"</span><span class="sc">{</span>name<span class="sc">}</span><span class="ss"> FlashAttentionDebug: attention_mask.sum():"</span>, kwargs[<span class="st">"attention_mask"</span>].<span class="bu">sum</span>())</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>          <span class="cf">return</span> hook_fn</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>      attn_layer <span class="op">=</span> model.model.base_model.model.model.layers[<span class="dv">0</span>].self_attn</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>      hook_handle <span class="op">=</span> attn_layer.register_forward_hook(create_hook_fn(<span class="st">"attn_layer"</span>), with_kwargs<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.hooks.append(hook_handle)</span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a>      decoder_layer <span class="op">=</span> model.model.base_model.model.model.layers[<span class="dv">0</span>]</span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>      <span class="bu">print</span>(<span class="bu">type</span>(decoder_layer))</span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>      hook_handle <span class="op">=</span> decoder_layer.register_forward_hook(create_hook_fn(<span class="st">"decoder_layer"</span>), with_kwargs<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.hooks.append(hook_handle)</span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a>      _model <span class="op">=</span> model.model.base_model.model.model</span>
+<span id="cb6-28"><a href="#cb6-28" aria-hidden="true" tabindex="-1"></a>      <span class="bu">print</span>(<span class="bu">type</span>(_model))</span>
+<span id="cb6-29"><a href="#cb6-29" aria-hidden="true" tabindex="-1"></a>      hook_handle <span class="op">=</span> _model.register_forward_hook(create_hook_fn(<span class="st">"model"</span>), with_kwargs<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb6-30"><a href="#cb6-30" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.hooks.append(hook_handle)</span>
+<span id="cb6-31"><a href="#cb6-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-32"><a href="#cb6-32" aria-hidden="true" tabindex="-1"></a>  <span class="kw">def</span> after_forward(<span class="va">self</span>, state: State, logger: Logger) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb6-33"><a href="#cb6-33" aria-hidden="true" tabindex="-1"></a>      <span class="cf">for</span> hook <span class="kw">in</span> <span class="va">self</span>.hooks:</span>
+<span id="cb6-34"><a href="#cb6-34" aria-hidden="true" tabindex="-1"></a>          hook.remove()</span>
+<span id="cb6-35"><a href="#cb6-35" aria-hidden="true" tabindex="-1"></a>      <span class="va">self</span>.hooks <span class="op">=</span> []</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><code>create_hook_fn</code> is a closure which returns <code>hook_fn</code>. I used this pattern so I could log the name of the module the hook is attached to. Note that when using <code>register_forward_hook</code> you must specify <code>with_kwargs=True</code> to pass kwargs to the hook function.</p>
+<p>Here are the outputs when using the default LLM-Foundry pretraining setup:</p>
+<pre><code>flash_attention_2
+&lt;class 'transformers.models.llama.modeling_llama.LlamaDecoderLayer'&gt;
+&lt;class 'transformers.models.llama.modeling_llama.LlamaModel'&gt;
+attn_layer FlashAttentionDebug: attention_mask is None: True
+decoder_layer FlashAttentionDebug: attention_mask is None: True
+model FlashAttentionDebug: attention_mask is None: False
+model FlashAttentionDebug: attention_mask: tensor([[1, 1, 1,  ..., 1, 1, 1]], device='cuda:0')
+model FlashAttentionDebug: 0.0 in attention_mask: False
+model FlashAttentionDebug: attention_mask.shape: torch.Size([1, 2048])
+model FlashAttentionDebug: attention_mask.sum(): tensor(2048, device='cuda:0')</code></pre>
+<p>Note that in the attention layer, <code>attention_mask</code> is <code>None</code> because as we can see in the <code>model</code> forward output, <code>0.0</code> is not in <code>attention_mask</code> (it’s full of <code>1</code>s).</p>
+</section>
+<section id="how-do-we-create-an-attention_mask-with-0.0s" class="level2">
+<h2 class="anchored" data-anchor-id="how-do-we-create-an-attention_mask-with-0.0s">How do we create an <code>attention_mask</code> with <code>0.0</code>s?</h2>
+<p>With the help of Cursor (my first time using it!) I was able to add one simple line to the <code>__call__</code> method of the default pretraining collator <code>ConcatenatedSequenceCollatorWrapper</code>:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>batch[<span class="st">'attention_mask'</span>] <span class="op">=</span> (batch[<span class="st">'input_ids'</span>] <span class="op">!=</span> <span class="dv">0</span>).<span class="bu">long</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Where <code>input_ids</code> are not <code>0</code> (the EOS token id used for padding) <code>attention_mask</code> will be <code>1</code>; it will be <code>0</code> where there are padding tokens.</p>
+<p>Since I’m using Modal for training, and since the image brings down our LLM-Foundry fork, and since I need to modify the <code>ConcatenatedSequenceCollatorWrapper.__call__</code> method (which lives in <code>llmfoundry/data/text_data.py</code>) I add the following line after my Modal is built:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>image <span class="op">=</span> image.add_local_file(<span class="st">"text_data.py"</span>, <span class="st">"/llm-foundry/llmfoundry/data/text_data.py"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Running training with this modified collator the <code>FlashAttentionDebug</code> callback logs the following:</p>
+<pre><code>flash_attention_2
+&lt;class 'transformers.models.llama.modeling_llama.LlamaDecoderLayer'&gt;
+&lt;class 'transformers.models.llama.modeling_llama.LlamaModel'&gt;
+attn_layer FlashAttentionDebug: attention_mask is None: False
+attn_layer FlashAttentionDebug: attention_mask: tensor([[1, 1, 1,  ..., 0, 0, 0]], device='cuda:0')
+attn_layer FlashAttentionDebug: 0.0 in attention_mask: True
+attn_layer FlashAttentionDebug: attention_mask.shape: torch.Size([1, 2048])
+attn_layer FlashAttentionDebug: attention_mask.sum(): tensor(201, device='cuda:0')
+decoder_layer FlashAttentionDebug: attention_mask is None: False
+decoder_layer FlashAttentionDebug: attention_mask: tensor([[1, 1, 1,  ..., 0, 0, 0]], device='cuda:0')
+decoder_layer FlashAttentionDebug: 0.0 in attention_mask: True
+decoder_layer FlashAttentionDebug: attention_mask.shape: torch.Size([1, 2048])
+decoder_layer FlashAttentionDebug: attention_mask.sum(): tensor(201, device='cuda:0')
+model FlashAttentionDebug: attention_mask is None: False
+model FlashAttentionDebug: attention_mask: tensor([[1, 1, 1,  ..., 0, 0, 0]], device='cuda:0')
+model FlashAttentionDebug: 0.0 in attention_mask: True
+model FlashAttentionDebug: attention_mask.shape: torch.Size([1, 2048])
+model FlashAttentionDebug: attention_mask.sum(): tensor(201, device='cuda:0')</code></pre>
+<p>Now we can see that in the attention layer, the <code>attention_mask</code> is not <code>None</code>. It contains <code>0.0</code> values (note how the <code>sum</code>, 201, is less than the sequence length of 2048) which is why the <code>_update_causal_mask</code> method returned attention_mask as is. We can also visually inspect the <code>attention_mask</code> tensor in the model, decoder layer and attention mechanism forward pass and see both <code>1</code>s and <code>0</code>s.</p>
+</section>
+<section id="how-do-we-know-if-flash_attn_varlen_func-is-being-used" class="level2">
+<h2 class="anchored" data-anchor-id="how-do-we-know-if-flash_attn_varlen_func-is-being-used">How do we know if <code>flash_attn_varlen_func</code> is being used?</h2>
+<p>Now that we know that introducing <code>0</code>s in the <code>attention_mask</code> allows it to be passed through the model, including the attention mechanism, we should confirm that <code>flash_attn_varlen_func</code> is called. If you recall, one of the conditions for it being called was that <code>attention_mask is not None</code>. To check this, we can monkey-patch <code>_upad_input</code> which is the method called to unpad the batch if <code>attention_mask is not None</code>:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> transformers.modeling_flash_attention_utils <span class="im">as</span> flash_utils</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>original_upad_input <span class="op">=</span> flash_utils._upad_input</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>original_prepare_fa2_from_position_ids <span class="op">=</span> flash_utils.prepare_fa2_from_position_ids</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> debug_upad_input(query_states, key_states, value_states, attention_mask, query_length):</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"DEBUG: Using _upad_input"</span>)</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"  query_states: </span><span class="sc">{</span>query_states<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"  key_states: </span><span class="sc">{</span>key_states<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"  value_states: </span><span class="sc">{</span>value_states<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"  attention_mask: </span><span class="sc">{</span>attention_mask<span class="sc">.</span>shape<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"  query_length: </span><span class="sc">{</span>query_length<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>    query_layer, key_layer, value_layer, indices_q, (cu_seqlens_q, cu_seqlens_k),(max_seqlen_in_batch_q, max_seqlen_in_batch_k) <span class="op">=</span> original_upad_input(query_states, key_states, value_states, attention_mask, query_length)</span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"query_layer.shape: "</span>, query_layer.shape)</span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"key_layer.shape: "</span>, key_layer.shape)</span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"value_layer.shape: "</span>, value_layer.shape)</span>
+<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"indices_q.shape: "</span>, indices_q.shape)</span>
+<span id="cb11-17"><a href="#cb11-17" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"cu_seqlens_q.shape: "</span>, cu_seqlens_q.shape)</span>
+<span id="cb11-18"><a href="#cb11-18" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"cu_seqlens_q: "</span>, cu_seqlens_q.tolist())</span>
+<span id="cb11-19"><a href="#cb11-19" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"cu_seqlens_k.shape: "</span>, cu_seqlens_k.shape)</span>
+<span id="cb11-20"><a href="#cb11-20" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"cu_seqlens_k: "</span>, cu_seqlens_k.tolist())</span>
+<span id="cb11-21"><a href="#cb11-21" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"max_seqlen_in_batch_q: "</span>, max_seqlen_in_batch_q)</span>
+<span id="cb11-22"><a href="#cb11-22" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"max_seqlen_in_batch_k: "</span>, max_seqlen_in_batch_k)</span>
+<span id="cb11-23"><a href="#cb11-23" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"indices_q: "</span>, indices_q.tolist())</span>
+<span id="cb11-24"><a href="#cb11-24" aria-hidden="true" tabindex="-1"></a>    seqlens_in_batch <span class="op">=</span> attention_mask.<span class="bu">sum</span>(dim<span class="op">=-</span><span class="dv">1</span>, dtype<span class="op">=</span>torch.int32)</span>
+<span id="cb11-25"><a href="#cb11-25" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(seqlens_in_batch.tolist())</span>
+<span id="cb11-26"><a href="#cb11-26" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(attention_mask[<span class="dv">0</span>].tolist())</span>
+<span id="cb11-27"><a href="#cb11-27" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> original_upad_input(query_states, key_states, value_states, attention_mask, query_length)</span>
+<span id="cb11-28"><a href="#cb11-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-29"><a href="#cb11-29" aria-hidden="true" tabindex="-1"></a>flash_utils._upad_input <span class="op">=</span> debug_upad_input</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>I added a <code>original_upad_input</code> call and stored the output so I could see what gets passed on to <code>flash_attn_varlen_func</code>.</p>
+<p>During the training run, with our modified collator, we see the following output (this was for a run with a batch size of 6):</p>
+<pre><code>DEBUG: Using _upad_input
+  query_states: torch.Size([6, 2048, 9, 64])
+  key_states: torch.Size([6, 2048, 3, 64])
+  value_states: torch.Size([6, 2048, 3, 64])
+  attention_mask: torch.Size([6, 2048])
+  query_length: 2048
+query_layer.shape:  torch.Size([1395, 9, 64])
+key_layer.shape:  torch.Size([1395, 3, 64])
+value_layer.shape:  torch.Size([1395, 3, 64])
+indices_q.shape:  torch.Size([1395])
+cu_seqlens_q.shape:  torch.Size([7])
+cu_seqlens_q:  [0, 220, 437, 732, 915, 1045, 1395]
+cu_seqlens_k.shape:  torch.Size([7])
+cu_seqlens_k:  [0, 220, 437, 732, 915, 1045, 1395]
+max_seqlen_in_batch_q:  350
+max_seqlen_in_batch_k:  350
+</code></pre>
+<p>Some key observations:</p>
+<p><code>query_states</code> has size 6 (batch size) x 2048 (sequence length) x 9 (num heads) x 64 (head dim).</p>
+<p><code>query_layer</code> (one of the <code>_upad_input</code> outputs and <code>flash_attn_varlen_func</code> inputs) has size 1395 (total sequence length) x 9 (num heads) x 64 (head dim).</p>
+<p>The <code>cu_seqlens_q</code> that is a critical input to <code>flash_attn_varlen_func</code> show us that there are 6 sequences packed together and the “boundaries” of the sequences are <code>[0, 220, 437, 732, 915, 1045, 1395]</code>. Using my <a href="https://vishalbakshi.github.io/blog/posts/2025-05-13-DataInspector-BinPackCollator/index.html#datainspector"><code>DataInspector</code> callback</a> I confirmed the number of non-padding tokens in the batch: 220, 217, 295, 183, 130, 350. The sum of these counts is 1395, the total sequence length passed to <code>flash_attn_varlen_func</code>.</p>
+</section>
+<section id="wait-flash_attn_varlen_func-slows-down-training" class="level2">
+<h2 class="anchored" data-anchor-id="wait-flash_attn_varlen_func-slows-down-training">Wait, <code>flash_attn_varlen_func</code> slows down training?</h2>
+<p>When using my modified collator, and therefore utilizing <code>flash_attn_varlen_func</code> the training time slows down by <em>over 20%</em>. This was certainly a surprise for me! After discussing this with our research advisor, we learned that this is likely because the HuggingFace implementation of the model unpads and re-pads the batch for each layer.</p>
+<p>We can see this <a href="https://github.com/huggingface/transformers/blob/03db2700abf84971351c7374a548a9d4fc156916/src/transformers/modeling_flash_attention_utils.py#L532">in the <code>_flash_attention_forward</code> method, after <code>flash_attn_varlen_func</code> is called</a>:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>attn_output <span class="op">=</span> _pad_input(attn_output_unpad, indices_q, batch_size, query_length)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The solution to mitigating this slow-down is to implement our own custom model where it unpads the batch only once. This will be our next task!</p>
+</section>
+<section id="closing-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="closing-thoughts">Closing Thoughts</h2>
+<p>The biggest takeaway from this experience, as has been the case for all practical training experiments I’ve run (whether for LMs or vision models) is that there’s a difference between what is theoretically efficient and whether that is practically efficient. In theory, <code>flash_attn_varlen_func</code> should be faster because you are not wasting the quadratic attention compute on padding tokens. In practice, unpadding and re-padding the batch for each layer for each forward pass adds an overhead which not only cancels out that attention computation speedup, but slows down the training compared to a fully-padded forward pass. This is a critical lesson I experience again and again, and it helps me understand the value of choosing the right implementation to actualize theoretical efficiencies.</p>
+<p>I’m growing my YouTube channel this year, so if you like this type of content <a href="https://www.youtube.com/@vishal_learner">please subscribe</a>!</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+        const codeEl = trigger.previousElementSibling.cloneNode(true);
+        for (const childEl of codeEl.children) {
+          if (isCodeAnnotation(childEl)) {
+            childEl.remove();
+          }
+        }
+        return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vishalbakshi\.github\.io\/blog");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>
