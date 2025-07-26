@@ -20,7 +20,7 @@ In this short TIL blog post, I'm going to share the code I wrote with Claude's h
 
 ```python
 class HFPushCallback(Callback):
-  def __init__(self, repo_id: str = "LocalResearchGroup/push-to-hub-test", push_every_n_steps: int = 10):
+  def __init__(self, repo_id: str, push_every_n_steps: int = 10):
       self.repo_id = repo_id
       self.push_every_n_steps = push_every_n_steps
       self.token = os.getenv("HF_TOKEN")
