@@ -10,7 +10,723 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.7.32</generator>
-<lastBuildDate>Sat, 26 Jul 2025 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Sun, 27 Jul 2025 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>Analyzing PyTorch 2.0 Release Notes for ColBERT Dependency Impact</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-07-27-torch-colbert/</link>
+  <description><![CDATA[ 
+
+
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In this blog post, I walk through the <a href="https://github.com/pytorch/pytorch/releases/tag/v2.0.0">PyTorch 2.0 Release Note</a> PRs where I’m estimating there will be some kind of impact to ColBERT as I update the torch dependency to 2.0 (ColBERT is currently dependent on torch==1.13.1). The level of detail in my analysis of a PyTorch PR is not necessarily signifying its importance. In some cases, I am using this analysis as an opportunity to get more familiar with details about the ColBERT codebase (such as the number of instances where <code>torch.cat</code> is used).</p>
+</section>
+<section id="full-release-notes-analysis" class="level2">
+<h2 class="anchored" data-anchor-id="full-release-notes-analysis">Full Release Notes Analysis</h2>
+<p>You can find my item-by-item PyTorch 2.0 release notes analysis for ColBERT in <a href="https://docs.google.com/spreadsheets/d/1sUEN7xo5-hLVoxF9NL_ibGxPaKlPzxmnMU46zf3wd-U/edit?usp=sharing">this Google Sheet</a>.</p>
+<p>Overall, across 508 PyTorch PRs, I have estimated that 455 of them are not applicable to ColBERT and 42 (8.7%) have a potential impact. I was unclear if or how 11 of the PyTorch 2.0 PRs would affect ColBERT (2.6%).</p>
+<p>There are 5 sections in the PyTorch 2.0 Release Notes, here’s a break down of PRs by section that will have a potential (or unclear) impact on ColBERT:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Section</th>
+<th style="text-align: center;"># of PRs</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">Improvements</td>
+<td style="text-align: center;">22</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">Bug Fixes</td>
+<td style="text-align: center;">21</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">Performance</td>
+<td style="text-align: center;">6</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">Backwards Incompatible Changes</td>
+<td style="text-align: center;">3</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">Deprecations</td>
+<td style="text-align: center;">1</td>
+</tr>
+</tbody>
+</table>
+<p>In my estimation, the improvements and bug fixes PRs in PyTorch 2.0 will only improve the performance of ColBERT. That being said, there still may be noticeable differences in indexing, search, and training artifacts which may break tests I write for before/after comparisons.</p>
+<p>Fortunately, only two backward-compatible changes may affect ColBERT.</p>
+<p>There are 11 subsections in the PyTorch 2.0 Release Notes, here’s a break down of PRs that will have a potential (or unclear) impact on ColBERT:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Subsection</th>
+<th style="text-align: center;"># of PRs</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">MPS</td>
+<td style="text-align: center;">12</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">Python API</td>
+<td style="text-align: center;">8</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">Cuda</td>
+<td style="text-align: center;">8</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">Releng</td>
+<td style="text-align: center;">4</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">Distributed</td>
+<td style="text-align: center;">4</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">Build</td>
+<td style="text-align: center;">4</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">ONNX</td>
+<td style="text-align: center;">3</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">Cpu</td>
+<td style="text-align: center;">2</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">Cpp API</td>
+<td style="text-align: center;">2</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">torch.nn API</td>
+<td style="text-align: center;">1</td>
+</tr>
+</tbody>
+</table>
+<p>I am including MPS-related PRs in this analysis just in case we consider making ColBERT compatible with MPS in the future.</p>
+<p>I’ll start by analyzing breaking changes, which are likely going to be the most impactful.</p>
+</section>
+<section id="backwards-incompatible-changes" class="level2">
+<h2 class="anchored" data-anchor-id="backwards-incompatible-changes">Backwards Incompatible Changes</h2>
+<section id="pr-92731" class="level3">
+<h3 class="anchored" data-anchor-id="pr-92731">PR <a href="https://github.com/pytorch/pytorch/pull/92731">#92731</a></h3>
+<blockquote class="blockquote">
+<p>Gradients are now set to None instead of zeros by default in <code>torch.optim.*.zero_grad()</code> and <code>torch.nn.Module.zero_grad()</code> (#92731)</p>
+</blockquote>
+<p>There are two lines in ColBERT where<code>zero_grad</code> is called: in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/utils/amp.py#L37">colbert/utils/amp.py</a> and in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/training/training.py#L61">colbert/training/training.py</a>. I’m not sure how this change would affect ColBERT behavior, but flagging it as something to keep in mind.</p>
+</section>
+<section id="pr-92306" class="level3">
+<h3 class="anchored" data-anchor-id="pr-92306">PR <a href="https://github.com/pytorch/pytorch/pull/92306">92306</a></h3>
+<blockquote class="blockquote">
+<p>Algorithms <code>{Adadelta, Adagrad, Adam, Adamax, AdamW, ASGD, NAdam, RAdam, RMSProp, RProp, SGD}</code> default to faster <code>foreach</code> implementation when on CUDA + differentiable=<code>False</code></p>
+</blockquote>
+<p>This PR adds the following lines to <code>AdamW</code>, which is used in ColBERT’s <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/training/training.py#L60">`training.py</a>:</p>
+<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> foreach <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">is</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>:</span>
+<span id="cb1-2">    foreach <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> _default_to_foreach(</span>
+<span id="cb1-3">        [params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs, state_steps],</span>
+<span id="cb1-4">        differentiable<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>differentiable)</span></code></pre></div>
+<p><code>foreach</code> is <code>None</code> in ColBERT, as it’s not specified and that’s what it defaults to (<code>foreach: Optional[bool] = None</code>):</p>
+<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">optimizer <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> AdamW(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">filter</span>(<span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">lambda</span> p: p.requires_grad, colbert.parameters()), lr<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>config.lr, eps<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e-8</span>)</span></code></pre></div>
+<p>Since this is described as a “faster implementation”, I would expect the training time to decrease. <mark>I’ll be on the lookout for this when comparing training time benchmarks before/after upgrading to PyTorch 2.0</mark>.</p>
+</section>
+<section id="pr-88913" class="level3">
+<h3 class="anchored" data-anchor-id="pr-88913">PR <a href="https://github.com/pytorch/pytorch/pull/88913">#88913</a></h3>
+<blockquote class="blockquote">
+<p>Update <code>torch.tensor</code> and <code>nn.Parameter</code> to serialize all their attributes (#88913)</p>
+</blockquote>
+<p><mark>It’s unclear what this PR is doing but since it’s touching the <code>nn.Parameter</code> definition, I’m flagging it.</mark></p>
+</section>
+</section>
+<section id="bug-fixes" class="level2">
+<h2 class="anchored" data-anchor-id="bug-fixes">Bug Fixes</h2>
+<p>I would expect PyTorch PRs that introduce bug fixes to only positively affect ColBERT. That being said, a positive effect is still a change and can potentially impact concrete artifacts during indexing, search and training. I am planning on curating a baseline set of these artifacts before I test the upgrade to PyTorch 2.0.</p>
+<section id="pr-92810" class="level3">
+<h3 class="anchored" data-anchor-id="pr-92810">PR <a href="https://github.com/pytorch/pytorch/pull/92810">#92810</a></h3>
+<blockquote class="blockquote">
+<p>Fix SIGSEGV on a big-endian machine when reading pickle data (#92810)</p>
+</blockquote>
+<p>The PR states:</p>
+<blockquote class="blockquote">
+<p>This PR fixes SIGSEGV on a big-endian machine when reading pickle data.</p>
+</blockquote>
+<p>I’m not familiar with the term “big-endian” so had to look it up:</p>
+<blockquote class="blockquote">
+<p>A big-endian system stores the most significant byte of a word at the smallest memory address and the least significant byte at the largest. A little-endian system, in contrast, stores the least-significant byte at the smallest address. (<a href="https://en.wikipedia.org/wiki/Endianness">source</a>)</p>
+</blockquote>
+<p>Claude’s understanding of the cpp method affected by this PR is that it affects the <code>torch.load</code> method. There are a number of ColBERT files that use <code>torch.load</code>:</p>
+<ul>
+<li>colbert/utils/coalesce.py uses it to <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/utils/coalesce.py#L47">load <code>codes.pt</code></a> (centroid id for each embedding in chunk) and <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/utils/coalesce.py#L66">load <code>residuals.pt</code></a> (16-bits residual for each embedding in chunk).</li>
+<li>colbert/search/index_loader.py uses it to <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/index_loader.py#L33">load <code>ivf.pid.pt</code></a> or <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/index_loader.py#L36"><code>ivf.pt</code></a>.</li>
+<li>colbert/utils/utils.py uses it <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/utils/utils.py#L44">in <code>torch_load_dnn</code></a>, <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/utils/utils.py#L91"><code>load_checkpoint_raw</code></a> and <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/utils/utils.py#L205"><code>load_ranking</code></a>.</li>
+<li>colbert/indexing/index_manager.py uses it in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/index_manager.py#L20"><code>load_index_part</code></a>.</li>
+<li>colbert/indexing/codecs/residual_embeddings.py uses it in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual_embeddings.py#L86"><code>load_codes</code></a> and <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual_embeddings.py#L93"><code>load_residuals</code></a>.</li>
+<li>colbert/indexing/codecs/residual.py uses it in <code>load</code> to load <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L141">centroids</a>, <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L142"><code>avg_residual</code></a>, and <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L143"><code>bucket_cutoffs, bucket_weights</code></a>.</li>
+<li>colbert/indexing/collection_indexer.py uses it in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/collection_indexer.py#L256"><code>_concatenate_and_split_sample</code></a>.</li>
+<li>colbert/index_updater.py uses it in <code>_load_disk_ivf</code> to load <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/index_updater.py#L281"><code>ivf.pid.pt</code></a> or <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/index_updater.py#L286"><code>ivf.pt</code></a>, in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/index_updater.py#L312"><code>load_chunk_codes</code></a>, and in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/index_updater.py#L316"><code>_load_chunk_residuals</code></a>.</li>
+<li>colbert/tests/index_coalesce_test.py uses it to load <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/tests/index_coalesce_test.py#L57">multi-file <code>codes.pt</code></a>, <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/tests/index_coalesce_test.py#L66">single-file <code>codes.pt</code></a>, <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/tests/index_coalesce_test.py#L83">multi-file <code>residuals.pt</code></a> and <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/tests/index_coalesce_test.py#L92">single-file <code>residuals.pt</code></a>.</li>
+</ul>
+</section>
+<section id="pr-92315" class="level3">
+<h3 class="anchored" data-anchor-id="pr-92315">PR <a href="https://github.com/pytorch/pytorch/pull/92315">#92315</a></h3>
+<blockquote class="blockquote">
+<p>Fix NVML visible device parsing (#92315)</p>
+</blockquote>
+<blockquote class="blockquote">
+<p>CUDA_VISIBLE_DEVICES can contain either ordinals or UUIDs Extend the logic to be able to parse it by UUID</p>
+</blockquote>
+<p><mark>I don’t think this would affect any artifacts created during indexing/searching/training but would make it easier for PyTorch to identify GPUs.</mark></p>
+</section>
+<section id="pr-93095" class="level3">
+<h3 class="anchored" data-anchor-id="pr-93095">PR <a href="https://github.com/pytorch/pytorch/pull/93095">#93095</a></h3>
+<p>This PR fixes an error in <a href="https://github.com/pytorch/pytorch/issues/93006">#93006</a> when using <code>topk</code>, which is used in the following places in ColBERT:</p>
+<ul>
+<li><code>get_cells</code> in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/candidate_generation.py#L17">colbert/search/candidate_generation.py</a></li>
+<li><code>score_pids</code> in colbert/search/index_storage.py to <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/index_storage.py#L127">filter centroids by the threshold</a>, <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/index_storage.py#L152">filter <code>pids</code> using pruned centroid scores</a> and <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/index_storage.py#L161">filter <code>pids</code> using full centroid scores</a></li>
+<li>filter scores in <code>colbert_score_reduce</code> for the <code>"flipr"</code> interaction method: <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/colbert.py#L146">link1</a>, <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/colbert.py#L150">link 2</a></li>
+</ul>
+<p>Claude recommended also consider uses of <code>max</code> and <code>argmax</code> to be potentially impacted:</p>
+<ul>
+<li><code>get_cells</code> if <code>ncells==1</code> in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/candidate_generation.py#L15">colbert/search/candidate_generation.py</a></li>
+<li>colbert/modeling/colbert.py in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/colbert.py#L121"><code>ColBERT.score</code></a></li>
+<li>colbert/modeling/colbert.py in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/colbert.py#L135"><code>colbert_score_reduce</code></a></li>
+<li>colbert/indexing/codecs/residual.py in <code>ResidualCodec.compress_into_codes</code> on <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L215">GPU</a> and <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L217">CPU</a></li>
+<li>colbert/search/strided_tensor.py in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/strided_tensor.py#L74">`StridedTensor.lookup</a></li>
+<li>colbert/search/strided_tensor_core.py in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/strided_tensor_core.py#L27"><code>StridedTensorCore.__init__</code></a></li>
+<li>colbert/modeling/checkpoint.py in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/checkpoint.py#L215">`Checkpoint.score</a></li>
+<li>colbert/indexing/utils.py in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/utils.py#L48"><code>optimize_ivf</code></a></li>
+</ul>
+<p><mark>I would assume that the only impact this PR would have on PyTorch is avoiding any errors during the use of <code>topk</code> (no such errors have been reported on in the open issues).</mark></p>
+</section>
+<section id="pr-85596" class="level3">
+<h3 class="anchored" data-anchor-id="pr-85596">PR <a href="https://github.com/pytorch/pytorch/pull/85596">#85596</a></h3>
+<blockquote class="blockquote">
+<p>Fix: half reduction with multiple sub-iterators (#85596)</p>
+</blockquote>
+<p>Fixes <a href="https://github.com/pytorch/pytorch/issues/74438">cuda low-precision reductions on large tensors produce wrong results #74438</a>:</p>
+<blockquote class="blockquote">
+<p>Reductions with low precision inputs (half, bfloat16) that need sub-iterators accumulate directly in output and thus truncate intermediate results</p>
+</blockquote>
+<p>This would fix any issues related to the use of <code>half</code> in the following ColBERT files:</p>
+<ul>
+<li>in <code>ResidualCodec</code> for <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L27"><code>centroids</code></a>, <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L35"><code>avg_residual</code></a>, <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L40"><code>bucket_weights</code></a>, <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L159">saving <code>centroids</code></a>, <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L172">compressing token embeddings</a>, calculating cosine similarity between token embeddings and centroids <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L215">on GPU</a>.</li>
+<li>colbert/search/candidate_generation.py in <code>CandidateGeneration.generate_candidates</code> for queries when <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/candidate_generation.py#L52">using the GPU</a>.</li>
+<li>colbert/indexing/collection_indexer.py in <code>CollectionIndexer._sample_embeddings</code> when <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/collection_indexer.py#L181">saving <code>local_sample_embs</code></a>, in <code>CollectionIndexer.train_kmeans</code> for <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/collection_indexer.py#L308">centroids on the GPU</a>, and in <code>CollectionIndexer.index</code> when <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/collection_indexer.py#L370">saving token embeddings</a>.</li>
+<li>colbert/modeling/colbert.py in <code>ColBERT.doc</code> for <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/colbert.py#L106">document token embeddings on the GPU</a></li>
+</ul>
+<p><mark>If this PR fix is relevant to the use of <code>half</code> in the above files I would expect there to be numeric differences in indexing/search artifacts</mark>.</p>
+</section>
+<section id="pr-86492" class="level3">
+<h3 class="anchored" data-anchor-id="pr-86492">PR <a href="https://github.com/pytorch/pytorch/pull/86492">#86492</a></h3>
+<blockquote class="blockquote">
+<p>Fixes a memory leak by making autocast cache global instead of thread-local (#86492)</p>
+</blockquote>
+<p>This PR adds a PyTorch test which:</p>
+<blockquote class="blockquote">
+<p>Verifies that the autocast cache is global. This is done by mocking out cache clearing at the end of the forward pass, running forward+backward with an explicit call to autocast in the backward, and verifying that the weight only get cast to float16 once.</p>
+</blockquote>
+<p>Claude’s analysis:</p>
+<blockquote class="blockquote">
+<p>This PyTorch enhancement directly benefits ColBERT. By making the autocast cache global, this PR provides a performance improvement when training ColBERT with mixed precision. It reduces redundant computations during the backward pass, leading to faster and more efficient training without changing the model’s functionality.</p>
+</blockquote>
+<p>ColBERT uses <code>torch.cuda.amp.autocast</code> in the following files:</p>
+<ul>
+<li>colbert/utils/amp.py in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/utils/amp.py#L15"><code>MixedPrecisionManager.context</code></a> which is used in colbert/training/training.py during <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/training/training.py#L96"><code>train</code></a>, and in colbert/modeling/checkpoint.py in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/checkpoint.py#L87"><code>Checkpoint.query</code></a> and <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/checkpoint.py#L93"><code>Checkpoint.doc</code></a> to calculate query and document token embeddings, respectively.</li>
+<li>colbert/distillation/scorer in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/distillation/scorer.py#L48"><code>Scorer._score_pairs</code></a>.</li>
+</ul>
+</section>
+<section id="pr-88898" class="level3">
+<h3 class="anchored" data-anchor-id="pr-88898">PR <a href="https://github.com/pytorch/pytorch/pull/88898">#88898</a></h3>
+<p>Fixes PyTorch <a href="https://github.com/pytorch/pytorch/issues/88873">#88873</a>:</p>
+<blockquote class="blockquote">
+<p>torch_extension.py should be fixed or ninja compile will fail.</p>
+</blockquote>
+<p>Gemini’s analysis: Because ColBERT uses the very feature this PR is fixing (torch.utils.cpp_extension.py), the change is directly relevant. This bug fix is important for any developer or user who needs to compile and run ColBERT on a Windows machine. It ensures that ColBERT’s performance-critical custom CUDA code can be built correctly, preventing potential compilation errors.</p>
+<p>ColBERT uses <code>torch.utils.cpp_extension</code> in the following files:</p>
+<ul>
+<li>colbert/modeling/colbert.py in <code>ColBERT.try_load_torch_extensions</code> to <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/colbert.py#L12">load <code>segmented_lookup.cpp</code></a> on CPU.</li>
+<li>colbert/search/index_storage.py in <code>IndexScorer.try_load_torch_extensions</code> to load <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/index_storage.py#L38">filter_pids.cpp</a> and <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/index_storage.py#L51">decompress_residuals.cpp</a>.</li>
+<li>colbert/search/strided_tensor.py in <code>StridedTensor.try_load_torch_extensions</code> to <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/strided_tensor.py#L26">load <code>segmented_lookup.cpp</code></a> on CPU.</li>
+<li>colbert/indexing/codecs/residual.py in <code>ResidualCode.try_load_torch_extensions</code> to load <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L103">decompress_residuals.cpp</a></li>
+</ul>
+<p><mark>This might be related to ColBERT <a href="https://github.com/stanford-futuredata/ColBERT/issues/371">#317</a></mark></p>
+</section>
+<section id="pr-90149" class="level3">
+<h3 class="anchored" data-anchor-id="pr-90149">PR <a href="https://github.com/pytorch/pytorch/pull/90149">#90149</a></h3>
+<blockquote class="blockquote">
+<p>Fix a static initialization order fiasco in c10d (#90149)</p>
+</blockquote>
+<p>Gemini’s analysis: Because ColBERT’s multi-GPU functionality is built directly on the PyTorch library that this PR is fixing, this change is highly relevant. This is a crucial stability improvement that makes ColBERT’s distributed training and inference more reliable by preventing potential crashes at startup.</p>
+<p><mark>If Gemini’s analysis is correct, this will make ColBERT’s multi-GPU functionality more reliable and might address related open issues.</mark></p>
+</section>
+<section id="prs-86956-86958" class="level3">
+<h3 class="anchored" data-anchor-id="prs-86956-86958">PRs <a href="https://github.com/pytorch/pytorch/pull/86956">#86956</a>, <a href="https://github.com/pytorch/pytorch/pull/86958">#86958</a></h3>
+<blockquote class="blockquote">
+<p>Fix issues with non-contiguous Tensor handling (#86956, #86958)</p>
+</blockquote>
+<p><mark>These are both MPS-related and will only affect ColBERT if we in the future choose to make it compatible with MPS</mark></p>
+</section>
+<section id="prs-94119-86240-91520-94442-94386" class="level3">
+<h3 class="anchored" data-anchor-id="prs-94119-86240-91520-94442-94386">PRs <a href="https://github.com/pytorch/pytorch/pull/94119">#94119</a>, <a href="https://github.com/pytorch/pytorch/pull/86240">#86240</a>, <a href="https://github.com/pytorch/pytorch/pull/91520">#91520</a>, <a href="https://github.com/pytorch/pytorch/pull/94442">#94442</a>, <a href="https://github.com/pytorch/pytorch/pull/94386">#94386</a></h3>
+<blockquote class="blockquote">
+<p>Fix issues with ops implementation torch.median (#90326, #88807), torch.{std,var} correction argument (#91203), torch.index_select (#94117, #91064), torch.cumsum (#94119), torch.where (#86240), torch.nn.Embedding (#82809), torch.nn.Softplus (#88555), torch.nn.functional.pad (#89864), torch.max (#91520), padding functions (#91522), torch.nn.functional.upsample (#91669), pooling functions (#91519, #94348), torch.nn.{NLLLoss,SmoothL1Loss} (#94226), torch.nn.SoftPlus (#94256), torch.masked_fill (#94263), torch.fill_ (#94479), torch.median (#94489), torch.nonzero (#94442), torch.nn.BatchNorm (#94351), torch.{min,max} (#94386), torch.nn.GELU (#94529), torch.nn.LSTM (#94889), #95137),torch.nn.Conv2d(#95078),torch.nn.functional.bilinear(#94892),torch.copy_ (#95272),torch.max_pool2d(#94963),torch.div (#95769)</p>
+</blockquote>
+<p>ColBERT uses topk in the following files:</p>
+<ul>
+<li><code>get_cells</code> in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/candidate_generation.py#L17">colbert/search/candidate_generation.py</a></li>
+<li><code>score_pids</code> in colbert/search/index_storage.py to <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/index_storage.py#L127">filter centroids by the threshold</a>, <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/index_storage.py#L152">filter <code>pids</code> using pruned centroid scores</a> and <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/index_storage.py#L161">filter <code>pids</code> using full centroid scores</a></li>
+<li>filter scores in <code>colbert_score_reduce</code> for the <code>"flipr"</code> interaction method: <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/colbert.py#L146">link1</a>, <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/colbert.py#L150">link 2</a></li>
+</ul>
+<p>ColBERT uses max/argmax in the following files:</p>
+<ul>
+<li><code>get_cells</code> if <code>ncells==1</code> in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/candidate_generation.py#L15">colbert/search/candidate_generation.py</a></li>
+<li>colbert/modeling/colbert.py in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/colbert.py#L121"><code>ColBERT.score</code></a></li>
+<li>colbert/modeling/colbert.py in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/colbert.py#L135"><code>colbert_score_reduce</code></a></li>
+<li>colbert/indexing/codecs/residual.py in <code>ResidualCodec.compress_into_codes</code> on <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L215">GPU</a> and <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L217">CPU</a></li>
+<li>colbert/search/strided_tensor.py in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/strided_tensor.py#L74">`StridedTensor.lookup</a></li>
+<li>colbert/search/strided_tensor_core.py in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/strided_tensor_core.py#L27"><code>StridedTensorCore.__init__</code></a></li>
+<li>colbert/modeling/checkpoint.py in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/checkpoint.py#L215">`Checkpoint.score</a></li>
+<li>colbert/indexing/utils.py in <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/utils.py#L48"><code>optimize_ivf</code></a></li>
+</ul>
+<p>ColBERT uses <code>torch.cumsum</code> in the following files to calculate <code>offsets</code>.:</p>
+<ul>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/utils.py#L50">colbert/indexing/utils.py</a></li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/strided_tensor_core.py#L31">colbert/search/strided_tensor_core.py</a></li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/strided_tensor.py#L48">colbert/search/strided_tensor.py</a></li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/index_storage.py#L68">colbert/search/index_storage.py</a></li>
+</ul>
+<p>ColBERT uses <code>torch.where</code> in the following files:</p>
+<ul>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/checkpoint.py#L49">colbert/modeling/checkpoint.py</a> to pool embeddings within each cluster.</li>
+</ul>
+<p>ColBERT uses <code>torch.nonzero</code> in the following files:</p>
+<ul>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/index_updater.py#L351">colbert/index_updater.py</a> to construct mask of where pids to be removed appear in ivf.</li>
+</ul>
+<p><mark>These are all MPS-related and will only affect ColBERT if we in the future choose to make it compatible with MPS.</mark></p>
+</section>
+<section id="prs-91120-94464" class="level3">
+<h3 class="anchored" data-anchor-id="prs-91120-94464">PRs <a href="https://github.com/pytorch/pytorch/pull/91120">#91120</a>, <a href="https://github.com/pytorch/pytorch/pull/94464">#94464</a></h3>
+<blockquote class="blockquote">
+<p>Fix issues with torch.bool for Unary ops (#91120), scatter ops (#94464)</p>
+</blockquote>
+<p>Claude’s analysis: Claude: The PR fixes compatibility issues where boolean tensors needed to be cast to int8 on older macOS versions, then cast back. This would be important for ColBERT’s masking operations which rely heavily on boolean tensors for attention and padding masks.</p>
+<p><mark>These are MPS-related and will only affect ColBERT if we in the future choose to make it compatible with MPS.</mark></p>
+</section>
+<section id="pr-94484" class="level3">
+<h3 class="anchored" data-anchor-id="pr-94484">PR <a href="https://github.com/pytorch/pytorch/pull/94484">#94484</a></h3>
+<blockquote class="blockquote">
+<p>Properly cast torch.int64 to torch.int32 for reduction ops and raise warning. (#94484)</p>
+</blockquote>
+<p>Claude’s analysiss: The PR changes TORCH_CHECK (which throws an error) to TORCH_WARN_ONCE (which just warns) and automatically casts int64 to int32 for min/max operations. This would allow ColBERT to run on MPS with int64 tensors instead of failing, though with potential precision loss.</p>
+<p><mark>MPS-related and will only affect ColBERT if we in the future choose to make it compatible with MPS.</mark></p>
+</section>
+<section id="prs-91120-94464-1" class="level3">
+<h3 class="anchored" data-anchor-id="prs-91120-94464-1">PRs <a href="https://github.com/pytorch/pytorch/pull/91197">#91120</a>, <a href="https://github.com/pytorch/pytorch/pull/91514">#94464</a></h3>
+<blockquote class="blockquote">
+<p>Fix handling of ops taking multiple dtypes as input (#91197, #91514)</p>
+</blockquote>
+<p>Claude’s analysis: The PR fixes MPS scatter to handle type mismatches between source and destination tensors automatically.</p>
+<p><mark>MPS-related and will only affect ColBERT if we in the future choose to make it compatible with MPS.</mark></p>
+</section>
+<section id="prs-91786-94662" class="level3">
+<h3 class="anchored" data-anchor-id="prs-91786-94662">PRs <a href="https://github.com/pytorch/pytorch/pull/91786">#91786</a>, <a href="https://github.com/pytorch/pytorch/pull/94662">#94662</a></h3>
+<blockquote class="blockquote">
+<p>Fix handling of channels last for torch.cat (#91786, #94662), torch.Conv2d (#91822, #94384), torch.nn.{ELU,ReLU,Hardswish} (#94664), torch.nn.BatchNorm (#94760), torch.nn.MaxPool2d (#94877)</p>
+</blockquote>
+<p>ColBERT uses <code>.cat</code> in the following files:</p>
+<ul>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/utils.py#L45">colbert/indexing/utils.py</a> to concatenate a list of tensors (<code>unique_pids_per_centroid</code>) into a single tensor (<code>ivf</code>).</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/index_manager.py#L23">colbert/indexing/index_manager.py</a> to concatenate multiple path names.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/strided_tensor_core.py#L31"></a> to calculate <code>offsets</code>.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/strided_tensor_core.py#L39"></a> to add padding to a tensor.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/distillation/scorer.py#L60"></a> to concatenate <code>scores</code>.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/collection_encoder.py#L38"></a> to concatenate document token embeddings.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L181"></a> to concatenate <code>codes</code> (centroid IDs).</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L182"></a> to concatenate <code>residuals</code>.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L220"></a> to concatenate <code>codes</code> (centroid IDs).</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L237"></a> to concatenate <code>centroids</code>.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L276"></a> to concatenate document token embeddings.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/strided_tensor.py#L51"></a> to concatenate <code>packed_tensor</code>.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/strided_tensor.py#L152"></a> to concatenate <code>all_orders</code>.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/strided_tensor.py#L155"></a> to concatenate <code>all_lengths</code>.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/index_updater.py#L101"></a> to concatenate <code>compressed_embs.codes</code> (centroid IDs corresponding to document token embeddings).</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/index_updater.py#L108"></a> to concatenate <code>compressed_embs.residuals</code>.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/index_updater.py#L117"></a> to concatenate <code>doclens</code>.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/index_updater.py#L431"></a> to concatenate <code>codes</code> (centroid IDs).</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/index_updater.py#L434"></a> to concatenate <code>residuals</code>.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/index_updater.py#L506"></a> to concatenate <code>codes</code> (centroid IDs).</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/index_updater.py#L507"></a> to concatenate <code>residuals</code>.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/checkpoint.py#L115"></a> to concatenate <code>batches</code> (of queries).</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/checkpoint.py#L168"></a> to concatenate document token embeddings (in order).</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/checkpoint.py#L169"></a> to concatenate <code>mask</code> for document token embeddings (in order).</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/utils/coalesce.py#L48"></a> to concatenate <code>code</code> chunks.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/index_storage.py#L69"></a> to concatenate <code>offsets</code>.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/index_storage.py#L149"></a> to concatenate <code>approx_scores</code>.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/tokenization/query_tokenization.py#L88"></a> to concatenate <code>ids</code> (for query tokens).</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/tokenization/query_tokenization.py#L89"></a> to concatenate <code>masks</code> (for query tokens).</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/tokenization/utils.py#L72"></a> to concatenate prefix token.</li>
+</ul>
+<p><mark>MPS-related and will only affect ColBERT if we in the future choose to make it compatible with MPS.</mark></p>
+</section>
+<section id="prs-94259-94278-95145-95762-95905" class="level3">
+<h3 class="anchored" data-anchor-id="prs-94259-94278-95145-95762-95905">PRs <a href="https://github.com/pytorch/pytorch/pull/94259">#94259</a>, <a href="https://github.com/pytorch/pytorch/pull/94278">#94278</a>, <a href="https://github.com/pytorch/pytorch/pull/95145">#95145</a>, <a href="https://github.com/pytorch/pytorch/pull/95762">#95762</a>, <a href="https://github.com/pytorch/pytorch/pull/95905">#95905</a></h3>
+<blockquote class="blockquote">
+<p>Fix view operations handling (#94259, #94278,#95145, #95762, #95905)</p>
+</blockquote>
+<p>Claude’s analysis: This PR fixes crashes in view operations when slicing with incorrect lengths, which ColBERT uses for tensor reshaping and indexing operations.</p>
+<p><mark>MPS-related and will only affect ColBERT if we in the future choose to make it compatible with MPS.</mark></p>
+</section>
+<section id="pr-87853" class="level3">
+<h3 class="anchored" data-anchor-id="pr-87853">PR <a href="87853">#87853</a></h3>
+<blockquote class="blockquote">
+<p>Move incorrectly placed closing curly brace of extern “C” block (#87853)</p>
+</blockquote>
+<p>Gemini’s analysis: This pull request is a foundational C++ correctness fix for the PyTorch framework. Because ColBERT compiles its own C++ extensions that depend on these core headers, this change is directly beneficial. It ensures the stability and reliability of ColBERT’s own build process, preventing potential compilation failures.</p>
+<p>ColBERT’s C++ extensions:</p>
+<ul>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/main/colbert/modeling/segmented_maxsim.cpp">segmented_maxsim.cpp</a></li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/main/colbert/search/filter_pids.cpp">filter_pids.cpp</a></li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/main/colbert/search/decompress_residuals.cpp">decompress_residuals.cpp</a></li>
+</ul>
+<p><mark>Unsure how to measure the impact but if it’s about reliability perhaps it will address some open issues. TBD.</mark></p>
+</section>
+<section id="pr-93322" class="level3">
+<h3 class="anchored" data-anchor-id="pr-93322">PR <a href="https://github.com/pytorch/pytorch/pull/93322">#93322</a></h3>
+<blockquote class="blockquote">
+<p>Fix MSVC compiler error in basic_ops.h (#93322)</p>
+</blockquote>
+<p>Gemini’s take: This pull request is a crucial build-system and correctness fix. It directly impacts ColBERT by ensuring that its custom C++ code can be compiled successfully on Windows machines that use the affected MSVC compiler. Without this fix, users in that environment would be unable to run ColBERT. This change makes ColBERT’s build process more robust and widens its platform compatibility.</p>
+<p><mark>TBD if this addressed open issues related to Windows machines.</mark></p>
+</section>
+<section id="pr-89310" class="level3">
+<h3 class="anchored" data-anchor-id="pr-89310">PR <a href="https://github.com/pytorch/pytorch/pull/89310">#89310</a></h3>
+<blockquote class="blockquote">
+<p>Fix a bug that redefines __STDC_FORMAT_MACROS (#89310)</p>
+</blockquote>
+<p>Gemini’s take: This pull request provides a stability and correctness fix to the underlying PyTorch framework. Because ColBERT compiles its own C++ code that depends on these core PyTorch headers, this change is directly beneficial. It makes ColBERT’s own compilation process more reliable and prevents a potential class of build failures.</p>
+<p><mark>Unsure how to measure the impact but if it’s about reliability perhaps it will address some open issues. TBD.</mark></p>
+</section>
+<section id="pr-90411" class="level3">
+<h3 class="anchored" data-anchor-id="pr-90411">PR <a href="https://github.com/pytorch/pytorch/pull/90411">#90411</a></h3>
+<blockquote class="blockquote">
+<p>Add manual cuda deps search logic (#90411)</p>
+</blockquote>
+<p>Gemini’s take: This PyTorch pull request adds a new mechanism to help PyTorch find its essential CUDA libraries (cuBLAS and cuDNN) on Linux systems.</p>
+<p><mark>Unsure how to measure the impact but if it’s about reliability perhaps it will address some open issues. TBD.</mark></p>
+</section>
+<section id="pr-89759" class="level3">
+<h3 class="anchored" data-anchor-id="pr-89759">PR <a href="https://github.com/pytorch/pytorch/pull/89759">#89759</a></h3>
+<blockquote class="blockquote">
+<p>Workaround for NumPy builds that ship with a broken Dlpack deleter (#89759)</p>
+</blockquote>
+<p><mark>TBD if this improves reliability as ColBERT uses NumPy</mark>/.</p>
+</section>
+<section id="pr-86288" class="level3">
+<h3 class="anchored" data-anchor-id="pr-86288">PR <a href="https://github.com/pytorch/pytorch/pull/86288">#86288</a></h3>
+<blockquote class="blockquote">
+<p>Workaround MSVC ICE due to constexpr char* template argument (#86288)</p>
+</blockquote>
+<p>Gemini’s take: It directly impacts ColBERT by ensuring that its custom C++ code can be compiled successfully on Windows machines that use an affected MSVC compiler.</p>
+<p><mark>TBD if this addressed open issues related to Windows machines.</mark></p>
+</section>
+<section id="pr-85408" class="level3">
+<h3 class="anchored" data-anchor-id="pr-85408">PR <a href="https://github.com/pytorch/pytorch/pull/85408">#85408</a></h3>
+<blockquote class="blockquote">
+<p>Add define to fix issue with compatibility with latest Windows SDK (#85408)</p>
+</blockquote>
+<p>Gemini’s take: It directly impacts ColBERT by ensuring that the underlying PyTorch framework can be successfully built on modern Windows environments.</p>
+<p><mark>TBD if this addressed open issues related to Windows machines.</mark></p>
+</section>
+</section>
+<section id="improvements" class="level2">
+<h2 class="anchored" data-anchor-id="improvements">Improvements</h2>
+<p>These PyTorch PRs are related to improvements, which could affect ColBERT by speeding things up (and therefore seeing a speed up in indexing/search/training time) or changing baseline indexing/search/training artifacts if improvements impact numeric precision.</p>
+<section id="pr-56398" class="level3">
+<h3 class="anchored" data-anchor-id="pr-56398">PR <a href="https://github.com/pytorch/pytorch/pull/56398">#56398</a></h3>
+<blockquote class="blockquote">
+<p>Set std/var correction overloads default value to None (#56398)</p>
+</blockquote>
+<p><mark>Unclear if and how this affects ColBERT but highlighting it since it changes code in PyTorch’s aten/src/ATen/native.</mark></p>
+</section>
+<section id="pr-86309" class="level3">
+<h3 class="anchored" data-anchor-id="pr-86309">PR <a href="https://github.com/pytorch/pytorch/pull/86309">#86309</a></h3>
+<blockquote class="blockquote">
+<p>Add support for int32 indices in index/index_put ops (#86309)</p>
+</blockquote>
+<p><mark>I think this PR is related to <a href="https://github.com/stanford-futuredata/ColBERT/pull/180">this ColBERT PR</a> which I think is related to <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/index_storage.py#L163">this line of code in <code>IndexScorer</code></a></mark>.</p>
+</section>
+<section id="pr-87022" class="level3">
+<h3 class="anchored" data-anchor-id="pr-87022">PR <a href="https://github.com/pytorch/pytorch/pull/87022">#87022</a></h3>
+<blockquote class="blockquote">
+<p>Enable where to have cpu scalar args (#87022)</p>
+</blockquote>
+<p>ColBERT uses <code>torch.where</code> in the following files:</p>
+<ul>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/checkpoint.py#L49">colbert/modeling/checkpoint.py</a> to pool embeddings within each cluster.</li>
+</ul>
+<p><mark>Unclear if this will affect ColBERT but there are currently no open issues related to <code>torch.where</code></mark>.</p>
+</section>
+<section id="pr-90914" class="level3">
+<h3 class="anchored" data-anchor-id="pr-90914">PR <a href="https://github.com/pytorch/pytorch/pull/90914">#90914</a></h3>
+<blockquote class="blockquote">
+<p>Add support for NumPy scalars to torch.tensor.asarray (#90914)</p>
+</blockquote>
+<p><mark>Found <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L198">1 use of <code>asarray</code></a> but it doesn’t deal with a scalar so probably won’t be affected</mark>.</p>
+</section>
+<section id="pr-85926" class="level3">
+<h3 class="anchored" data-anchor-id="pr-85926">PR <a href="https://github.com/pytorch/pytorch/pull/85926">#85926</a></h3>
+<blockquote class="blockquote">
+<p>Enable out variant of torch.max(#85926)</p>
+</blockquote>
+<p><mark>Unclear what this PR does but highlighting it since ColBERT uses <code>torch.max</code></mark>.</p>
+</section>
+<section id="pr-91846" class="level3">
+<h3 class="anchored" data-anchor-id="pr-91846">PR <a href="https://github.com/pytorch/pytorch/pull/91846">#91846</a></h3>
+<blockquote class="blockquote">
+<p>Implement faster gradient clipping using foreach function (#91846)</p>
+</blockquote>
+<p>ColBERT uses <code>torch.nn.utils.clip_grad_norm_</code> in two lines:</p>
+<ul>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/utils/amp.py#L26">colbert/utils/amp.py#L26</a></li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/utils/amp.py#L31">colbert/utils/amp.py#L31</a></li>
+</ul>
+<p><mark>IIUC this won’t affect ColBERT since it doesn’t set <code>foreach</code> in <code>torch.nn.utils.clip_grad_norm_</code>.</mark></p>
+</section>
+<section id="pr-92334" class="level3">
+<h3 class="anchored" data-anchor-id="pr-92334">PR <a href="https://github.com/pytorch/pytorch/pull/92334">#92334</a></h3>
+<blockquote class="blockquote">
+<p>Enable DDP to handle custom dataclass forward outputs (#92334)</p>
+</blockquote>
+<p><mark>ColBERT does use DistributedDataParallel (<a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/training/training.py#L56">in <code>train</code></a>) butit’s not being passed a custom dataclass, it’s being passed a <code>colbert</code> model so I don’t think this PR applies.</mark></p>
+</section>
+<section id="pr-89137" class="level3">
+<h3 class="anchored" data-anchor-id="pr-89137">PR <a href="https://github.com/pytorch/pytorch/pull/89137">#89137</a></h3>
+<blockquote class="blockquote">
+<p>Skip collective communications for NO_SHARD in clip_grad_norm_ (#89137)</p>
+</blockquote>
+<p><mark>ColBERT doesn’t use FullyShardedDataParallel but it <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/utils/amp.py#L26">does use <code>torch.nn.utils.clip_grad_norm</code></a> so not sure if this PyTorch PR affects it</mark>.</p>
+</section>
+<section id="pr-90028" class="level3">
+<h3 class="anchored" data-anchor-id="pr-90028">PR <a href="https://github.com/pytorch/pytorch/pull/90028">#90028</a></h3>
+<blockquote class="blockquote">
+<p>Apply the “largest” dtype across all parameters/gradients as defined by PyTorch’s type promotion semantics for the total norm returned in clip_grad_norm_ for low prec grads (#90028)</p>
+</blockquote>
+<p><mark>ColBERT doesn’t use FullyShardedDataParallel but it <a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/utils/amp.py#L26">does use <code>torch.nn.utils.clip_grad_norm</code></a> so not sure if this PyTorch PR affects it</mark>.</p>
+</section>
+<section id="pr-85692" class="level3">
+<h3 class="anchored" data-anchor-id="pr-85692">PR <a href="https://github.com/pytorch/pytorch/pull/85692">#85692</a></h3>
+<blockquote class="blockquote">
+<p>Set CUDA_MODULE_LOADING to LAZY when not set by the user (#85692)</p>
+</blockquote>
+<p><mark>Unclear exactly what this does but it relates to the CUDA_MODULE_LOADING env var which is not set in ColBERT</mark></p>
+</section>
+<section id="pr-89172" class="level3">
+<h3 class="anchored" data-anchor-id="pr-89172">PR <a href="https://github.com/pytorch/pytorch/pull/89172">#89172</a></h3>
+<blockquote class="blockquote">
+<p>Add an option to disable reduced precision reductions for BF16 GEMM (#89172)</p>
+</blockquote>
+<p><mark>Unclear exactly what this does, but in the PR they mentioned it improves H100 usage, so I’ll keep that in mind.</mark></p>
+</section>
+<section id="pr-91436" class="level3">
+<h3 class="anchored" data-anchor-id="pr-91436">PR <a href="https://github.com/pytorch/pytorch/pull/91436">#91436</a></h3>
+<blockquote class="blockquote">
+<p>Add an env variable to disable addmm_cuda_lt kernel (#91436)</p>
+</blockquote>
+<p><mark>Unclear what this does, but it’s adding a variable, so it’s a new feature.</mark></p>
+</section>
+<section id="pr-86041-93022" class="level3">
+<h3 class="anchored" data-anchor-id="pr-86041-93022">PR <a href="https://github.com/pytorch/pytorch/pull/86041">#86041</a>, <a href="https://github.com/pytorch/pytorch/pull/93022">#93022</a></h3>
+<blockquote class="blockquote">
+<p>Clean up flatbuffer lib dependency and fixed its test to match pkl models (#86041, #93022)</p>
+</blockquote>
+<p><mark>I am not sure what these PRs are doing. The title refers “pkl models” which ColBERT doesn’t use to my knowledge.</mark></p>
+</section>
+<section id="pr-93898" class="level3">
+<h3 class="anchored" data-anchor-id="pr-93898">PR <a href="https://github.com/pytorch/pytorch/pull/93898">#93898</a></h3>
+<blockquote class="blockquote">
+<p>Type corrections to avoid unnecessary static_casts (#93898)</p>
+</blockquote>
+<p><mark>Unclear what this PR does but it touches a lot of what seem to be core files so I’m flagging it</mark>.</p>
+</section>
+<section id="pr-87245" class="level3">
+<h3 class="anchored" data-anchor-id="pr-87245">PR <a href="https://github.com/pytorch/pytorch/pull/87245">#87245</a></h3>
+<blockquote class="blockquote">
+<p>Integrate all ONNX operators with a new JitScalarType API (#87245)</p>
+</blockquote>
+<p><mark>It’s onnx related, which ColBERT doesn’t use, but it also says: “this PR addresses not only the issue above, but the entire family of issues related to torch._C.Value.type() parsing when scalarType() or dtype() is not available.”</mark></p>
+</section>
+<section id="pr-87343" class="level3">
+<h3 class="anchored" data-anchor-id="pr-87343">PR <a href="https://github.com/pytorch/pytorch/pull/87343">#87343</a></h3>
+<blockquote class="blockquote">
+<p>Add share_from_this to torch::jit::Graph (#87343)</p>
+</blockquote>
+<p><mark>Is ONNX related, but unclear if it affects anything else?</mark></p>
+</section>
+<section id="pr-84789" class="level3">
+<h3 class="anchored" data-anchor-id="pr-84789">PR <a href="https://github.com/pytorch/pytorch/pull/84789">#84789</a></h3>
+<blockquote class="blockquote">
+<p>Use optional op to keep None in results for ONNX internal tests (#84789)</p>
+</blockquote>
+<p><mark>Is ONNX related, but unclear if it affects anything else?</mark></p>
+</section>
+<section id="pr-86218" class="level3">
+<h3 class="anchored" data-anchor-id="pr-86218">PR <a href="https://github.com/pytorch/pytorch/pull/86218">#86218</a></h3>
+<blockquote class="blockquote">
+<p>Add fp16 support for torch.nn.Linear (#89774), torch.nn.GELU (#86218)</p>
+</blockquote>
+<p><mark>MPS-related and will only affect ColBERT if we in the future choose to make it compatible with MPS.</mark></p>
+</section>
+<section id="pr-91884" class="level3">
+<h3 class="anchored" data-anchor-id="pr-91884">PR <a href="https://github.com/pytorch/pytorch/pull/91884">#91884</a></h3>
+<blockquote class="blockquote">
+<p>Add support for empty Tensors in torch.bitwise_not (#87286), torch.nn.LayerNorm (#94212), many backward functions (#94343), torch.nn.functional.hardswish (#94342), torch.topk (#91884), torch.arange (#94485), torch.linal.inv (#94551),</p>
+</blockquote>
+<p><mark>MPS-related and will only affect ColBERT if we in the future choose to make it compatible with MPS.</mark></p>
+</section>
+<section id="pr-91734" class="level3">
+<h3 class="anchored" data-anchor-id="pr-91734">PR <a href="https://github.com/pytorch/pytorch/pull/91734">#91734</a></h3>
+<blockquote class="blockquote">
+<p>Add support for reduction ops on multiple axis at a time (#91734)</p>
+</blockquote>
+<p><mark>MPS-related and will only affect ColBERT if we in the future choose to make it compatible with MPS.</mark></p>
+</section>
+<section id="pr-94639" class="level3">
+<h3 class="anchored" data-anchor-id="pr-94639">PR <a href="https://github.com/pytorch/pytorch/pull/94639">#94639</a></h3>
+<blockquote class="blockquote">
+<p>Add support for k greater than 16 for torch.topk (#94639)</p>
+</blockquote>
+<p><mark>MPS-related and will only affect ColBERT if we in the future choose to make it compatible with MPS.</mark></p>
+</section>
+<section id="pr-91576" class="level3">
+<h3 class="anchored" data-anchor-id="pr-91576">PR <a href="https://github.com/pytorch/pytorch/pull/91576">#91576</a></h3>
+<blockquote class="blockquote">
+<p>Simplify OpenMP detection in CMake (#91576)</p>
+</blockquote>
+<p>Claude’s take: While ColBERT should continue working, there could be subtle performance or compilation differences depending on how PyTorch’s simplified OpenMP detection affects the runtime compilation of ColBERT’s C++ extensions, particularly in multi-threaded scenarios.</p>
+<p><mark>Unclear what this PR is doing but flagging it as it might improve performance as Claude states.</mark></p>
+</section>
+</section>
+<section id="deprecations" class="level2">
+<h2 class="anchored" data-anchor-id="deprecations">Deprecations</h2>
+<p>These are PRs I would think would have a significant impact if applicable.</p>
+<section id="pr-92143" class="level3">
+<h3 class="anchored" data-anchor-id="pr-92143">PR <a href="https://github.com/pytorch/pytorch/pull/92143">#92143</a></h3>
+<blockquote class="blockquote">
+<p>Deprecate tensor.mT,tensor.T,tensor.mH,tensor.H on 0D-tensors (#92143)</p>
+</blockquote>
+<p><mark>There are five instances where .T is used, but pretty sure none of these are 0-D tensors, will confirm</mark>:</p>
+<ul>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/candidate_generation.py#L13">colbert/search/candidate_generation.py#L13</a>: cosine similarity between centroids and query token embeddings.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/search/candidate_generation.py#L43">colbert/search/candidate_generation.py#L43</a>: used in <code>generate_candidate_scores</code> which uses <code>lookup_eids</code> which I can’t find anywhere else in the codebase.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/modeling/colbert.py#L195">colbert/modeling/colbert.py#L195</a>: Cosine similarity between query and document token embeddings.</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L215">colbert/indexing/codecs/residual.py#L215</a>: Cosine similarity between centroids and document token embeddings (GPU).</li>
+<li><a href="https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/indexing/codecs/residual.py#L217">colbert/indexing/codecs/residual.py#L217</a>: Cosine similarity between centroids and document token embeddings (CPU).</li>
+</ul>
+</section>
+</section>
+<section id="performance" class="level2">
+<h2 class="anchored" data-anchor-id="performance">Performance</h2>
+<p>Similar to improvements, I would only expect this set of PRs to improve ColBERT performance, keeping an eye on how different artifacts changed because of that.</p>
+<section id="pr-93234" class="level3">
+<h3 class="anchored" data-anchor-id="pr-93234">PR <a href="https://github.com/pytorch/pytorch/pull/93234">#93234</a></h3>
+<blockquote class="blockquote">
+<p>Improve performance for functional.multi_head_attention_forward() (#93234, #89847)</p>
+</blockquote>
+<p><mark>ColBERT uses BERT, which has its own attention implementation, so this likely wouldn’t impact it unless the BERT model specifically uses <code>torch.nn.functional.multi_head_attention_forward</code> or <code>torch.nn.MultiheadAttention</code>.</mark></p>
+</section>
+<section id="pr-84981" class="level3">
+<h3 class="anchored" data-anchor-id="pr-84981">PR <a href="https://github.com/pytorch/pytorch/pull/84981">#84981</a></h3>
+<blockquote class="blockquote">
+<p>Use atomicAdd for bfloat16 in Ampere and above (#84981)</p>
+</blockquote>
+<p>Gemini’s take: This pull request directly accelerates a fundamental operation used during the training of ColBERT. By replacing a slow, emulated function with a fast, hardware-native instruction, this change leads to a noticeable increase in training speed for anyone training ColBERT with bfloat16 mixed precision on an Ampere or newer GPU.</p>
+<p><mark>If Gemini is correct, then I will see a speedup in training.</mark></p>
+</section>
+<section id="pr-94034" class="level3">
+<h3 class="anchored" data-anchor-id="pr-94034">PR <a href="https://github.com/pytorch/pytorch/pull/94034">#94034</a></h3>
+<blockquote class="blockquote">
+<p>Add various performance fixes to c++ STL usage (#94034)</p>
+</blockquote>
+<p>Gemini’s take: The changes in this PR touch several core PyTorch components that are critical to ColBERT’s operation:</p>
+<ul>
+<li>Autograd Engine (function.h): Every gradient calculation during training will benefit from these optimizations.</li>
+<li>CUDA Communication (comm.cpp): The code that handles broadcasting and gathering tensors across GPUs for multi-GPU training and inference is made more efficient.</li>
+<li>Mixed Precision (autocast_mode.h): The logic for automatic mixed precision, which is key for training ColBERT efficiently, is also slightly optimized.</li>
+</ul>
+<p><mark>If Gemini is correct, then I will see a speed up in all aspects of ColBERT. </mark></p>
+</section>
+<section id="pr-86568" class="level3">
+<h3 class="anchored" data-anchor-id="pr-86568">PR <a href="https://github.com/pytorch/pytorch/pull/86568">#86568</a></h3>
+<blockquote class="blockquote">
+<p>Add fmsub to vectorization primitives (#86568)</p>
+</blockquote>
+<p>Gemini’s take: This pull request is a CPU-specific performance optimization. It adds support for the fmsub (fused multiply-subtract) instruction to PyTorch’s CPU vectorization library. This allows PyTorch to perform the operation (a * b) - c in a single, faster instruction on modern CPUs that support it (e.g., via AVX or NEON).</p>
+<p><mark>I’m pretty sure ColBERT doesn’t use multiply-subtract, but keeping it in here just in case it comes up. </mark></p>
+</section>
+<section id="pr-92300" class="level3">
+<h3 class="anchored" data-anchor-id="pr-92300">PR <a href="https://github.com/pytorch/pytorch/pull/92300">#92300</a></h3>
+<blockquote class="blockquote">
+<p>Fix biasadd OMP perf issue for the packed MKL SGEMM (#92300)</p>
+</blockquote>
+<p>Gemini’s take: This pull request is a CPU-specific performance optimization. It fixes a parallelization issue within the Intel MKL (Math Kernel Library) backend for linear layers. This change improves the efficiency of adding a bias term to the output of a matrix multiplication when running on a CPU.</p>
+<p><mark>If Gemini is correct, I would expect a speedup on CPU. </mark></p>
+</section>
+<section id="pr-91114" class="level3">
+<h3 class="anchored" data-anchor-id="pr-91114">PR <a href="https://github.com/pytorch/pytorch/pull/91114">#91114</a></h3>
+<blockquote class="blockquote">
+<p>Increase performance of torch.add{cmul,cdiv,mm}(#94214, #94534)torch.multinomial (#86342), faster op launch time (#86437), torch.linear (#91114), view handling (#91743, #94218), convolutions(#94661), scatter/gather (#94663)</p>
+</blockquote>
+<p>Gemini’s take: While the Adam optimizer used by ColBERT does use the addcdiv operation, this is executed on the GPU via CUDA, not MPS. This pull request is a performance optimization for the torch.nn.Linear layer, but it is exclusively for the MPS (Metal Performance Shaders) backend.</p>
+<p><mark>MPS-related and will only affect ColBERT if we in the future choose to make it compatible with MPS.</mark></p>
+</section>
+</section>
+<section id="closing-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="closing-thoughts">Closing Thoughts</h2>
+<p>Based on my analysis, I’m optimistic about upgrading ColBERT from torch==1.13.1 to 2.0. The upgrade should deliver concrete benefits with reasonable testing overhead. Performance-wise, I’ll be watching for training time improvements from the faster <code>foreach</code> optimizer implementations and expect speedups across all aspects of ColBERT from C++ optimizations and CUDA improvements. For validation, I’ll need to check for numeric differences in indexing/search artifacts from half-precision bug fixes and benchmark retrieval quality metrics after reindexing to avoid regressions. The reliability improvements should make ColBERT’s multi-GPU functionality more reliable and might address related open issues. Plus there are fixes for operations like <code>topk</code> and <code>torch.load</code> that ColBERT uses extensively. Most MPS-related changes will only affect ColBERT if we choose future compatibility, so they’re not immediate concerns but good to have.</p>
+<p>My next step will be to establish training time benchmarks and indexing/retrieval/training baseline artifacts so that I can concretely monitor even subtle performance/behavior changes when using <code>torch==2.0</code> in my development branch.</p>
+
+
+</section>
+
+ ]]></description>
+  <category>ColBERT</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-07-27-torch-colbert/</guid>
+  <pubDate>Sun, 27 Jul 2025 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>TIL: Custom Composer Callback to Push Checkpoints to HuggingFace Hub During Training.</title>
   <dc:creator>Vishal Bakshi</dc:creator>
@@ -23874,515 +24590,6 @@ font-style: inherit;">49152</span>)</span></code></pre></div>
   <category>LLM</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2025-05-04-Understanding-Sequence-Packing/</guid>
   <pubDate>Sun, 04 May 2025 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>Initial Manual Scoring Results for TinyStories Models</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2025-05-01-TSL-Initial-Scoring-Results/</link>
-  <description><![CDATA[ 
-
-
-
-
-<section id="recap" class="level2">
-<h2 class="anchored" data-anchor-id="recap">Recap</h2>
-<p>In this post, I’m going to analyze the initial manual scoring results for my baseline models’ text generations given my 150 evaluation prompts across six scoring categories and 18 criteria. A quick recap of what I’ve done so far:</p>
-<ul>
-<li>Defined scoring criteria</li>
-<li>Curated a set of eval prompts based on each scoring category</li>
-<li>Created a fast HTML app where I can perform my scoring activities</li>
-</ul>
-<p>The raw scores analyzed in this blog post can be found in <a href="https://github.com/vishalbakshi/TinyScaleLab">my TinyScaleLab repo</a>.</p>
-</section>
-<section id="evaluation-categories" class="level2">
-<h2 class="anchored" data-anchor-id="evaluation-categories">Evaluation Categories</h2>
-<p>I have six scoring categories that I’m evaluating my models on:</p>
-<section id="foundational-language-capabilities" class="level3">
-<h3 class="anchored" data-anchor-id="foundational-language-capabilities">Foundational language capabilities</h3>
-<ul>
-<li>Grammar</li>
-<li>Context-Tracking (Consistency)</li>
-</ul>
-</section>
-<section id="emergent-capabilities" class="level3">
-<h3 class="anchored" data-anchor-id="emergent-capabilities">Emergent capabilities</h3>
-<ul>
-<li>Factual Knowledge</li>
-<li>Reasoning</li>
-<li>Creativity</li>
-</ul>
-</section>
-<section id="story-related-capabilities" class="level3">
-<h3 class="anchored" data-anchor-id="story-related-capabilities">Story-related capabilities</h3>
-<ul>
-<li>Plot</li>
-</ul>
-<p>My goal was to generate prompts that either isolate (Factual Knowledge, Reasoning, Context-Tracking) or elicit opportunities to exhibit (Plot, Creativity) scoring categories. I wanted to make the job easier first for myself, and then use that as a proxy of making the job of the LLM judge easier to evaluate scoring categories in a focused way.</p>
-</section>
-</section>
-<section id="baseline-models" class="level2">
-<h2 class="anchored" data-anchor-id="baseline-models">Baseline Models</h2>
-<p>I’ve chosen three models as my baseline because they’re similar in size to the models that I’m going to be training in this project:</p>
-<ul>
-<li>TinyStories-1M (~3.7 million parameters)</li>
-<li>TinyStories-8M (~20 million parameters)</li>
-<li>TinyStories-28M (~60 million parameters)</li>
-</ul>
-</section>
-<section id="generation-script" class="level2">
-<h2 class="anchored" data-anchor-id="generation-script">Generation Script</h2>
-<p>I’m using a pretty standard generation script. Things I want to highlight:</p>
-<ul>
-<li>Making sure the padding side is left so that we’re not generating tokens based on padding tokens</li>
-<li><code>model.eval()</code> and <code>torch.no_grad()</code> are things that I always make sure to do so that it’s somewhat deterministic when it’s expected to be deterministic</li>
-<li>I’m doing <code>do_sample=False</code> and <code>num_beams=5</code> because that was published by the authors as their parameters for generation</li>
-<li>I have a minimum and maximum length, which I’ll talk about at the end about how I think that might change moving forward</li>
-</ul>
-</section>
-<section id="eval-prompts" class="level2">
-<h2 class="anchored" data-anchor-id="eval-prompts">Eval Prompts</h2>
-<p>My current eval prompts set includes:</p>
-<ul>
-<li>25 unique prompts for Reasoning</li>
-<li>25 unique prompts for Factual Knowledge</li>
-<li>25 prompts each for Context-Tracking, Plot and Creativity (with some overlap)</li>
-<li>25 prompts for Grammar (5 prompts sampled from the other 5 categories)</li>
-</ul>
-<p>That’s 150 total prompts.</p>
-</section>
-<section id="scoring-methodology" class="level2">
-<h2 class="anchored" data-anchor-id="scoring-methodology">Scoring Methodology</h2>
-<p>I have six categories across 18 criteria, evaluating generations from three models on 150 prompts each. The scores that I’m providing for each criteria are either 0, 0.5, and 1.0, taken from the Tiny Stories paper (though they didn’t quite use it the same way I’m using it), in Section 4.2 (Figures 9/10/11) where they use scoring levels success (green), failure (red), and partial success (yellow).</p>
-</section>
-<section id="overall-results" class="level2">
-<h2 class="anchored" data-anchor-id="overall-results">Overall Results</h2>
-<p>First, let’s look at the average value across all categories and criteria for each model:</p>
-<table class="caption-top table">
-<thead>
-<tr class="header">
-<th>model_name</th>
-<th>score_value</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>roneneneldan/TinyStories-1M</td>
-<td>0.25</td>
-</tr>
-<tr class="even">
-<td>roneneneldan/TinyStories-8M</td>
-<td>0.49</td>
-</tr>
-<tr class="odd">
-<td>roneneneldan/TinyStories-28M</td>
-<td>0.61</td>
-</tr>
-</tbody>
-</table>
-<p>As I would expect, as model size increases, the average score value increases. The 1M parameter model (which actually has 3.7M parameters) has an average score of 0.25. The 8M parameter model (which is closer to 20M parameters) has an average score of about 0.5. And the 28M parameter model (which has about 60M parameters) has an average score of 0.61.</p>
-<p>A parameter count <em>increase</em> of 4x (16.3M increase from 3.7M to 20M) yields an overall mean score <em>increase</em> of 1x (0.25 to 0.50). A parameter count <em>increase</em> of 2x (40M increase from 20M to 60M) yields an overall mean score <em>increase</em> of 25% (0.49 to 0.61). There are decreasing gains overall when increasing parameter count. For a 125M parameter model (that I’m planning to train), I would expect &lt;10% increase from a mean overall score of 0.61.</p>
-</section>
-<section id="scores-by-category" class="level2">
-<h2 class="anchored" data-anchor-id="scores-by-category">Scores by Category</h2>
-<p>Next, let’s look at how these models are doing for each of the categories overall:</p>
-<table class="caption-top table">
-<thead>
-<tr class="header">
-<th></th>
-<th>1M</th>
-<th>8M</th>
-<th>28M</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Context-Tracking</td>
-<td>0.14</td>
-<td>0.51</td>
-<td>0.63</td>
-</tr>
-<tr class="even">
-<td>Creativity</td>
-<td>0.12</td>
-<td>0.16</td>
-<td>0.32</td>
-</tr>
-<tr class="odd">
-<td>Factual Knowledge</td>
-<td>0.08</td>
-<td>0.32</td>
-<td>0.40</td>
-</tr>
-<tr class="even">
-<td>Grammar</td>
-<td>0.59</td>
-<td>0.82</td>
-<td>0.86</td>
-</tr>
-<tr class="odd">
-<td>Plot</td>
-<td>0.10</td>
-<td>0.42</td>
-<td>0.60</td>
-</tr>
-<tr class="even">
-<td>Reasoning</td>
-<td>0.20</td>
-<td>0.44</td>
-<td>0.70</td>
-</tr>
-</tbody>
-</table>
-<p>Some interesting things to point out:</p>
-<p>The highest category by score for my 1M parameter model is grammar, by farL 0.59. That’s about three times as large as any other category. This is in line with what I read in the TinyStories paper, that grammar appears first as a capability.</p>
-<p>The worst categories, even for the largest model that I tested, were Creativity and Factual Knowledge. Creativity in particular was the lowest scoring, and this also tracks with the TinyStories paper, because they had shown that creativity only really appears at large hidden dimension sizes. And even then, the maximum value of creativity (8s and 9s out of 10) was only available for models like GPT-4.</p>
-<p>Factual Knowledge was also significantly lower than the other four categories.</p>
-<p>The other category I want to highlight is Reasoning. The Reasoning score for the smallest model is 0.2, it doubles to 0.44 at 8M, and then it goes up by another 60 percent to 0.7 for the 28M model. That’s pretty solid! 70%, 7 out of 10. So, if we were talking about school grades, a 70 percent is passing. Very cool to see reasoning potential, even for the tiniest model evaluated.</p>
-<p>In every case, there is an increase as we go from 1M to 8M to 28M model name. In some cases, the jump comes later, such as for Creativity. In most cases, the jump happens between the 1M and 8M models.</p>
-</section>
-<section id="scoring-by-criteria" class="level2">
-<h2 class="anchored" data-anchor-id="scoring-by-criteria">Scoring by Criteria</h2>
-<p>Now let’s look at each criteria for each category:</p>
-<section id="emergent-capabilities-creativity-factual-knowledge-and-reasoning" class="level3">
-<h3 class="anchored" data-anchor-id="emergent-capabilities-creativity-factual-knowledge-and-reasoning">Emergent Capabilities: Creativity, Factual Knowledge and Reasoning</h3>
-<table class="caption-top table">
-<colgroup>
-<col style="width: 78%">
-<col style="width: 7%">
-<col style="width: 7%">
-<col style="width: 7%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Factual Knowledge</th>
-<th>1M</th>
-<th>8M</th>
-<th>28M</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Completion contains only correct factual information relevant to the prompt</td>
-<td>0.08</td>
-<td>0.32</td>
-<td>0.4</td>
-</tr>
-</tbody>
-</table>
-<table class="caption-top table">
-<colgroup>
-<col style="width: 79%">
-<col style="width: 6%">
-<col style="width: 6%">
-<col style="width: 6%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Reasoning</th>
-<th>1M</th>
-<th>8M</th>
-<th>28M</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Completion demonstrates correct logical reasoning relevant to the prompt</td>
-<td>0.2</td>
-<td>0.44</td>
-<td>0.7</td>
-</tr>
-</tbody>
-</table>
-<table class="caption-top table">
-<colgroup>
-<col style="width: 73%">
-<col style="width: 8%">
-<col style="width: 8%">
-<col style="width: 8%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Creativity</th>
-<th>1M</th>
-<th>8M</th>
-<th>28M</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Character behavioral and emotional responses are innovative</td>
-<td>0.00</td>
-<td>0.04</td>
-<td>0.22</td>
-</tr>
-<tr class="even">
-<td>The completion contains unique details to the story world</td>
-<td>0.02</td>
-<td>0.12</td>
-<td>0.34</td>
-</tr>
-<tr class="odd">
-<td>The completion creates fresh situations</td>
-<td>0.00</td>
-<td>0.08</td>
-<td>0.20</td>
-</tr>
-<tr class="even">
-<td>The completion offers unexpected or novel elements</td>
-<td>0.48</td>
-<td>0.42</td>
-<td>0.50</td>
-</tr>
-</tbody>
-</table>
-<p>Factual Knowledge and Reasoning only had one criteria each. For Factual Knowledge, I was assessing if the completion contains only correct factual information relevant to the prompt. For Reasoning, I was assessing if the completion demonstrates correct logical reasoning relevant to the prompt.</p>
-<p>For Creativity, note that the smallest model performs well for the criteria “The completion offers unexpected or novel elements.” Since I was isolating Grammar, Plot and Context-Tracking from Creativity, the tiniest model could deviate from Plot/Context and still get a high score for this criterion, making it the lowest bar to cross. For the other three Creativity criteria, the 1M model has negligible skill.</p>
-</section>
-<section id="foundational-language-capabilities-grammar-and-context-tracking" class="level3">
-<h3 class="anchored" data-anchor-id="foundational-language-capabilities-grammar-and-context-tracking">Foundational Language Capabilities: Grammar and Context-Tracking</h3>
-<table class="caption-top table">
-<colgroup>
-<col style="width: 73%">
-<col style="width: 8%">
-<col style="width: 8%">
-<col style="width: 8%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Grammar</th>
-<th>1M</th>
-<th>8M</th>
-<th>28M</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Age-appropriate vocabulary usage</td>
-<td>1.00</td>
-<td>1.00</td>
-<td>0.98</td>
-</tr>
-<tr class="even">
-<td>Dialogue formatting and punctuation</td>
-<td>1.00</td>
-<td>0.96</td>
-<td>0.98</td>
-</tr>
-<tr class="odd">
-<td>Proper use of pronouns and referents</td>
-<td>0.56</td>
-<td>0.88</td>
-<td>0.90</td>
-</tr>
-<tr class="even">
-<td>Sentence structure logic, clarity and completion</td>
-<td>0.14</td>
-<td>0.62</td>
-<td>0.70</td>
-</tr>
-<tr class="odd">
-<td>Tense consistency throughout the completion</td>
-<td>0.26</td>
-<td>0.66</td>
-<td>0.74</td>
-</tr>
-</tbody>
-</table>
-<table class="caption-top table">
-<colgroup>
-<col style="width: 79%">
-<col style="width: 6%">
-<col style="width: 6%">
-<col style="width: 6%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Context-Tracking</th>
-<th>1M</th>
-<th>8M</th>
-<th>28M</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Completion maintains complete coherence with prompt</td>
-<td>0.20</td>
-<td>0.62</td>
-<td>0.64</td>
-</tr>
-<tr class="even">
-<td>Correctly references/tracks all objects, characters, and their attributes</td>
-<td>0.20</td>
-<td>0.52</td>
-<td>0.68</td>
-</tr>
-<tr class="odd">
-<td>Maintains consistent narrative flow</td>
-<td>0.02</td>
-<td>0.40</td>
-<td>0.56</td>
-</tr>
-</tbody>
-</table>
-<p>For Grammar, the age-appropriate vocabulary usage was the easiest to score. These models don’t really generate anything that’s not within the TinyStories dataset.</p>
-<p>Sentence structure, logic, clarity, and completion had the biggest jump from 1M to 8M, going from 0.14 to 0.62. That matches my experiencing scoring: the small model had terrible structure, logic, clarity, and completion in its completions.</p>
-<p>For context tracking, I was looking at three criteria. The biggest jump is from 2% to 40% for maintaining a consistent narrative flow. The medium-sized models were definitely not perfect, but was much better at following the narrative flow of the story.</p>
-</section>
-<section id="story-related-capabilities-plot" class="level3">
-<h3 class="anchored" data-anchor-id="story-related-capabilities-plot">Story-Related Capabilities: Plot</h3>
-<table class="caption-top table">
-<colgroup>
-<col style="width: 81%">
-<col style="width: 6%">
-<col style="width: 6%">
-<col style="width: 6%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Plot</th>
-<th>1M</th>
-<th>8M</th>
-<th>28M</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Conflicts are addressed rather than abandoned</td>
-<td>0.00</td>
-<td>0.42</td>
-<td>0.60</td>
-</tr>
-<tr class="even">
-<td>The pacing is appropriate (not too rushed or dragging)</td>
-<td>0.00</td>
-<td>0.14</td>
-<td>0.24</td>
-</tr>
-<tr class="odd">
-<td>The story has a clear beginning, middle, and end appropriate to age level</td>
-<td>0.26</td>
-<td>0.50</td>
-<td>0.72</td>
-</tr>
-<tr class="even">
-<td>The story maintains focus on the central conflict/theme without random diversions</td>
-<td>0.12</td>
-<td>0.64</td>
-<td>0.84</td>
-</tr>
-</tbody>
-</table>
-<p>For Plot, I found the pacing to be the worst category across all models. This checks out with my experience as I was grading these stories - I didn’t really get a sense that there was a well-paced story. Either it was dragging and repeating itself slightly, or it was just one or two sentences and insufficient.</p>
-<p>For “conflicts are addressed” we go from 0% to 42% from 1M to 8M. The smallest model simply ignored or abandoned conflicts that were in the premise and the prompt. The other big jump is for “focusing on the central theme” - the smallest to medium model had almost a 3x jump, and then there was still a considerable 30% jump from the medium to large model.</p>
-</section>
-</section>
-<section id="comparison-to-tinystories-paper" class="level2">
-<h2 class="anchored" data-anchor-id="comparison-to-tinystories-paper">Comparison to TinyStories Paper</h2>
-<p>I’m going to revisit the targets that I established from Figure 4 of the TinyStories paper, where they showed the different scores based on hidden dimension and number of layers. I matched that up with the three models that I’m testing:</p>
-<section id="creativity" class="level3">
-<h3 class="anchored" data-anchor-id="creativity">Creativity</h3>
-<p>The TinyStories paper reported:</p>
-<ul>
-<li>1M: 0.47</li>
-<li>8M: 0.65</li>
-<li>28M: 0.69</li>
-</ul>
-<p>My scores:</p>
-<ul>
-<li>1M: 0.12</li>
-<li>8M: 0.16</li>
-<li>28M: 0.32</li>
-</ul>
-<p>This was really interesting - I was expecting my assessment to be maybe a little lenient, but it turns out that’s not the case. My scores were significantly lower. The 28M parameter model (which is actually 60M) got 70% for creativity in the paper, while mine was at 30%. I might have to change that criteria over the course of this project, or it might turn out that for creativity, I have a stricter judge.</p>
-</section>
-<section id="grammar" class="level3">
-<h3 class="anchored" data-anchor-id="grammar">Grammar</h3>
-<p>TinyStories:</p>
-<ul>
-<li>1M: 0.61</li>
-<li>8M: 0.77</li>
-<li>28M: 0.83</li>
-</ul>
-<p>My scores:</p>
-<ul>
-<li>1M: 0.59</li>
-<li>8M: 0.82</li>
-<li>28M: 0.86</li>
-</ul>
-<p>This matched out pretty well! 61%/59%, 77%/82%, and 83%/86%. The most common baseline capability matches between the targets and my relatively rough evaluation, so thumbs up!</p>
-</section>
-<section id="context-tracking-consistency" class="level3">
-<h3 class="anchored" data-anchor-id="context-tracking-consistency">Context-Tracking (Consistency)</h3>
-<p>TinyStories:</p>
-<ul>
-<li>1M: 0.45</li>
-<li>8M: 0.80</li>
-<li>28M: 0.90</li>
-</ul>
-<p>My scores:</p>
-<ul>
-<li>1M: 0.14</li>
-<li>8M: 0.51</li>
-<li>28M: 0.63</li>
-</ul>
-<p>Similar to creativity, it turns out that my criteria or my judging is a lot stricter than the GPT-4 evaluator used in the paper. The highest score in the paper was 90%, whereas mine was 63%. I’m not too worried about this - I would much rather be stricter than not. However, I’ll be open to changing my approach later on if that turns out to be a problem.</p>
-</section>
-<section id="plot" class="level3">
-<h3 class="anchored" data-anchor-id="plot">Plot</h3>
-<p>TinyStories: - 1M: 0.44 - 8M: 0.72 - 28M: 0.73</p>
-<p>My scores: - 1M: 0.10 - 8M: 0.42 - 28M: 0.60</p>
-<p>The 28M scores for Plot are in the same range but medium-sized and small model scores are significantly different.</p>
-<p>Factual Knowledge and Reasoning were not quantitatively assessed in the TinyStories paper in the way that these other scores were listed, so I don’t have those reference points for my evaluation.</p>
-</section>
-</section>
-<section id="observations-from-manual-scoring" class="level2">
-<h2 class="anchored" data-anchor-id="observations-from-manual-scoring">Observations From Manual Scoring</h2>
-<p>After manually scoring 450 stories, I have some observations:</p>
-<ol type="1">
-<li><p>Judging quality improves (and changes) over time</p>
-<ul>
-<li>Implicit judging criteria surfaces over time.</li>
-<li>By the time I was doing the last hundred, I realized that I was a lot more definitive in giving 0s, 0.5s, and 1s.</li>
-<li>Thee largest model likely has the strictest scores (it was graded last).</li>
-</ul></li>
-<li><p>Phrasing of scoring criteria improved</p>
-<ul>
-<li>I wanted to be able to answer the question as fast as I could (450 stories to get through!) with a quick yes, no, maybe (1, 0, 0.5).</li>
-<li>Initially, some of the criteria were phrased as questions, requiring more cognitive work. I expect that rephrasing the criteria as statements will also ease the “cognitive load” for my LLM judge.</li>
-</ul></li>
-<li><p>I identified one duplicate prompt and replaced it</p></li>
-<li><p>Pros and cons of isolating scoring categories</p>
-<ul>
-<li>I scored each category in isolation.</li>
-<li>More times than not, I found this very liberating—I could assess Creativity without worrying about Context-Tracking or Plot.</li>
-<li>However, language is very difficult to compartmentalize. If something’s not factually correct, it will be a distraction when assessing Reasoning. If the context is not being tracked, it makes it harder to assess plot.</li>
-<li>Regardless, I thought this isolation of scoring categories overall benefited my approach</li>
-</ul></li>
-</ol>
-</section>
-<section id="exciting-discoveries" class="level2">
-<h2 class="anchored" data-anchor-id="exciting-discoveries">Exciting Discoveries</h2>
-<p>The main takeaway for me, which was very cool to see, is that Reasoning and Factual Knowledge capabilities exists even for the smallest model. The 1M model scored 20% on Reasoning - that’s not nothing!</p>
-<p>The fact that there are non-zero values for these tiny models is really mind-blowing to me. It’s really exciting because there’s potential. We can do something with this, especially as these are just pre-trained models—we haven’t fine-tuned them yet. What can we do with this Reasoning and Factual Knowledge capability? That’s what really excites me moving forward.</p>
-</section>
-<section id="process-improvements" class="level2">
-<h2 class="anchored" data-anchor-id="process-improvements">Process Improvements</h2>
-<p>When generating completions for my Reasoning and Factual Knowledge, I want to remove the <code>min_length</code> parameter for <code>model.generate()</code> because I don’t want there to be a minimum generation length when the answer can be a few tokens, forcing the model to uneccesarily elongate the story. However, I won’t make this change for my LLM judge as I want to compare its scores with mine for the same prompt/completion pairs.</p>
-</section>
-<section id="next-steps" class="level2">
-<h2 class="anchored" data-anchor-id="next-steps">Next Steps</h2>
-<p>With a full eval set scored, I can now move on to prompt engineering an LLM judge (I’ll be using Gemini 2.5 Flash and Claude Haiku 3.5). My goal is for a 90%+ alignment between my scores and the LLM judge before I choose to use it for future experiments.</p>
-<p>Follow along this project (and others) in my <a href="https://www.youtube.com/@vishal_learner">YouTube channel!</a>.</p>
-
-
-</section>
-
- ]]></description>
-  <category>LLM</category>
-  <category>deep learning</category>
-  <category>TinyScaleLab</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2025-05-01-TSL-Initial-Scoring-Results/</guid>
-  <pubDate>Thu, 01 May 2025 07:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
