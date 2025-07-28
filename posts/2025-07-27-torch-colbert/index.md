@@ -62,7 +62,7 @@ I'll start by analyzing breaking changes, which are likely going to be the most 
 
 There are two lines in ColBERT where`zero_grad` is called: in [colbert/utils/amp.py](https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/utils/amp.py#L37) and in [colbert/training/training.py](https://github.com/stanford-futuredata/ColBERT/blob/8627585ad290c21720eaa54e325e7c8c301d15f6/colbert/training/training.py#L61). I'm not sure how this change would affect ColBERT behavior, but flagging it as something to keep in mind.
 
-### PR [92306](https://github.com/pytorch/pytorch/pull/92306)
+### PR [#92306](https://github.com/pytorch/pytorch/pull/92306)
 
 > Algorithms `{Adadelta, Adagrad, Adam, Adamax, AdamW, ASGD, NAdam, RAdam, RMSProp, RProp, SGD}` default to faster `foreach` implementation when on CUDA + differentiable=`False`
 
