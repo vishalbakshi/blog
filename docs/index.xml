@@ -10,7 +10,194 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.7.32</generator>
-<lastBuildDate>Mon, 28 Jul 2025 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Thu, 31 Jul 2025 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>TIL: How LLM-Foundry Ignores Prompt Tokens in labels for Instruction Finetuning.</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-07-31-llm-foundry/</link>
+  <description><![CDATA[ 
+
+
+
+
+<p>I recently realized (after a conversation with a colleague) that I didn’t know how LLM-Foundry replaces prompt tokens with <code>-100</code> to exclude them from the loss calculation. I fed Claude project knowledge the LLM-Foundry GitHub repo and asked it to walk me through this process line-by-line. Since “Chat using integrations can’t be shared” I’m pasting Claude’s walkthrough here (with a couple of my notes). All the referenced functions are inside <a href="https://github.com/mosaicml/llm-foundry/blob/main/llmfoundry/data/finetuning/collator.py"><code>llmfoundry/data/finetuning/collator.py</code></a></p>
+<section id="setup-input-example" class="level2">
+<h2 class="anchored" data-anchor-id="setup-input-example">Setup: Input Example</h2>
+<p>Let’s say we have this raw training example:</p>
+<pre><code>{
+    'prompt': 'What is photosynthesis?',
+    'response': 'Photosynthesis is the process by which plants convert sunlight into energy.'
+}</code></pre>
+<p>After tokenization, this becomes:</p>
+<pre><code>example = {
+    'turns': [
+        {
+            'input_ids': [1127, 318, 2825, 43943, 30],      # "What is photosynthesis?"
+            'labels': [21197, 43943, 318, 262, 1429, 416, 543, 6134, 10385, 4252, 1657, 656, 2568, 13]  # "Photosynthesis is the process..."
+        }
+    ]
+}</code></pre>
+</section>
+<section id="line-by-line-processing" class="level2">
+<h2 class="anchored" data-anchor-id="line-by-line-processing">Line-by-Line Processing</h2>
+<section id="collator-entry-point-seq2seqfinetuningcollator.__call__" class="level3">
+<h3 class="anchored" data-anchor-id="collator-entry-point-seq2seqfinetuningcollator.__call__">Collator Entry Point (<code>Seq2SeqFinetuningCollator.__call__</code>)</h3>
+<pre><code>def __call__(self, examples: list[TokenizedExample]) -&gt; dict[str, torch.Tensor]:
+    # examples is a list of TokenizedExample objects (batch)
+    
+    if self.decoder_only_format:
+        batch = self._process_and_batch_decoder_only(examples)  # Most common path</code></pre>
+</section>
+<section id="batch-processing-_process_and_batch_decoder_only" class="level3">
+<h3 class="anchored" data-anchor-id="batch-processing-_process_and_batch_decoder_only">Batch Processing (<code>_process_and_batch_decoder_only</code>)</h3>
+<pre><code>def _process_and_batch_decoder_only(self, examples: list[TokenizedExample]):
+    processed_examples = []
+    
+    # Step 1: Process each example in the batch through stitch_turns_decoder_only
+    input_ids_and_labels = [
+        stitch_turns_decoder_only(
+            example_turns=example['turns'],           # The prompt/response turns
+            target_prompts=self.target_prompts,      # 'none' 
+            target_responses=self.target_responses,   # 'last'
+            eos_token_id=self.tokenizer.eos_token_id,
+        ) for example in examples
+    ]</code></pre>
+</section>
+<section id="core-processing-stitch_turns_decoder_only" class="level3">
+<h3 class="anchored" data-anchor-id="core-processing-stitch_turns_decoder_only">Core Processing (<code>stitch_turns_decoder_only</code>)</h3>
+<p>This is where the magic happens:</p>
+<pre><code>def stitch_turns_decoder_only(example_turns, target_prompts, target_responses, eos_token_id):
+    target_prompts = target_prompts.lower()  # 'none'
+    target_responses = target_responses.lower()  # 'last'
+    
+    # Line 1: Look up the target policy functions
+    prompt_to_target = _TARGET_POLICY_LOOKUP[target_prompts]  # Gets _sequence_to_labels_none
+    response_to_target = _TARGET_POLICY_LOOKUP[target_responses]  # Gets _sequence_to_labels_last
+    
+    # Line 2: Initialize output sequences
+    input_ids = []
+    labels = []
+    
+    # Line 3: Process each turn in the conversation
+    for idx, turn in enumerate(example_turns):
+        is_last_turn = idx + 1 == len(example_turns)  # True for our single-turn example
+        
+        # Line 4: Extract the prompt and response token sequences
+        context = ensure_list(turn['input_ids'])   # [1127, 318, 2825, 43943, 30] - "What is photosynthesis?"  
+        target = ensure_list(turn['labels'])       # [21197, 43943, 318, ...] - "Photosynthesis is..."
+        
+        # Line 5: Add EOS token to final response if needed
+        if is_last_turn and eos_token_id is not None:
+            if target[-1] != eos_token_id:
+                target = target + [eos_token_id]   # Append &lt;|endoftext|&gt; token
+        
+        # Line 6: Build the concatenated input_ids sequence
+        input_ids += context  # Add prompt tokens: [1127, 318, 2825, 43943, 30]
+        input_ids += target   # Add response tokens: [1127, 318, 2825, 43943, 30, 21197, 43943, 318, ...]
+        
+        # Line 7: Build the labels sequence using target policies
+        labels += prompt_to_target(context, is_last_turn, prompt_cutoff)  # Calls _sequence_to_labels_none
+        labels += response_to_target(target, is_last_turn)                # Calls _sequence_to_labels_last</code></pre>
+<blockquote class="blockquote">
+<p>Vishal note: in Line 7, <code>labels</code> starts out as an empty list <code>[]</code> so the prompt is added first (via <code>+= prompt_to_target(...)</code>), after which the response is added (via <code>+= response_to_target</code>).</p>
+</blockquote>
+</section>
+<section id="target-policy-functions" class="level3">
+<h3 class="anchored" data-anchor-id="target-policy-functions">Target Policy Functions</h3>
+<pre><code>def _sequence_to_labels_none(sequence, is_last_turn, cutoff):
+    # Line 1: Convert ALL prompt tokens to -100 (ignore during loss)
+    return [CROSS_ENTROPY_IGNORE_INDEX] * len(sequence)  # [-100, -100, -100, -100, -100]
+
+def _sequence_to_labels_last(sequence, is_last_turn, cutoff):  
+    # Line 1: Check if this is the final turn
+    if is_last_turn:  # True in our case
+        return sequence  # Keep actual token IDs: [21197, 43943, 318, ...]
+    else:
+        return [CROSS_ENTROPY_IGNORE_INDEX] * len(sequence)  # Would be [-100, -100, ...] for non-final turns</code></pre>
+</section>
+<section id="result-after-stitch_turns_decoder_only" class="level3">
+<h3 class="anchored" data-anchor-id="result-after-stitch_turns_decoder_only">Result After <code>stitch_turns_decoder_only</code></h3>
+<pre><code># Returned values:
+input_ids = [1127, 318, 2825, 43943, 30, 21197, 43943, 318, 262, 1429, 416, 543, 6134, 10385, 4252, 1657, 656, 2568, 13, 50256]
+#            |----------prompt----------|  |-------------------response---------------------------|  |EOS|
+
+labels =    [-100, -100, -100, -100, -100, 21197, 43943, 318, 262, 1429, 416, 543, 6134, 10385, 4252, 1657, 656, 2568, 13, 50256]
+#            |------ignore prompt-------|  |-------------------keep response--------------------|  |EOS|</code></pre>
+<blockquote class="blockquote">
+<p>Vishal note: we added <code>prompt_to_target</code> first to the empty <code>labels</code> list so the <code>-100</code>s come first.</p>
+</blockquote>
+</section>
+<section id="back-to-batch-processing-continued" class="level3">
+<h3 class="anchored" data-anchor-id="back-to-batch-processing-continued">Back to Batch Processing (continued)</h3>
+<pre><code># Step 2: Handle sequence length limits
+for input_ids, labels in input_ids_and_labels:
+    orig_size = len(input_ids)
+    
+    # Truncate if too long
+    if orig_size &gt; max_seq_len:
+        input_ids = input_ids[:max_seq_len]
+        labels = labels[:max_seq_len]
+    
+    # Create attention mask
+    attention_mask = [1] * len(input_ids)  # All 1s for actual tokens
+    
+    # Step 3: Pad sequences to max_seq_len
+    n_total = len(input_ids)
+    i_pad = [CROSS_ENTROPY_IGNORE_INDEX] * (max_seq_len - n_total)  # Padding with -100
+    
+    if self.tokenizer.padding_side == 'left':
+        labels = i_pad + labels  # Left pad labels with -100
+    else:
+        labels = labels + i_pad  # Right pad labels with -100 (more common)
+    
+    processed_example = {
+        'input_ids': input_ids,      # Will be padded by tokenizer.pad()
+        'labels': labels,            # Already padded with -100
+        'attention_mask': attention_mask,  # Will be padded by tokenizer.pad()
+    }
+    processed_examples.append(processed_example)
+
+# Step 4: Final padding using HuggingFace tokenizer
+batch = self.tokenizer.pad(
+    processed_examples,
+    padding='max_length',
+    max_length=max_seq_len,
+    return_tensors='pt',
+)</code></pre>
+</section>
+<section id="final-batch-output" class="level3">
+<h3 class="anchored" data-anchor-id="final-batch-output">Final Batch Output</h3>
+<pre><code>batch = {
+    'input_ids': torch.tensor([
+        [1127, 318, 2825, 43943, 30, 21197, 43943, 318, ..., 0, 0, 0]  # Padded with pad_token_id (0)
+    ]),
+    'labels': torch.tensor([
+        [-100, -100, -100, -100, -100, 21197, 43943, 318, ..., -100, -100, -100]  # Padded with -100
+    ]),
+    'attention_mask': torch.tensor([
+        [1, 1, 1, 1, 1, 1, 1, 1, ..., 0, 0, 0]  # 1 for real tokens, 0 for padding
+    ])
+}</code></pre>
+</section>
+<section id="key-points" class="level3">
+<h3 class="anchored" data-anchor-id="key-points">Key Points</h3>
+<ol type="1">
+<li>Prompt tokens → Labels = -100: The _sequence_to_labels_none function converts all prompt tokens to -100</li>
+<li>Response tokens → Labels = actual token IDs: The _sequence_to_labels_last function keeps response tokens as-is</li>
+<li>Padding tokens → Labels = -100: All padding positions also get -100</li>
+<li>Loss calculation: PyTorch’s CrossEntropyLoss(ignore_index=-100) will only compute loss on response tokens</li>
+</ol>
+<p>This ensures the model learns to generate responses but never tries to “predict” the input prompt!</p>
+
+
+</section>
+</section>
+
+ ]]></description>
+  <category>LLM-Foundry</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-07-31-llm-foundry/</guid>
+  <pubDate>Thu, 31 Jul 2025 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>Standout Ideas from Lesson 2 of the AI Evals Course</title>
   <dc:creator>Vishal Bakshi</dc:creator>
@@ -23265,24 +23452,6 @@ ________________________________________________________________________________
   <category>deep learning</category>
   <category>RAGatouille</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2025-05-08-TIL-RAGatouille/</guid>
-  <pubDate>Thu, 08 May 2025 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>DataInspector: Inspecting input_ids Token Statistics in LLM-Foundry with packing_ratio=5.0</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2025-05-08-DataInspector/</link>
-  <description><![CDATA[ 
-
-
-
-
-
-
-
- ]]></description>
-  <category>LLM</category>
-  <category>deep learning</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2025-05-08-DataInspector/</guid>
   <pubDate>Thu, 08 May 2025 07:00:00 GMT</pubDate>
 </item>
 </channel>
