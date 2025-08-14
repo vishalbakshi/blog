@@ -1,5 +1,5 @@
 ---
-title: Standout Ideas from Lessons 7 of the AI Evals Course
+title: Standout Ideas from Lesson 7 of the AI Evals Course
 date: "2025-08-12"
 author: Vishal Bakshi
 description: In this blog post, I highlight standout ideas from the seventh lesson of the AI evals course by Hamel Husain and Shreya Shankar.
