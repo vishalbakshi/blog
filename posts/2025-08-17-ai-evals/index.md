@@ -2,7 +2,7 @@
 title: Reflections After Completing the AI Evals Course
 date: "2025-08-17"
 author: Vishal Bakshi
-description: My reflections on the AI Evals, and related topics and experiences.
+description: My reflections on the AI Evals course, and related topics and experiences.
 filters:
    - lightbox
 lightbox: auto
