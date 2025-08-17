@@ -12,6 +12,413 @@
 <generator>quarto-1.7.32</generator>
 <lastBuildDate>Sun, 17 Aug 2025 07:00:00 GMT</lastBuildDate>
 <item>
+  <title>TIL: Launching Jupyter with a Custom Modal Image and Volume</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-08-17-modal-jupyter/</link>
+  <description><![CDATA[ 
+
+
+
+
+<p>Yesterday I learned of the Modal docs example showing how to start <a href="https://github.com/modal-labs/modal-examples/blob/main/11_notebooks/jupyter_inside_modal.py">a jupyter server via a Modal tunnel</a>. I was elated to see this because it solved my problem of not being able to specify a custom image when using <code>modal launch jupyter</code>.</p>
+<p>I have a Dockerfile which installs <code>colbert-ai</code> from the <code>main</code> branch of the stanford-futuredata/ColBERT repo with a specific PyTorch and Transformers version:</p>
+<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode dockerfile code-with-copy"><code class="sourceCode dockerfile"><span id="cb1-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">FROM</span> mambaorg/micromamba:latest</span>
+<span id="cb1-2"></span>
+<span id="cb1-3"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">USER</span> root</span>
+<span id="cb1-4"></span>
+<span id="cb1-5"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">RUN</span> <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">apt-get</span> update <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">apt-get</span> install <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-y</span> git nano curl wget build-essential <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">apt-get</span> clean <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">rm</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-rf</span> /var/lib/apt/lists/<span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">*</span></span>
+<span id="cb1-6"></span>
+<span id="cb1-7"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">RUN</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">git</span> clone https://github.com/stanford-futuredata/ColBERT.git /ColBERT <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb1-8">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">cd</span> /ColBERT <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb1-9">    <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">micromamba</span> create <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-n</span> colbert python=3.11 cuda <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-c</span> nvidia/label/11.7.1 <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-c</span> conda-forge <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb1-10">    <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">micromamba</span> install <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-n</span> colbert faiss-gpu <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-c</span> pytorch <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-c</span> conda-forge <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb1-11">    <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">micromamba</span> run <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-n</span> colbert pip install <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-e</span> . <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb1-12">    <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">micromamba</span> run <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-n</span> colbert pip install torch==1.13.1 transformers==4.38.2 pandas</span>
+<span id="cb1-13"></span>
+<span id="cb1-14"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">ENV</span> CONDA_DEFAULT_ENV=colbert</span>
+<span id="cb1-15"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">ENV</span> PATH=/opt/conda/envs/colbert/bin:$PATH</span>
+<span id="cb1-16"></span>
+<span id="cb1-17"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">WORKDIR</span> /</span>
+<span id="cb1-18"></span>
+<span id="cb1-19"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">RUN</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">echo</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"eval </span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\"\$</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">(micromamba shell hook --shell bash)</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\"</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;&gt;</span> ~/.bashrc <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb1-20">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">echo</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"micromamba activate colbert"</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;&gt;</span> ~/.bashrc</span>
+<span id="cb1-21"></span>
+<span id="cb1-22"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">CMD</span> [<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"/bin/bash"</span>]</span></code></pre></div>
+<p>I then modified the Modal documentation example as follows (<code>jupyter_inside_modal.py</code>) to use my Dockerfile to create an image and use an existing Modal Volume:</p>
+<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> subprocess</span>
+<span id="cb2-2"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> time</span>
+<span id="cb2-3"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> modal</span>
+<span id="cb2-4"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> modal <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> Image, App, Secret, Volume</span>
+<span id="cb2-5"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> datetime</span>
+<span id="cb2-6"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> os</span>
+<span id="cb2-7"></span>
+<span id="cb2-8">SOURCE <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> os.environ.get(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"SOURCE"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">""</span>)</span>
+<span id="cb2-9">VOLUME <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Volume.from_name(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"colbert-maintenance"</span>, create_if_missing<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">True</span>)</span>
+<span id="cb2-10">MOUNT <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"/colbert-maintenance"</span></span>
+<span id="cb2-11">image <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Image.from_dockerfile(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"Dockerfile.</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>SOURCE<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>, gpu<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"L4"</span>)</span>
+<span id="cb2-12"></span>
+<span id="cb2-13">app <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> App(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"jupyter-tunnel"</span>, image<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>image.pip_install(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"jupyter"</span>))</span>
+<span id="cb2-14">JUPYTER_TOKEN <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">""</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># some list of characters you'll enter when accessing the Modal tunnel</span></span>
+<span id="cb2-15"></span>
+<span id="cb2-16"><span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">@app.function</span>(max_containers<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>, volumes<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>{MOUNT: VOLUME}, timeout<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">10_000</span>, gpu<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"L4"</span>)</span>
+<span id="cb2-17"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> run_jupyter(timeout: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">int</span>):</span>
+<span id="cb2-18">    jupyter_port <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">8888</span></span>
+<span id="cb2-19">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">with</span> modal.forward(jupyter_port) <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">as</span> tunnel:</span>
+<span id="cb2-20">        jupyter_process <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> subprocess.Popen(</span>
+<span id="cb2-21">            [</span>
+<span id="cb2-22">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"jupyter"</span>,</span>
+<span id="cb2-23">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"notebook"</span>,</span>
+<span id="cb2-24">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"--no-browser"</span>,</span>
+<span id="cb2-25">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"--allow-root"</span>,</span>
+<span id="cb2-26">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"--ip=0.0.0.0"</span>,</span>
+<span id="cb2-27">                <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"--port=</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>jupyter_port<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>,</span>
+<span id="cb2-28">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"--NotebookApp.allow_origin='*'"</span>,</span>
+<span id="cb2-29">                <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"--NotebookApp.allow_remote_access=1"</span>,</span>
+<span id="cb2-30">            ],</span>
+<span id="cb2-31">            env<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>{<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">**</span>os.environ, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"JUPYTER_TOKEN"</span>: JUPYTER_TOKEN},</span>
+<span id="cb2-32">        )</span>
+<span id="cb2-33"></span>
+<span id="cb2-34">        <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"Jupyter available at =&gt; </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>tunnel<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>url<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>)</span>
+<span id="cb2-35"></span>
+<span id="cb2-36">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">try</span>:</span>
+<span id="cb2-37">            end_time <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> time.time() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> timeout</span>
+<span id="cb2-38">            <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">while</span> time.time() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span> end_time:</span>
+<span id="cb2-39">                time.sleep(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span>)</span>
+<span id="cb2-40">            <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"Reached end of </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>timeout<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;"> second timeout period. Exiting..."</span>)</span>
+<span id="cb2-41">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">except</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">KeyboardInterrupt</span>:</span>
+<span id="cb2-42">            <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Exiting..."</span>)</span>
+<span id="cb2-43">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">finally</span>:</span>
+<span id="cb2-44">            jupyter_process.kill()</span>
+<span id="cb2-45"></span>
+<span id="cb2-46"></span>
+<span id="cb2-47"><span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">@app.local_entrypoint</span>()</span>
+<span id="cb2-48"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> main(timeout: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">int</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">10_000</span>):</span>
+<span id="cb2-49">    run_jupyter.remote(timeout<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>timeout)</span></code></pre></div>
+<p>I then run the following locally form my terminal:</p>
+<pre><code>SOURCE="0.2.22.main.torch.1.13.1" modal run jupyter_inside_modal.py</code></pre>
+<p>Where my Dockerfile is in the same folder as <code>jupyter_inside_modal.py</code> and titled <code>Dockerfile.0.2.22.main.torch.1.13.1</code>. I can then access the cloned repo as well as my mounted volume and use a Jupyter Notebook to explore data, iterate on function definitions, compare model weights, add hooks to ColBERT models, and so on. This unlocks a ton of productivity and iteration velocity that I was scratching my head on how to obtain without the use of notebooks.</p>
+
+
+
+ ]]></description>
+  <category>ColBERT</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-08-17-modal-jupyter/</guid>
+  <pubDate>Sun, 17 Aug 2025 07:00:00 GMT</pubDate>
+</item>
+<item>
   <title>Reflections After Completing the AI Evals Course</title>
   <dc:creator>Vishal Bakshi</dc:creator>
   <link>https://vishalbakshi.github.io/blog/posts/2025-08-17-ai-evals/</link>
@@ -12092,1544 +12499,6 @@ If the row of the mask is all zero, the output will be zero.</code></pre>
   <category>Flash Attention</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2025-06-03-flash_attn_varlen_func-casual-mask/</guid>
   <pubDate>Tue, 03 Jun 2025 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>Initial Experiments with Imagenette</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/</link>
-  <description><![CDATA[ 
-
-
-
-
-<div id="cell-1" class="cell" data-execution_count="6">
-<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">from</span> fastai.vision.<span class="bu" style="color: null;
-background-color: null;
-font-style: inherit;">all</span> <span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">import</span> <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">*</span></span>
-<span id="cb1-2"><span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">from</span> fastai.callback.wandb <span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">import</span> WandbCallback</span>
-<span id="cb1-3"><span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">import</span> wandb</span>
-<span id="cb1-4"><span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">import</span> pandas <span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">as</span> pd</span>
-<span id="cb1-5"><span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">import</span> matplotlib.pyplot <span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">as</span> plt</span></code></pre></div>
-</div>
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<p>In this blog post I’m going to share my initial experiments as I try to get on the <a href="https://github.com/fastai/imagenette">imagenette leaderboard</a>.</p>
-<blockquote class="blockquote">
-<p>Imagenette is a subset of 10 easily classified classes from Imagenet (tench, English springer, cassette player, chain saw, church, French horn, garbage truck, gas pump, golf ball, parachute).</p>
-</blockquote>
-<p>This exercise is a bit of a detour but related to my <a href="https://vishalbakshi.github.io/blog/posts/2025-04-26-TinyScale-Lab-Kickoff/">TinyScaleLab project</a> in which I’m trying to analyze the relationship between downstream capabilities and training dynamics for tiny language models (5M-125M) trained on the TinyStories dataset.</p>
-<p>I was running some initial rough 1 epoch training runs with my 5M architecture to find the best batch size for training efficiency (memory usage and training speed). I encountered a peculiar result which was counterintuitive to me:</p>
-<table class="caption-top table">
-<thead>
-<tr class="header">
-<th style="text-align: left;">Metric</th>
-<th style="text-align: left;">bs=64</th>
-<th style="text-align: left;">256</th>
-<th style="text-align: left;">1024</th>
-<th style="text-align: left;">2048</th>
-<th style="text-align: left;">4096</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: left;">Time</td>
-<td style="text-align: left;">3hr</td>
-<td style="text-align: left;">1hr</td>
-<td style="text-align: left;">0.5hr</td>
-<td style="text-align: left;">0.5hr</td>
-<td style="text-align: left;">OOM</td>
-</tr>
-<tr class="even">
-<td style="text-align: left;">Train loss</td>
-<td style="text-align: left;">3.58</td>
-<td style="text-align: left;">3.46</td>
-<td style="text-align: left;">4.42</td>
-<td style="text-align: left;">5.57</td>
-<td style="text-align: left;">OOM</td>
-</tr>
-<tr class="odd">
-<td style="text-align: left;">Eval loss</td>
-<td style="text-align: left;">3.58</td>
-<td style="text-align: left;">3.46</td>
-<td style="text-align: left;">4.43</td>
-<td style="text-align: left;">5.57</td>
-<td style="text-align: left;">OOM</td>
-</tr>
-</tbody>
-</table>
-<p>I was expecting that increase the batch size would:</p>
-<ol type="1">
-<li>speed up training</li>
-<li>decrease loss</li>
-</ol>
-<p>However, increasing batch size from 1024 to 2048 did not speed up training, and increasing batch size from 256 to 2048 did not improve the loss. As always, when I run into something unexpected, I post it on Twitter. I received a number of insightful comments:</p>
-<blockquote class="twitter-tweet blockquote">
-<p lang="en" dir="ltr">
-We covered this in some of our earlier courses - lower batch sizes provide more updates, which should give better results for a fixed # epochs.
-</p>
-— Jeremy Howard (<span class="citation" data-cites="jeremyphoward">@jeremyphoward</span>) <a href="https://twitter.com/jeremyphoward/status/1927192030335132090?ref_src=twsrc%5Etfw">May 27, 2025</a>
-</blockquote>
-<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
-<p>The batch size of 256 was certainly providing more updates in one epoch than a batch size of 1024 or 2048. It’s interesting to note that a batch size of 64, even though providing 4x the number of updates as 256, had a higher loss at the end of the epoch. It’s important to note that I did not measure downstream performance for this experiment.</p>
-<blockquote class="twitter-tweet blockquote">
-<p lang="en" dir="ltr">
-TinyStories is a pretty homogeneous dataset, so one doesn't need as large of a batch size to achieve a smooth gradient compared to a more diverse pretraining dataset.<br><br>You'll want to set the batch size balancing speed and performance.
-</p>
-— Benjamin Warner (<span class="citation" data-cites="benjamin_warner">@benjamin_warner</span>) <a href="https://twitter.com/benjamin_warner/status/1927194448389169190?ref_src=twsrc%5Etfw">May 27, 2025</a>
-</blockquote>
-<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
-<p>This was another interesting point. The benefit of increasing batch size is to get a closer representation to the overall dataset. Since the TinyStories dataset is quite homogenous (all dataset items are children’s stories) a smaller batch size will be sufficiently representative of the full dataset. On the flip side, if we have a dataset like the PETS dataset, and used a small batch size of say 32, we could imagine a scenario where the batch only includes images of a single class. The model, which has been learning about a diverse set of animals to this point will perform poorly and the loss will spike. Larger models, having more parameters, may not recover from this spike like small models can. Furthermore, if the dataset contains mislabeled images and you are unfortunate to get a batch of incorrectly labeled cats, your loss spike will be combined with the model learning incorrect information. These were points discussed in a fastai study group!</p>
-<blockquote class="twitter-tweet blockquote">
-<p lang="en" dir="ltr">
-Also, one heuristic that people use is that in most scenarios, you can scale the lr proportionally to the bs.<br><br>Larger bs, better but less frequent updates, can take longer steps.<br><br>Smaller bs, more frequent updates, but need to take smaller steps due to worse direction of updates.
-</p>
-— Radek Osmulski 🇺🇦 (<span class="citation" data-cites="radekosmulski">@radekosmulski</span>) <a href="https://twitter.com/radekosmulski/status/1927195672056340620?ref_src=twsrc%5Etfw">May 27, 2025</a>
-</blockquote>
-<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
-<p>In my case, I had used the same learning rate for all batch sizes, and did not utilize the benefit of larger batch sizes taking longer steps (higher learning rate).</p>
-<p>Jeremy also encouraged me to do some imagenette speedruns, which is why we’re here!</p>
-<blockquote class="twitter-tweet blockquote">
-<p lang="en" dir="ltr">
-You should maybe try doing some imagenette speed-running – it's a good way to get an intuitive understanding of these issues.
-</p>
-— Jeremy Howard (<span class="citation" data-cites="jeremyphoward">@jeremyphoward</span>) <a href="https://twitter.com/jeremyphoward/status/1927216989837185133?ref_src=twsrc%5Etfw">May 27, 2025</a>
-</blockquote>
-<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
-</section>
-<section id="approach-and-results" class="level2">
-<h2 class="anchored" data-anchor-id="approach-and-results">Approach and Results</h2>
-<p>My data prep and training code can be viewed in the “appendix” below. Before I did this exercise, I ran the code in the <a href="https://docs.fast.ai/tutorial.imagenette.html">fastai “Training Imagenette” tutorial</a> which is where most of the code below comes from. I’ll share my approach and results in this section. I wanted to break this exercise (of trying to get onto the Imagenette leaderboard) into smaller steps, so I focused this notebook on training with a batch size of 64, for three learning rates (1e-4, 1e-3 and 1e-2) for three models: xse_resnext50 (25.6M), xresnet34 (21.3M), xresnet18 (11.2M).</p>
-<section id="accuracy-curves" class="level3">
-<h3 class="anchored" data-anchor-id="accuracy-curves">Accuracy Curves</h3>
-<p>Since I’m most interested in competing on the leaderboard, I’ll focus on observing the accuracy curves of these models, all trained on 5 epochs of the same training/validation split.</p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="Accuracy curves for all 10 training runs"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/1.png" class="img-fluid figure-img" alt="Accuracy curves for all 10 training runs"></a></p>
-<figcaption>Accuracy curves for all 10 training runs</figcaption>
-</figure>
-</div>
-<p>The models/learning rate combination with the highest accuracy is xresnet34/1e-2 and xse_resnext50/1e-2. xresnet18/1e-2 is surprisingly competitive at half the parameter count. There is a clear hierarchy of learning rates, 1e-2 performs the best for all three models, followed by 1e-3 and then 1e-4. I used <code>lr_find</code> for each model and found that xresnet18 was stable for 1e-1 though it performs second-to-last place in accuracy for that model.</p>
-<table class="caption-top table">
-<thead>
-<tr class="header">
-<th style="text-align: center;">Model/Learning Rate</th>
-<th style="text-align: center;">Accuracy</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: center;">xresnet34/1e-2</td>
-<td style="text-align: center;">0.7929</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">xse_resnext50/1e-2</td>
-<td style="text-align: center;">0.7926</td>
-</tr>
-<tr class="odd">
-<td style="text-align: center;">xresnet18/1e-2</td>
-<td style="text-align: center;">0.7870</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">xresnet34/1e-3</td>
-<td style="text-align: center;">0.7776</td>
-</tr>
-<tr class="odd">
-<td style="text-align: center;">xresnet18/1e-3</td>
-<td style="text-align: center;">0.7743</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">xse_resnext50/1e-3</td>
-<td style="text-align: center;">0.7526</td>
-</tr>
-<tr class="odd">
-<td style="text-align: center;">xresnet18/1e-1</td>
-<td style="text-align: center;">0.7373</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">xse_resnext50/1e-4</td>
-<td style="text-align: center;">0.6532</td>
-</tr>
-<tr class="odd">
-<td style="text-align: center;">xresnet34/1e-4</td>
-<td style="text-align: center;">0.6446</td>
-</tr>
-<tr class="even">
-<td style="text-align: center;">xresnet18/1e-4</td>
-<td style="text-align: center;">0.6171</td>
-</tr>
-</tbody>
-</table>
-<p>Other notable observations:</p>
-<ul>
-<li>xse_resnext50/1e-2 starts out with the lowest accuracy, but then quickly catches up and finally beats out all other models/LRs but one.</li>
-<li>xresnet18/1e-1 accuracy decreases from epoch 1 to 2, then catches up to finish in 7th place.</li>
-<li>xresnet34/1e-2 accuracy increasing at slower rate from epoch 1 to 2 than from epoch 2 to 3, catching up quickly to finish in the top spot.</li>
-</ul>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2" title="Notable accuracy curves"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/2.png" class="img-fluid figure-img" alt="Notable accuracy curves"></a></p>
-<figcaption>Notable accuracy curves</figcaption>
-</figure>
-</div>
-</section>
-</section>
-<section id="next-steps" class="level2">
-<h2 class="anchored" data-anchor-id="next-steps">Next Steps</h2>
-<p>I want to focus on a couple of thoughts Jeremy shared:</p>
-<blockquote class="twitter-tweet blockquote">
-<p lang="en" dir="ltr">
-Maybe on the way you'll want to create some tables like you're making there, but I rarely find them as interesting as small targeted iterations changing one thing at a time.
-</p>
-— Jeremy Howard (<span class="citation" data-cites="jeremyphoward">@jeremyphoward</span>) <a href="https://twitter.com/jeremyphoward/status/1927241575765061916?ref_src=twsrc%5Etfw">May 27, 2025</a>
-</blockquote>
-<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
-<p>Last year I worked through Jeremy’s <a href="https://vishalbakshi.github.io/blog/#category=paddy%20doctor">Kaggle Paddy Docter competition live coding series</a> and learned a ton about just that—small targeted iterations changing one thing at a time.</p>
-<p>I’m not quite sure what my plan will be for this Imagenette leaderboard exercise, but I since I started this exploration with the intent to build intuition about batch size/learning rate and downstream performance, it makes sense to pick my best 2-3 models and vary the batch size and learning rate next.</p>
-<p>I also am keen on working with Benjamin Warner’s <a href="https://fastxtend.benjaminwarner.dev/callback.progresize.html">fastxtend</a> (which I used last year in the <a href="https://www.kaggle.com/code/vishalbakshi/birdclef-2024-recap-0-61-final-lb-score">BirdCLEF24 Kaggle competition</a> to finish in the top 34%) and <a href="https://optimi.benjaminwarner.dev/">optimi</a> libraries. I’m particularly keen on trying out the different data augmentation techniques provided in fastxtend when I train for longer than 5 epochs.</p>
-<p>I’m trying to grow my YouTube channel, so if you like my content, <a href="https://www.youtube.com/@vishal_learner">please subscribe</a>!</p>
-</section>
-<section id="appendix" class="level2">
-<h2 class="anchored" data-anchor-id="appendix">Appendix</h2>
-<section id="data-prep" class="level3">
-<h3 class="anchored" data-anchor-id="data-prep">Data Prep</h3>
-<div id="cell-30" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:37}}" data-outputid="4a1c7bd1-fb16-4c4f-8308-939fe9e2b7c4" data-execution_count="2">
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">path <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> untar_data(URLs.IMAGENETTE_160)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-
-    <div>
-      <progress value="99008512" class="" max="99003388" style="width:300px; height:20px; vertical-align: middle;"></progress>
-      100.01% [99008512/99003388 00:03&lt;00:00]
-    </div>
-    
-</div>
-</div>
-<div id="cell-31" class="cell" data-execution_count="3">
-<div class="sourceCode cell-code" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1">lbl_dict <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> <span class="bu" style="color: null;
-background-color: null;
-font-style: inherit;">dict</span>(</span>
-<span id="cb3-2">    n01440764<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'tench'</span>,</span>
-<span id="cb3-3">    n02102040<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'English springer'</span>,</span>
-<span id="cb3-4">    n02979186<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'cassette player'</span>,</span>
-<span id="cb3-5">    n03000684<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'chain saw'</span>,</span>
-<span id="cb3-6">    n03028079<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'church'</span>,</span>
-<span id="cb3-7">    n03394916<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'French horn'</span>,</span>
-<span id="cb3-8">    n03417042<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'garbage truck'</span>,</span>
-<span id="cb3-9">    n03425413<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'gas pump'</span>,</span>
-<span id="cb3-10">    n03445777<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'golf ball'</span>,</span>
-<span id="cb3-11">    n03888257<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'parachute'</span></span>
-<span id="cb3-12">)</span></code></pre></div>
-</div>
-<div id="cell-32" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:752}}" data-outputid="73776257-bc3e-4c33-d6cc-ca691b73662c" data-execution_count="6">
-<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1">imagenette <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> DataBlock(blocks <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> (ImageBlock, CategoryBlock),</span>
-<span id="cb4-2">                       get_items <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> get_image_files,</span>
-<span id="cb4-3">                       get_y <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> Pipeline([parent_label, lbl_dict.<span class="fu" style="color: #4758AB;
-background-color: null;
-font-style: inherit;">__getitem__</span>]),</span>
-<span id="cb4-4">                       splitter <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> GrandparentSplitter(valid_name<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">'val'</span>),</span>
-<span id="cb4-5">                       item_tfms <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> RandomResizedCrop(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">128</span>, min_scale<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.35</span>),</span>
-<span id="cb4-6">                       batch_tfms <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> Normalize.from_stats(<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">*</span>imagenet_stats))</span>
-<span id="cb4-7"></span>
-<span id="cb4-8">dls <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> imagenette.dataloaders(path, bs<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">64</span>)</span>
-<span id="cb4-9">dls.show_batch()</span></code></pre></div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-5-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/index_files/figure-html/cell-5-output-1.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-</section>
-<section id="training-code" class="level3">
-<h3 class="anchored" data-anchor-id="training-code">Training Code</h3>
-<p>I chose to run everything on a Colab Pro A100 GPU to maximize speed.</p>
-<section id="xse_resnext50" class="level4">
-<h4 class="anchored" data-anchor-id="xse_resnext50">xse_resnext50</h4>
-<div id="cell-36" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:471}}" data-outputid="8338b75d-2a6c-41ec-c54b-dae12a88bc63" data-execution_count="7">
-<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1">learn <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> vision_learner(dls, xse_resnext50, metrics<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>accuracy, pretrained<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="va" style="color: #111111;
-background-color: null;
-font-style: inherit;">False</span>)</span>
-<span id="cb5-2">learn.lr_find()</span></code></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-
-</div>
-<div class="cell-output cell-output-display" data-execution_count="7">
-<pre><code>SuggestedLRs(valley=0.0004786300996784121)</code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-6-output-4.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/index_files/figure-html/cell-6-output-4.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<div id="cell-37" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="542d3515-ed60-4e15-dfd7-73fab5fe583d" data-execution_count="14">
-<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1">wandb.login()</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="14">
-<pre><code>True</code></pre>
-</div>
-</div>
-<div id="cell-38" class="cell">
-<div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1">wandb.init(</span>
-<span id="cb9-2">    project<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"tinyscale-lab"</span>,</span>
-<span id="cb9-3">    name<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"imagenette-xse_resnext50-bs-64-lr-1e-4"</span>,</span>
-<span id="cb9-4">)</span></code></pre></div>
-</div>
-<div id="cell-39" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:206}}" data-outputid="f05260cd-91b1-42a4-8b82-a0465f190a53" data-execution_count="16">
-<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1">learn <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> vision_learner(dls, xse_resnext50, metrics<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>accuracy, pretrained<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="va" style="color: #111111;
-background-color: null;
-font-style: inherit;">False</span>, cbs<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>WandbCallback())</span>
-<span id="cb10-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">5</span>, <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1e-4</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th">epoch</th>
-<th data-quarto-table-cell-role="th">train_loss</th>
-<th data-quarto-table-cell-role="th">valid_loss</th>
-<th data-quarto-table-cell-role="th">accuracy</th>
-<th data-quarto-table-cell-role="th">time</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>0</td>
-<td>2.437292</td>
-<td>1.562259</td>
-<td>0.498599</td>
-<td>00:15</td>
-</tr>
-<tr class="even">
-<td>1</td>
-<td>1.898073</td>
-<td>1.330338</td>
-<td>0.581401</td>
-<td>00:15</td>
-</tr>
-<tr class="odd">
-<td>2</td>
-<td>1.625788</td>
-<td>1.184957</td>
-<td>0.630828</td>
-<td>00:15</td>
-</tr>
-<tr class="even">
-<td>3</td>
-<td>1.491183</td>
-<td>1.138762</td>
-<td>0.650446</td>
-<td>00:15</td>
-</tr>
-<tr class="odd">
-<td>4</td>
-<td>1.425214</td>
-<td>1.119943</td>
-<td>0.653248</td>
-<td>00:15</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-<div id="cell-40" class="cell" data-execution_count="29">
-<div class="sourceCode cell-code" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1">wandb.finish()</span></code></pre></div>
-</div>
-<div id="cell-41" class="cell">
-<div class="sourceCode cell-code" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1">wandb.init(</span>
-<span id="cb12-2">    project<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"tinyscale-lab"</span>,</span>
-<span id="cb12-3">    name<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"imagenette-xse_resnext50-bs-64-lr-1e-3"</span>,</span>
-<span id="cb12-4">)</span></code></pre></div>
-</div>
-<div id="cell-42" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:206}}" data-outputid="0356a936-1d9c-40ca-9d7e-b645c0c3a3c7" data-execution_count="19">
-<div class="sourceCode cell-code" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1">learn <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> vision_learner(dls, xse_resnext50, metrics<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>accuracy, pretrained<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="va" style="color: #111111;
-background-color: null;
-font-style: inherit;">False</span>, cbs<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>WandbCallback())</span>
-<span id="cb13-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">5</span>, <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1e-3</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th">epoch</th>
-<th data-quarto-table-cell-role="th">train_loss</th>
-<th data-quarto-table-cell-role="th">valid_loss</th>
-<th data-quarto-table-cell-role="th">accuracy</th>
-<th data-quarto-table-cell-role="th">time</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>0</td>
-<td>2.115490</td>
-<td>1.610692</td>
-<td>0.511592</td>
-<td>00:15</td>
-</tr>
-<tr class="even">
-<td>1</td>
-<td>1.563322</td>
-<td>1.359540</td>
-<td>0.592866</td>
-<td>00:15</td>
-</tr>
-<tr class="odd">
-<td>2</td>
-<td>1.205948</td>
-<td>1.041064</td>
-<td>0.673631</td>
-<td>00:15</td>
-</tr>
-<tr class="even">
-<td>3</td>
-<td>0.988717</td>
-<td>0.896793</td>
-<td>0.712611</td>
-<td>00:15</td>
-</tr>
-<tr class="odd">
-<td>4</td>
-<td>0.865071</td>
-<td>0.776657</td>
-<td>0.752611</td>
-<td>00:15</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-<div id="cell-43" class="cell" data-execution_count="21">
-<div class="sourceCode cell-code" id="cb14" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1">wandb.finish()</span></code></pre></div>
-</div>
-<div id="cell-44" class="cell">
-<div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1">wandb.init(</span>
-<span id="cb15-2">    project<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"tinyscale-lab"</span>,</span>
-<span id="cb15-3">    name<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"imagenette-xse_resnext50-bs-64-lr-1e-2"</span>,</span>
-<span id="cb15-4">)</span></code></pre></div>
-</div>
-<div id="cell-45" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:206}}" data-outputid="b97a464f-d64e-4797-8814-2034c9d3013d" data-execution_count="23">
-<div class="sourceCode cell-code" id="cb16" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1">learn <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> vision_learner(dls, xse_resnext50, metrics<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>accuracy, pretrained<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="va" style="color: #111111;
-background-color: null;
-font-style: inherit;">False</span>, cbs<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>WandbCallback())</span>
-<span id="cb16-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">5</span>, <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1e-2</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th">epoch</th>
-<th data-quarto-table-cell-role="th">train_loss</th>
-<th data-quarto-table-cell-role="th">valid_loss</th>
-<th data-quarto-table-cell-role="th">accuracy</th>
-<th data-quarto-table-cell-role="th">time</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>0</td>
-<td>2.025805</td>
-<td>4.565277</td>
-<td>0.225478</td>
-<td>00:15</td>
-</tr>
-<tr class="even">
-<td>1</td>
-<td>1.586654</td>
-<td>1.567472</td>
-<td>0.527389</td>
-<td>00:15</td>
-</tr>
-<tr class="odd">
-<td>2</td>
-<td>1.162438</td>
-<td>0.994889</td>
-<td>0.680255</td>
-<td>00:15</td>
-</tr>
-<tr class="even">
-<td>3</td>
-<td>0.868640</td>
-<td>0.672154</td>
-<td>0.780892</td>
-<td>00:15</td>
-</tr>
-<tr class="odd">
-<td>4</td>
-<td>0.703673</td>
-<td>0.635068</td>
-<td>0.792611</td>
-<td>00:15</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-<div id="cell-46" class="cell">
-<div class="sourceCode cell-code" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1">wandb.finish()</span></code></pre></div>
-</div>
-</section>
-<section id="xresnet34" class="level4">
-<h4 class="anchored" data-anchor-id="xresnet34">xresnet34</h4>
-<div id="cell-48" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:471}}" data-outputid="1ca7b389-6205-4651-af2b-35c00be9e633" data-execution_count="27">
-<div class="sourceCode cell-code" id="cb18" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1">learn <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> Learner(dls, xresnet34(n_out<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">10</span>), metrics<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>accuracy)</span>
-<span id="cb18-2">learn.lr_find()</span></code></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-
-</div>
-<div class="cell-output cell-output-display" data-execution_count="27">
-<pre><code>SuggestedLRs(valley=0.0005754399462603033)</code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-17-output-4.png" class="lightbox" data-gallery="quarto-lightbox-gallery-5"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/index_files/figure-html/cell-17-output-4.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<div id="cell-49" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="db64c191-eac3-4e90-8146-0ea19c8691a1" data-execution_count="28">
-<div class="sourceCode cell-code" id="cb20" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1">learn.loss_func</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="28">
-<pre><code>FlattenedLoss of CrossEntropyLoss()</code></pre>
-</div>
-</div>
-<div id="cell-50" class="cell">
-<div class="sourceCode cell-code" id="cb22" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1">wandb.init(</span>
-<span id="cb22-2">    project<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"tinyscale-lab"</span>,</span>
-<span id="cb22-3">    name<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"imagenette-xresnet34-bs-64-lr-1e-4"</span>,</span>
-<span id="cb22-4">)</span></code></pre></div>
-</div>
-<div id="cell-51" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:206}}" data-outputid="5ff0c3d6-f0e0-4501-c244-eb567e579c59" data-execution_count="35">
-<div class="sourceCode cell-code" id="cb23" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1">learn <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> Learner(dls, xresnet34(n_out<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">10</span>), metrics<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>accuracy, cbs<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>WandbCallback())</span>
-<span id="cb23-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">5</span>, <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1e-4</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th">epoch</th>
-<th data-quarto-table-cell-role="th">train_loss</th>
-<th data-quarto-table-cell-role="th">valid_loss</th>
-<th data-quarto-table-cell-role="th">accuracy</th>
-<th data-quarto-table-cell-role="th">time</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>0</td>
-<td>2.054720</td>
-<td>1.864616</td>
-<td>0.371975</td>
-<td>00:09</td>
-</tr>
-<tr class="even">
-<td>1</td>
-<td>1.605212</td>
-<td>1.489624</td>
-<td>0.525350</td>
-<td>00:09</td>
-</tr>
-<tr class="odd">
-<td>2</td>
-<td>1.307533</td>
-<td>1.235453</td>
-<td>0.619618</td>
-<td>00:09</td>
-</tr>
-<tr class="even">
-<td>3</td>
-<td>1.180410</td>
-<td>1.153767</td>
-<td>0.642038</td>
-<td>00:09</td>
-</tr>
-<tr class="odd">
-<td>4</td>
-<td>1.124177</td>
-<td>1.139668</td>
-<td>0.644586</td>
-<td>00:09</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-<div id="cell-52" class="cell" data-execution_count="37">
-<div class="sourceCode cell-code" id="cb24" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1">wandb.finish()</span></code></pre></div>
-</div>
-<div id="cell-53" class="cell">
-<div class="sourceCode cell-code" id="cb25" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1">wandb.init(</span>
-<span id="cb25-2">    project<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"tinyscale-lab"</span>,</span>
-<span id="cb25-3">    name<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"imagenette-xresnet34-bs-64-lr-1e-3"</span>,</span>
-<span id="cb25-4">)</span></code></pre></div>
-</div>
-<div id="cell-54" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:206}}" data-outputid="307e87f9-20f2-419b-beda-9f1f32a62a2c" data-execution_count="39">
-<div class="sourceCode cell-code" id="cb26" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1">learn <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> Learner(dls, xresnet34(n_out<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">10</span>), metrics<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>accuracy, cbs<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>WandbCallback())</span>
-<span id="cb26-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">5</span>, <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1e-3</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th">epoch</th>
-<th data-quarto-table-cell-role="th">train_loss</th>
-<th data-quarto-table-cell-role="th">valid_loss</th>
-<th data-quarto-table-cell-role="th">accuracy</th>
-<th data-quarto-table-cell-role="th">time</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>0</td>
-<td>1.607826</td>
-<td>1.416133</td>
-<td>0.538344</td>
-<td>00:10</td>
-</tr>
-<tr class="even">
-<td>1</td>
-<td>1.204550</td>
-<td>1.263326</td>
-<td>0.578853</td>
-<td>00:09</td>
-</tr>
-<tr class="odd">
-<td>2</td>
-<td>0.946661</td>
-<td>0.917620</td>
-<td>0.710828</td>
-<td>00:09</td>
-</tr>
-<tr class="even">
-<td>3</td>
-<td>0.784756</td>
-<td>0.758046</td>
-<td>0.755414</td>
-<td>00:09</td>
-</tr>
-<tr class="odd">
-<td>4</td>
-<td>0.683072</td>
-<td>0.704371</td>
-<td>0.777580</td>
-<td>00:09</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-<div id="cell-55" class="cell" data-execution_count="41">
-<div class="sourceCode cell-code" id="cb27" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1">wandb.finish()</span></code></pre></div>
-</div>
-<div id="cell-56" class="cell">
-<div class="sourceCode cell-code" id="cb28" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1">wandb.init(</span>
-<span id="cb28-2">    project<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"tinyscale-lab"</span>,</span>
-<span id="cb28-3">    name<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"imagenette-xresnet34-bs-64-lr-1e-2"</span>,</span>
-<span id="cb28-4">)</span></code></pre></div>
-</div>
-<div id="cell-57" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:206}}" data-outputid="435b8593-bec7-427e-d136-a51a327efc95" data-execution_count="43">
-<div class="sourceCode cell-code" id="cb29" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1">learn <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> Learner(dls, xresnet34(n_out<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">10</span>), metrics<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>accuracy, cbs<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>WandbCallback())</span>
-<span id="cb29-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">5</span>, <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1e-2</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th">epoch</th>
-<th data-quarto-table-cell-role="th">train_loss</th>
-<th data-quarto-table-cell-role="th">valid_loss</th>
-<th data-quarto-table-cell-role="th">accuracy</th>
-<th data-quarto-table-cell-role="th">time</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>0</td>
-<td>1.571024</td>
-<td>2.439970</td>
-<td>0.335541</td>
-<td>00:09</td>
-</tr>
-<tr class="even">
-<td>1</td>
-<td>1.255883</td>
-<td>2.097694</td>
-<td>0.395414</td>
-<td>00:09</td>
-</tr>
-<tr class="odd">
-<td>2</td>
-<td>1.018229</td>
-<td>0.989576</td>
-<td>0.681529</td>
-<td>00:09</td>
-</tr>
-<tr class="even">
-<td>3</td>
-<td>0.785577</td>
-<td>0.728265</td>
-<td>0.762293</td>
-<td>00:09</td>
-</tr>
-<tr class="odd">
-<td>4</td>
-<td>0.623264</td>
-<td>0.640818</td>
-<td>0.792866</td>
-<td>00:09</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-<div id="cell-58" class="cell" data-execution_count="45">
-<div class="sourceCode cell-code" id="cb30" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1">wandb.finish()</span></code></pre></div>
-</div>
-</section>
-<section id="xresnet18" class="level4">
-<h4 class="anchored" data-anchor-id="xresnet18">xresnet18</h4>
-<div id="cell-60" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:471}}" data-outputid="3bb76188-48c5-47dd-ad6d-3d66a04be44f" data-execution_count="46">
-<div class="sourceCode cell-code" id="cb31" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1">learn <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> Learner(dls, xresnet18(), metrics<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>accuracy)</span>
-<span id="cb31-2">learn.lr_find()</span></code></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-
-</div>
-<div class="cell-output cell-output-display" data-execution_count="46">
-<pre><code>SuggestedLRs(valley=0.0020892962347716093)</code></pre>
-</div>
-<div class="cell-output cell-output-display">
-<div>
-<figure class="figure">
-<p><a href="index_files/figure-html/cell-28-output-4.png" class="lightbox" data-gallery="quarto-lightbox-gallery-6"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/index_files/figure-html/cell-28-output-4.png" class="img-fluid figure-img"></a></p>
-</figure>
-</div>
-</div>
-</div>
-<div id="cell-61" class="cell">
-<div class="sourceCode cell-code" id="cb33" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1">wandb.init(</span>
-<span id="cb33-2">    project<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"tinyscale-lab"</span>,</span>
-<span id="cb33-3">    name<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"imagenette-xresnet18-bs-64-lr-1e-4"</span>,</span>
-<span id="cb33-4">)</span></code></pre></div>
-</div>
-<div id="cell-62" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:206}}" data-outputid="c6dbf534-bb10-48ef-cb77-0eb7b8597ac1" data-execution_count="48">
-<div class="sourceCode cell-code" id="cb34" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1">learn <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> Learner(dls, xresnet18(), metrics<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>accuracy, cbs<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>WandbCallback())</span>
-<span id="cb34-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">5</span>, <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1e-4</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th">epoch</th>
-<th data-quarto-table-cell-role="th">train_loss</th>
-<th data-quarto-table-cell-role="th">valid_loss</th>
-<th data-quarto-table-cell-role="th">accuracy</th>
-<th data-quarto-table-cell-role="th">time</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>0</td>
-<td>5.608559</td>
-<td>4.292247</td>
-<td>0.301147</td>
-<td>00:07</td>
-</tr>
-<tr class="even">
-<td>1</td>
-<td>2.270526</td>
-<td>1.728192</td>
-<td>0.505478</td>
-<td>00:07</td>
-</tr>
-<tr class="odd">
-<td>2</td>
-<td>1.517185</td>
-<td>1.401804</td>
-<td>0.579108</td>
-<td>00:07</td>
-</tr>
-<tr class="even">
-<td>3</td>
-<td>1.327132</td>
-<td>1.287121</td>
-<td>0.610446</td>
-<td>00:07</td>
-</tr>
-<tr class="odd">
-<td>4</td>
-<td>1.274527</td>
-<td>1.265958</td>
-<td>0.617070</td>
-<td>00:07</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-<div id="cell-63" class="cell" data-execution_count="50">
-<div class="sourceCode cell-code" id="cb35" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1">wandb.finish()</span></code></pre></div>
-</div>
-<div id="cell-64" class="cell">
-<div class="sourceCode cell-code" id="cb36" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1">wandb.init(</span>
-<span id="cb36-2">    project<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"tinyscale-lab"</span>,</span>
-<span id="cb36-3">    name<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"imagenette-xresnet18-bs-64-lr-1e-3"</span>,</span>
-<span id="cb36-4">)</span></code></pre></div>
-</div>
-<div id="cell-65" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:206}}" data-outputid="170bf98b-8634-4d14-88fb-e1422e043217" data-execution_count="52">
-<div class="sourceCode cell-code" id="cb37" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1">learn <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> Learner(dls, xresnet18(), metrics<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>accuracy, cbs<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>WandbCallback())</span>
-<span id="cb37-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">5</span>, <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1e-3</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th">epoch</th>
-<th data-quarto-table-cell-role="th">train_loss</th>
-<th data-quarto-table-cell-role="th">valid_loss</th>
-<th data-quarto-table-cell-role="th">accuracy</th>
-<th data-quarto-table-cell-role="th">time</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>0</td>
-<td>2.134495</td>
-<td>1.742504</td>
-<td>0.445860</td>
-<td>00:07</td>
-</tr>
-<tr class="even">
-<td>1</td>
-<td>1.249879</td>
-<td>1.266531</td>
-<td>0.584204</td>
-<td>00:07</td>
-</tr>
-<tr class="odd">
-<td>2</td>
-<td>0.986120</td>
-<td>1.082811</td>
-<td>0.648153</td>
-<td>00:07</td>
-</tr>
-<tr class="even">
-<td>3</td>
-<td>0.804976</td>
-<td>0.767623</td>
-<td>0.758471</td>
-<td>00:07</td>
-</tr>
-<tr class="odd">
-<td>4</td>
-<td>0.708721</td>
-<td>0.734305</td>
-<td>0.774267</td>
-<td>00:07</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-<div id="cell-66" class="cell" data-execution_count="54">
-<div class="sourceCode cell-code" id="cb38" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1">wandb.finish()</span></code></pre></div>
-</div>
-<div id="cell-67" class="cell">
-<div class="sourceCode cell-code" id="cb39" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1">wandb.init(</span>
-<span id="cb39-2">    project<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"tinyscale-lab"</span>,</span>
-<span id="cb39-3">    name<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"imagenette-xresnet18-bs-64-lr-1e-2"</span>,</span>
-<span id="cb39-4">)</span></code></pre></div>
-</div>
-<div id="cell-68" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:206}}" data-outputid="43fb4098-6228-4d0e-f708-d395b7324de1" data-execution_count="56">
-<div class="sourceCode cell-code" id="cb40" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1">learn <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> Learner(dls, xresnet18(), metrics<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>accuracy, cbs<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>WandbCallback())</span>
-<span id="cb40-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">5</span>, <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1e-2</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th">epoch</th>
-<th data-quarto-table-cell-role="th">train_loss</th>
-<th data-quarto-table-cell-role="th">valid_loss</th>
-<th data-quarto-table-cell-role="th">accuracy</th>
-<th data-quarto-table-cell-role="th">time</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>0</td>
-<td>1.665481</td>
-<td>2.706135</td>
-<td>0.358726</td>
-<td>00:07</td>
-</tr>
-<tr class="even">
-<td>1</td>
-<td>1.278437</td>
-<td>1.516189</td>
-<td>0.505987</td>
-<td>00:07</td>
-</tr>
-<tr class="odd">
-<td>2</td>
-<td>1.017887</td>
-<td>1.038873</td>
-<td>0.663440</td>
-<td>00:07</td>
-</tr>
-<tr class="even">
-<td>3</td>
-<td>0.801989</td>
-<td>0.718528</td>
-<td>0.761529</td>
-<td>00:07</td>
-</tr>
-<tr class="odd">
-<td>4</td>
-<td>0.638737</td>
-<td>0.650084</td>
-<td>0.787006</td>
-<td>00:07</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-<div id="cell-69" class="cell" data-execution_count="59">
-<div class="sourceCode cell-code" id="cb41" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1">wandb.finish()</span></code></pre></div>
-</div>
-<div id="cell-70" class="cell">
-<div class="sourceCode cell-code" id="cb42" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1">wandb.init(</span>
-<span id="cb42-2">    project<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"tinyscale-lab"</span>,</span>
-<span id="cb42-3">    name<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"imagenette-xresnet18-bs-64-lr-1e-1"</span>,</span>
-<span id="cb42-4">)</span></code></pre></div>
-</div>
-<div id="cell-71" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;,&quot;height&quot;:206}}" data-outputid="f9e04227-875a-40b7-8fe7-f4790ac3bc32" data-execution_count="61">
-<div class="sourceCode cell-code" id="cb43" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1">learn <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> Learner(dls, xresnet18(), metrics<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>accuracy, cbs<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span>WandbCallback())</span>
-<span id="cb43-2">learn.fit_one_cycle(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">5</span>, <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1e-1</span>)</span></code></pre></div>
-<div class="cell-output cell-output-display">
-
-<style>
-    /* Turns off some styling */
-    progress {
-        /* gets rid of default border in Firefox and Opera. */
-        border: none;
-        /* Needs to be in here for Safari polyfill so background images work as expected. */
-        background-size: auto;
-    }
-    progress:not([value]), progress:not([value])::-webkit-progress-bar {
-        background: repeating-linear-gradient(45deg, #7e7e7e, #7e7e7e 10px, #5c5c5c 10px, #5c5c5c 20px);
-    }
-    .progress-bar-interrupted, .progress-bar-interrupted::-webkit-progress-bar {
-        background: #F44336;
-    }
-</style>
-</div>
-<div class="cell-output cell-output-display">
-<table class="dataframe caption-top table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th">epoch</th>
-<th data-quarto-table-cell-role="th">train_loss</th>
-<th data-quarto-table-cell-role="th">valid_loss</th>
-<th data-quarto-table-cell-role="th">accuracy</th>
-<th data-quarto-table-cell-role="th">time</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>0</td>
-<td>1.755140</td>
-<td>2.272295</td>
-<td>0.325860</td>
-<td>00:07</td>
-</tr>
-<tr class="even">
-<td>1</td>
-<td>1.501531</td>
-<td>3.738475</td>
-<td>0.322293</td>
-<td>00:07</td>
-</tr>
-<tr class="odd">
-<td>2</td>
-<td>1.238407</td>
-<td>1.375671</td>
-<td>0.547516</td>
-<td>00:07</td>
-</tr>
-<tr class="even">
-<td>3</td>
-<td>1.036412</td>
-<td>0.896265</td>
-<td>0.707516</td>
-<td>00:07</td>
-</tr>
-<tr class="odd">
-<td>4</td>
-<td>0.850425</td>
-<td>0.815597</td>
-<td>0.737325</td>
-<td>00:07</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-<div id="cell-72" class="cell" data-execution_count="64">
-<div class="sourceCode cell-code" id="cb44" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1">wandb.finish()</span></code></pre></div>
-</div>
-
-
-</section>
-</section>
-</section>
-
- ]]></description>
-  <category>python</category>
-  <category>fastai</category>
-  <category>deep learning</category>
-  <category>TinyScaleLab</category>
-  <category>imagenette</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2025-06-01-imagenette/</guid>
-  <pubDate>Sun, 01 Jun 2025 07:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
