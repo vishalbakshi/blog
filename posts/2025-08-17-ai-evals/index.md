@@ -1,0 +1,66 @@
+---
+title: Reflections After Completing the AI Evals Course
+date: "2025-08-17"
+author: Vishal Bakshi
+description: My reflections on the AI Evals, and related topics and experiences.
+filters:
+   - lightbox
+lightbox: auto
+categories:
+    - AI Evals
+---
+
+## Background
+
+This blog post is part journal, part reflection, and part planning around the topics of AI engineering, AI evals, applied AI, and my career path into machine learning. When I decided to take Hamel and Shreya's AI evals course, I had recently watched a very short talk on LLM reliability by Featherless AI CEO Eugene Cheah. I had also learned about the real.xyz benchmark, which shows just how bad LLMs are at reliably completing "boring" tasks that are necessary in commerce. I had also watched and [deeply reflected](https://youtu.be/9s88C8XBBiQ) on a discussion between Jason Liu, Andy Walter, and Vignesh Mohankumar about the different routes into AI industry work. I had also reflected on my own fear of applied AI: the risk of automating tasks for which failures would have real, concrete consequences. The amalgamation of these experiences led me to adopt the "narrow fence/long leash" framework as discussed in the AnswerAI launch blog post, an idea that came from the old GE research and development lab. In this framework, the manager would provide the researchers a "long leash" to explore whatever problems they wanted to, at whatever depth they needed to, as long as they tied back to an applied AI project; as long as they stayed within the bounds of this "narrow fence" of an applied AI project. 
+
+A couple of weeks before the AI evals course started, I was chosen to be a maintainer of the stanford_futuredata/ColBERT (`colbert-ai` on PyPI) library. I had "suddenly" gone from "hobby ML researcher" to maintainer of a foundational library in the information retrieval ML space. I say "suddenly" because while everything I had done up to that point led to me landing that role, I hadn't done everything with the goal of landing it. I had done what I did because it was fun, it was exciting, it was challenging, and I was learning a lot. Suddenly my priorities shifted. I put ColBERT maintenance (gratefully) at #1, and everything else I was working on (both long Leashes and narrow fences) became a distant #2. I had a number of goals of what I wanted to prepare before the AI evals course started, but I was not able to bring that energy and bring that preparation as I planned. Like anything, you get out what you put in. While I wasn't able to put in my maximum in the AI Evals course, I was able to adapt to my circumstances and put in and get out something extremely valuable. I hope to distill those experiences in this blog post.
+
+## Applied AI is Different
+
+Taking the AI Evals course was a humbling experience. I thought that because of how much time I had spent learning about deep learning through the fast.ai course, reading research papers, and diving into research codebases would give me some kind of running start for the course. I was completely wrong. Of course, there are transferable skills between any data-related fields, but successful applied AI folks are just built different: I can think of no better example than [the talk by Teresa Torres](https://www.youtube.com/watch?v=N-qAOv_PNPc). 
+
+Now, Teresa has a very impressive background. She studied [symbolic systems at Stanford](https://symsys.stanford.edu/), which was a cross-functional, interdisciplinary approach to what seems like human-software interaction and related systems. She also had experience as a technical product manager. However, her background does not make it any less impressive what she was able to accomplish in the given time frame: in a couple of weeks she created an Applied AI product that was set to be integrated with existing software in beta with robust evals. She applied data science skills because it just made sense to, because she needed to, because she had to, because she was terrified of creating a product that was not validated and tested. She was terrified of using AI-generated code that she didn't understand, so she had to learn Python. She wanted to cleanly and quickly inspect data, so she learned data visualization. She wanted to be cost-effective when using AI, so she recreated the MapReduce methodology for LLMs from first principles. And she did all this in a few weeks. While her velocity and problem-solving abilities are likely unique to her, I don't think her overall behavior is unique to folks in Applied AI. After my sense of awe and feeling inspired settled down, I couldn't help but think that people like her just operate differently than I do. I'm a believer that almost anything can be learned, but there's just something about applied AI that seems mutually exclusive from AI research, data science or data analysis. I can't quite put my finger on it because I do believe I'm on the outside of that world looking in. But I felt it when I watched Teresa's talk. 
+
+I also felt it when I was listening to other students ask questions and talk about their projects during office hours. I won't go into specifics because office hours are meant to be private, but student after student had specific, applied, real-production-level questions and problems that they were trying to solve. I think what I was inspired by the most was that they didn't wait to take the course to solve these problems. They were already figuring things out with whatever tools and skills they currently had, and were taking this course because they (correctly) bet it was going to provide them a system they needed to get the results they desired. You can also see this "production-ready" nature of the cohorts based on [the hundreds of testimonials of the course](https://x.com/sh_reya/status/1957139727322411291).
+
+I also felt the unique nature of applied AI by a consistent theme taught in the course: the quality of error analysis and the quality of your AI evals depend on your product sense and knowledge. "Looking at data" is just as much of a data science skill as it is a product skill. Data science teaches you how, but product sense teaches you why (and where to look). I think it's why someone like Teresa, who seems to have fantastic product sense, is able to pick up necessary data science skills to execute on her ability "follow the smell" of failure modes. 
+
+I think there certainly are unicorns where ML researchers or data scientists also have good product sense. The [folks at AnswerAI](https://www.youtube.com/watch?v=DgPr3HVp0eg) certainly seem to fit this description as was evident in the SolveIt walkthrough during the course. Another example is Omar Khattab, who gave a guest talk on DSPy during the course, who seems to see problems and solutions (and systems) differently (and earlier) than the industry at-large. As a fast.ai student/community member and late interaction enjoyer, I am of course biased.
+
+## The Value of Mundane Tasks 
+
+A topic that I've been meaning to write about but haven't yet found the time or right opportunity to do so is the skill of looking at data. I think many different paths in data science and ML (and elsewhere) provide opportunities to build this skill. Personally I built this skill by working in low-tech or even no-tech data environments. I think when you're a lowly analyst cleaning data entry errors or doing manual data entry yourself, you learn viscerally about the pain points in data collection and how those pain points can find their way to inaccuracies in downstream analyses. When you're going through binders of handwritten notes and printed PDF tables, cross-referencing aggregate numbers with poorly formatted Excel workbooks containing missing data, you build the resilience and patience necessary to thoroughly "look at data" going in and out of LLMs. I think something that has kept me from becoming a better programmer is I'm not lazy and I enjoy a moderate dose (and see the value) of mundane tasks (such as reading hundreds or thousands of LLM outputs). I think those are two characteristics that have helped me become a better data and LLM wrangler. I think it's also what will help me become a good maintainer. 
+
+A more abstract "skill" is the urge to figure out: why are two things that are supposed to be equal, not equal? And then stubbornly resolving that discrepancy, encountering all sorts of roadblocks (and learning opportunities along the way). Prioritizing this urge has accounted for most of my professional development in ML.
+
+## My Approach to the Course
+
+I somewhat organically found my rhythm in this course. I held myself to the following non-negotiable standard:
+
+1. I would attend every lecture live.
+2. I would attend every office hours live.
+3. I would write a blog post with standout ideas [from each lesson and corresponding course reader chapter](https://vishalbakshi.github.io/blog/index.html#category=AI%20Evals).
+
+I didn't do most of the homeworks, I didn't apply what I learned to the (personal) projects I was working on (that were now back burner projects).
+
+
+## Applying Applied AI Skills
+
+While I can't commit to a daily or weekly allotment of hours that I'll spend applying the learnings from this course, there are two concrete tasks that I can commit to finishing before the end of the year: 
+
+1. Perform error analysis on each pipeline step in my [AgentFasbook project](https://youtu.be/NwPKy1rqXT8) for one chapter of fastbook.
+2. Perform error analysis (and LLM Judge prompt error estimation "in production") for my [TinyScaleLab project](https://youtu.be/FXOXoaGjntc) for one training run.
+
+My AgentFastbook project involves expanding my manually curated fastbook-benchmark IR dataset using an LLM pipeline (decomposing a gold answer into atomic facts --> retrieving chapter passages relevant to those facts --> extracting only relevant text from those passages). I learned from Q+A in the course discord that I should perform error analysis on each step first and then on the full "trace" from end-to-end (because the quality of retrieval can for example effect the quality of relevant text extraction).
+
+My TinyScaleLab project aims to train tiny models to 1) generate coherent english (as shown in [the TinyStories paper](https://arxiv.org/abs/2305.07759)) and 2) perform small tasks (like gold answer decomposition or text extraction) reliably after multi-stage finetuning.
+
+## Closing Thoughts/Testimonial
+
+I still have a lingering feeling that I didn't maximize what I put into the course. I think that's totally on me. The best I can do now is use that as motivation to apply what I've learned to my projects. 
+
+One unexpected benefit from this course is that my mind is more open to AI applications. Watching the examples in the course, listening to problems that students are solving in real life, really made me question my relationship with LLMs. I don't think I fully see the potential and myriad of the problems LLMs can solve. I'm not even sure I see the "shapes" of those problems and solutions. I think the only way to bridge the gap between my understanding of applied AI and the understanding of so many people in the course that I witnessed first-hand is to actually engage in that work. Jeremy Howard and Jonathan Whitaker's SolveIt talk, even though I was a student in their first cohort, made me question my relationship with problem-solving. Teresa's talk made me question if I am moving with enough courage in this space. Omar's talk made me question whether I'm investing enough time in systems thinking. 
+
+Engaging in this course with a lot of things going on in my life was a grounding and stabilizing experience. Shreya and Hamel, as knowledgeable and brilliant as they are, are equally welcoming and inclusive. I learned a lot about how to hold space for people to ask challenging or vulnerable questions and what it means to actively encourage community and belonging in a distributed, semi-asynchronous, remote setting. There was a very strong resonance amongst everyone in the cohort. You could tell that everyone was on the same frequency, thinking about the same problems, trying to figure out similar solutions. Everyone had a different angle, background, or story to share, whether it was the guest speakers or the students participating in the office hours. I strongly recommend that everyone using LLMs or building LLM applications take this course.
+
