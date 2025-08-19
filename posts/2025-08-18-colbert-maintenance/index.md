@@ -3,6 +3,7 @@ title: PyTorch Version Impact on ColBERT Index Artifacts
 date: "2025-08-19"
 author: Vishal Bakshi
 description: Analysis of how ColBERT index artifacts change when upgrading PyTorch from 1.13.1 to 2.1.0. Differences in index tensors root cause is likely floating point variations in BERT model forward passes.
+filters:
    - lightbox
 lightbox: auto
 categories:
