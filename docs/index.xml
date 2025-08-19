@@ -10,7 +10,1719 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.7.32</generator>
-<lastBuildDate>Sun, 17 Aug 2025 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Tue, 19 Aug 2025 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>PyTorch Version Impact on ColBERT Index Artifacts</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-08-18-colbert-maintenance/</link>
+  <description><![CDATA[ 
+
+
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>I recently released <code>colbert-ai==0.2.22</code> which removed the deprecated <code>transformers.AdamW</code> import <a href="https://github.com/stanford-futuredata/ColBERT/releases/tag/v0.2.22">among other changes</a>. I’m now turning my attention to upgrading the PyTorch dependency to 2.x, which will not only introduce compatibility with modern version installations of <code>torch</code> but will also allow the integration of the <a href="https://github.com/AnswerDotAI/fastkmeans">AnswerAI <code>fastkmeans</code> library</a> as a replacement for the <code>faiss-gpu</code> and <code>faiss-cpu</code> libraries (which are no longer officially maintained on PyPI).</p>
+<p>I started this PyTorch 2.x upgrade effort by analyzing the impact of <code>torch==2.0.0</code> on <code>colbert-ai</code> as this was the first upgrade from the existing <code>torch==1.13.1</code> dependency. I approached this analysis by reviewing and documenting whether the 500+ PRs involved in <code>torch==2.0.0</code> would impact <code>colbert-ai</code>. The resulting <a href="https://docs.google.com/spreadsheets/d/1sUEN7xo5-hLVoxF9NL_ibGxPaKlPzxmnMU46zf3wd-U/edit?usp=sharing">spreadsheet</a> and <a href="https://vishalbakshi.github.io/blog/posts/2025-07-27-torch-colbert/">blog post</a> detail my findings. In short, I estimated that 28 PRs potentially impacted <code>colbert-ai</code>.</p>
+<p>In this blog post I’m detailing a different approach, from the “other end” so to speak: what changes in <code>colbert-ai</code> index artifacts when changing PyTorch versions?</p>
+</section>
+<section id="indexing-conditionalqa-with-19-pytorch-versions" class="level2">
+<h2 class="anchored" data-anchor-id="indexing-conditionalqa-with-19-pytorch-versions">Indexing ConditionalQA with 19 PyTorch Versions</h2>
+<p>I started by indexing the <a href="https://huggingface.co/datasets/UKPLab/dapr">UKPLab/DAPR/ConditionalQA</a> document collection with 19 different <code>colbert-ai</code> installs (one for each version of PyTorch from <code>1.13.1</code> to <code>2.8.0</code>), using Modal. Each Dockerfile looks something like this:</p>
+<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode dockerfile code-with-copy"><code class="sourceCode dockerfile"><span id="cb1-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">FROM</span> mambaorg/micromamba:latest</span>
+<span id="cb1-2"></span>
+<span id="cb1-3"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">USER</span> root</span>
+<span id="cb1-4"></span>
+<span id="cb1-5"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">RUN</span> <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">apt-get</span> update <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">apt-get</span> install <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-y</span> git nano curl wget build-essential <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">apt-get</span> clean <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">rm</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-rf</span> /var/lib/apt/lists/<span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">*</span></span>
+<span id="cb1-6"></span>
+<span id="cb1-7"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">RUN</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">git</span> clone https://github.com/stanford-futuredata/ColBERT.git /ColBERT <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb1-8">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">cd</span> /ColBERT <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb1-9">    <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">micromamba</span> create <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-n</span> colbert python=3.11 cuda <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-c</span> nvidia/label/11.7.1 <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-c</span> conda-forge <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb1-10">    <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">micromamba</span> install <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-n</span> colbert faiss-gpu <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-c</span> pytorch <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-c</span> conda-forge <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb1-11">    <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">micromamba</span> run <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-n</span> colbert pip install <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-e</span> . <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb1-12">    <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">micromamba</span> run <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-n</span> colbert pip install torch==2.2.0 transformers==4.38.2 pandas</span>
+<span id="cb1-13"></span>
+<span id="cb1-14"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">ENV</span> CONDA_DEFAULT_ENV=colbert</span>
+<span id="cb1-15"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">ENV</span> PATH=/opt/conda/envs/colbert/bin:$PATH</span>
+<span id="cb1-16"></span>
+<span id="cb1-17"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">WORKDIR</span> /ColBERT</span>
+<span id="cb1-18"></span>
+<span id="cb1-19"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">RUN</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">echo</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"eval </span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\"\$</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">(micromamba shell hook --shell bash)</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\"</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;&gt;</span> ~/.bashrc <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">&amp;&amp;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb1-20">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">echo</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"micromamba activate colbert"</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;&gt;</span> ~/.bashrc</span>
+<span id="cb1-21"></span>
+<span id="cb1-22"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">CMD</span> [<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"/bin/bash"</span>]</span></code></pre></div>
+<p>I decided to <code>git clone</code> and <code>pip install -e .</code> the <code>main</code> branch of <a href="https://github.com/stanford-futuredata/colbert">stanford-futuredata/ColBERT</a> since I wanted to modify the files down the road to save/inject intermediate index artifacts (as we’ll see later on in this blog post).</p>
+<p>My indexing function looks like:</p>
+<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">@app.function</span>(gpu<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>GPU, image<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>image, timeout<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3600</span>,</span>
+<span id="cb2-2">              volumes<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>{MOUNT: VOLUME},</span>
+<span id="cb2-3">              max_containers<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>)</span>
+<span id="cb2-4"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> _index(source, project, date, nranks, ndocs, root):</span>
+<span id="cb2-5">    <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> os</span>
+<span id="cb2-6">    <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> subprocess</span>
+<span id="cb2-7">    subprocess.run([<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'pwd'</span>], text<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">True</span>, shell<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">True</span>)</span>
+<span id="cb2-8">    <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> colbert <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> Indexer</span>
+<span id="cb2-9">    <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> colbert.infra <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> RunConfig, ColBERTConfig</span>
+<span id="cb2-10">    <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> colbert.infra.run <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> Run</span>
+<span id="cb2-11">    <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">from</span> datasets <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> load_dataset</span>
+<span id="cb2-12"></span>
+<span id="cb2-13">    os.environ[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"ROOT"</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> root</span>
+<span id="cb2-14"></span>
+<span id="cb2-15">    dataset_name <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"ConditionalQA"</span></span>
+<span id="cb2-16">    passages <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> load_dataset(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"UKPLab/dapr"</span>, <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">-corpus"</span>, split<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"test"</span>)</span>
+<span id="cb2-17">    queries <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> load_dataset(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"UKPLab/dapr"</span>, <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">-queries"</span>, split<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"test"</span>)</span>
+<span id="cb2-18">    qrels_rows <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> load_dataset(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"UKPLab/dapr"</span>, <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">-qrels"</span>, split<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"test"</span>)</span>
+<span id="cb2-19"></span>
+<span id="cb2-20">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">with</span> Run().context(RunConfig(nranks<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>nranks)):</span>
+<span id="cb2-21">        config <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> ColBERTConfig(</span>
+<span id="cb2-22">            doc_maxlen<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">256</span>,      </span>
+<span id="cb2-23">            nbits<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">4</span>,             </span>
+<span id="cb2-24">            dim<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">96</span>,             </span>
+<span id="cb2-25">            kmeans_niters<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">20</span>,</span>
+<span id="cb2-26">            index_bsize<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">32</span>,</span>
+<span id="cb2-27">            bsize<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">64</span>,</span>
+<span id="cb2-28">            checkpoint<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"answerdotai/answerai-colbert-small-v1"</span></span>
+<span id="cb2-29">        )</span>
+<span id="cb2-30">        </span>
+<span id="cb2-31">        indexer <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> Indexer(checkpoint<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"answerdotai/answerai-colbert-small-v1"</span>, config<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>config)</span>
+<span id="cb2-32">        _ <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> indexer.index(name<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>MOUNT<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>project<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>date<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">-</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>source<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">-</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>nranks<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/indexing/</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>dataset_name<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>, collection<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>passages[:ndocs][<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"text"</span>], overwrite<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">True</span>)</span>
+<span id="cb2-33"></span>
+<span id="cb2-34">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Index created!"</span>)</span></code></pre></div>
+<p>I would run the indexing function (in my <code>main.py</code> file) using a terminal command like so:</p>
+<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">SOURCE</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"0.2.22.main.torch.1.13.1"</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">DATE</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"20250818"</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">PROJECT</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"torch2.x"</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">NRANKS</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>1 <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">GPU</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"L4"</span> <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">modal</span> run main.py</span></code></pre></div>
+</section>
+<section id="comparing-index-artifacts-across-pytorch-versions" class="level2">
+<h2 class="anchored" data-anchor-id="comparing-index-artifacts-across-pytorch-versions">Comparing Index Artifacts Across PyTorch Versions</h2>
+<p>Once indexed, I ran my comparison script which starts by comparing index file names:</p>
+<div class="sourceCode" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1">console.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">\n</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">[bold blue]INDEX FILE NAME COMPARISON[/bold blue]"</span>)</span>
+<span id="cb4-2">a <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> os.listdir(a_path)</span>
+<span id="cb4-3">b <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> os.listdir(b_path)</span>
+<span id="cb4-4"></span>
+<span id="cb4-5"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">try</span>:</span>
+<span id="cb4-6">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> i, f <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">enumerate</span>(a): <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">assert</span> f <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> b[i]</span>
+<span id="cb4-7">    console.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"[green]✓ All </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">len</span>(a)<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;"> files match[/green]"</span>)</span>
+<span id="cb4-8"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">except</span>:</span>
+<span id="cb4-9">    console.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"[red]✗ File names don't match[/red]"</span>)</span></code></pre></div>
+<p>Then index tensor shapes:</p>
+<div class="sourceCode" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> i, f <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">enumerate</span>(a_pts):</span>
+<span id="cb5-2">    console.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">\n</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">[bold]</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>f<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">[/bold]"</span>)</span>
+<span id="cb5-3">    a_pt <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.load(a_path <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> f)</span>
+<span id="cb5-4">    b_pt <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.load(b_path <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> f)</span>
+<span id="cb5-5">    </span>
+<span id="cb5-6">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">isinstance</span>(a_pt, <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">tuple</span>):</span>
+<span id="cb5-7">        match1 <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> a_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>].shape <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> b_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>].shape</span>
+<span id="cb5-8">        match2 <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> a_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>].shape <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> b_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>].shape</span>
+<span id="cb5-9">        console.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"  Tensor[0]: [</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'green'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match1 <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'red'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">]</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>a_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>]<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>shape<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;"> vs </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>b_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>]<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>shape<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">[/</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'green'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match1 <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'red'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">]"</span>)</span>
+<span id="cb5-10">        console.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"  Tensor[1]: [</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'green'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match2 <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'red'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">]</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>a_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>]<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>shape<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;"> vs </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>b_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>]<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>shape<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">[/</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'green'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match2 <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'red'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">]"</span>)</span>
+<span id="cb5-11">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">not</span> (match1 <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">and</span> match2):</span>
+<span id="cb5-12">            shape_mismatches <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span></span>
+<span id="cb5-13">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span>:</span>
+<span id="cb5-14">        match <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> a_pt.shape <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> b_pt.shape</span>
+<span id="cb5-15">        console.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"  Shape: [</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'green'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'red'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">]</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>a_pt<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>shape<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;"> vs </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>b_pt<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>shape<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">[/</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'green'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'red'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">]"</span>)</span>
+<span id="cb5-16">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">not</span> match:</span>
+<span id="cb5-17">            shape_mismatches <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span></span></code></pre></div>
+<p>and finally compare tensor values between indexes:</p>
+<div class="sourceCode" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> i, f <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">enumerate</span>(a_pts):</span>
+<span id="cb6-2">    console.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">\n</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">[bold]</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>f<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">[/bold]"</span>)</span>
+<span id="cb6-3">    a_pt <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.load(a_path <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> f)</span>
+<span id="cb6-4">    b_pt <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.load(b_path <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> f)</span>
+<span id="cb6-5">    </span>
+<span id="cb6-6">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">isinstance</span>(a_pt, <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">tuple</span>):</span>
+<span id="cb6-7">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> a_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>].shape <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> b_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>].shape:</span>
+<span id="cb6-8">            match1 <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.allclose(a_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>], b_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>])</span>
+<span id="cb6-9">            console.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"  [</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'green'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match1 <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'red'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">]</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'✓'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match1 <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'✗'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;"> Tensor[0] values </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'match'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match1 <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'differ'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">[/</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'green'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match1 <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'red'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">]"</span>)</span>
+<span id="cb6-10">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span>:</span>
+<span id="cb6-11">            console.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"  [red]✗ Tensor[0] shape mismatch[/red]"</span>)</span>
+<span id="cb6-12">            match1 <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">False</span></span>
+<span id="cb6-13">            </span>
+<span id="cb6-14">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> a_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>].shape <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> b_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>].shape:</span>
+<span id="cb6-15">            match2 <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.allclose(a_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>], b_pt[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>])</span>
+<span id="cb6-16">            console.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"  [</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'green'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match2 <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'red'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">]</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'✓'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match2 <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'✗'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;"> Tensor[1] values </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'match'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match2 <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'differ'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">[/</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'green'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match2 <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'red'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">]"</span>)</span>
+<span id="cb6-17">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span>:</span>
+<span id="cb6-18">            console.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"  [red]✗ Tensor[1] shape mismatch[/red]"</span>)</span>
+<span id="cb6-19">            match2 <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">False</span></span>
+<span id="cb6-20">            </span>
+<span id="cb6-21">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">not</span> (match1 <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">and</span> match2):</span>
+<span id="cb6-22">            value_mismatches <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span></span>
+<span id="cb6-23">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span>:</span>
+<span id="cb6-24">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> a_pt.shape <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> b_pt.shape:</span>
+<span id="cb6-25">            match <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.allclose(a_pt, b_pt)</span>
+<span id="cb6-26">            console.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"  [</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'green'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'red'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">]</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'✓'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'✗'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;"> Values </span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'match'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'differ'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">[/</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'green'</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> match <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'red'</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">]"</span>)</span>
+<span id="cb6-27">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span>:</span>
+<span id="cb6-28">            console.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"  [red]✗ Shape mismatch[/red]"</span>)</span>
+<span id="cb6-29">            match <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">False</span></span>
+<span id="cb6-30">            </span>
+<span id="cb6-31">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">not</span> match:</span>
+<span id="cb6-32">            value_mismatches <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span></span></code></pre></div>
+<p>I compared consecutive pairs of PyTorch version <code>colbert-ai</code> installs to understand between which versions the index artifacts change. Here are my results:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Version A</th>
+<th style="text-align: center;">Version B</th>
+<th style="text-align: center;">All <code>.pt</code> Shapes Match? (Matches)</th>
+<th style="text-align: center;">All <code>.pt</code> Values Match? (Matches)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">1.13.1</td>
+<td style="text-align: center;">2.0.0</td>
+<td style="text-align: center;">Yes (10/10)</td>
+<td style="text-align: center;">Yes (10/10)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.0.0</td>
+<td style="text-align: center;">2.0.1</td>
+<td style="text-align: center;">Yes (10/10)</td>
+<td style="text-align: center;">Yes (10/10)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><mark>2.0.1</mark></td>
+<td style="text-align: center;"><mark>2.1.0</mark></td>
+<td style="text-align: center;"><mark>No (9/10)</mark></td>
+<td style="text-align: center;"><mark>No (0/10)</mark></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.1.0</td>
+<td style="text-align: center;">2.1.1</td>
+<td style="text-align: center;">Yes (10/10)</td>
+<td style="text-align: center;">Yes (10/10)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">2.1.1</td>
+<td style="text-align: center;">2.1.2</td>
+<td style="text-align: center;">Yes (10/10)</td>
+<td style="text-align: center;">Yes (10/10)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.1.2</td>
+<td style="text-align: center;">2.2.0</td>
+<td style="text-align: center;">Yes (10/10)</td>
+<td style="text-align: center;">Yes (10/10)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">2.2.0</td>
+<td style="text-align: center;">2.2.1</td>
+<td style="text-align: center;">Yes (10/10)</td>
+<td style="text-align: center;">Yes (10/10)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.2.1</td>
+<td style="text-align: center;">2.2.2</td>
+<td style="text-align: center;">Yes (10/10)</td>
+<td style="text-align: center;">Yes (10/10)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">2.2.2</td>
+<td style="text-align: center;">2.3.0</td>
+<td style="text-align: center;">Yes (10/10)</td>
+<td style="text-align: center;">Yes (10/10)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.3.0</td>
+<td style="text-align: center;">2.3.1</td>
+<td style="text-align: center;">Yes (10/10)</td>
+<td style="text-align: center;">Yes (10/10)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">2.3.1</td>
+<td style="text-align: center;">2.4.0</td>
+<td style="text-align: center;">Yes (10/10)</td>
+<td style="text-align: center;">Yes (10/10)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.4.0</td>
+<td style="text-align: center;">2.4.1</td>
+<td style="text-align: center;">Yes (10/10)</td>
+<td style="text-align: center;">Yes (10/10)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><mark>2.4.1</mark></td>
+<td style="text-align: center;"><mark>2.5.0</mark></td>
+<td style="text-align: center;"><mark>No (9/10)</mark></td>
+<td style="text-align: center;"><mark>No (0/10)</mark></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.5.0</td>
+<td style="text-align: center;">2.5.1</td>
+<td style="text-align: center;">Yes (10/10)</td>
+<td style="text-align: center;">Yes (10/10)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">2.5.1</td>
+<td style="text-align: center;">2.6.0</td>
+<td style="text-align: center;">Yes (10/10)</td>
+<td style="text-align: center;">Yes (10/10)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.6.0</td>
+<td style="text-align: center;">2.7.0</td>
+<td style="text-align: center;">Yes (10/10)</td>
+<td style="text-align: center;">Yes (10/10)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">2.7.0</td>
+<td style="text-align: center;">2.7.1</td>
+<td style="text-align: center;">Yes (10/10)</td>
+<td style="text-align: center;">Yes (10/10)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><mark>2.7.1</mark></td>
+<td style="text-align: center;"><mark>2.8.0</mark></td>
+<td style="text-align: center;"><mark>Yes (10/10)</mark></td>
+<td style="text-align: center;"><mark>No (6/10)</mark></td>
+</tr>
+</tbody>
+</table>
+<p>There are three PyTorch upgrades that cause a change in index artifacts: 2.0.1 –&gt; 2.1.0, 2.4.1 –&gt; 2.5.0, and 2.7.1 –&gt; 2.8.0.</p>
+</section>
+<section id="comparing-intermediate-index-artifacts" class="level2">
+<h2 class="anchored" data-anchor-id="comparing-intermediate-index-artifacts">Comparing Intermediate Index Artifacts</h2>
+<p>To better understand exactly where the index artifacts changed when upgrading PyTorch, I created my own copies of two stanford-futuredata/ColBERT files and added <code>torch.save</code> lines to save the intermediate artifacts listed below:</p>
+<ul>
+<li>colbert/indexing/collection_indexer.py
+<ul>
+<li><code>sampled_pids</code> (a set of integers corresponding to sampled passage IDs)</li>
+<li><code>num_passages</code> (a single integers, the number of total passages in the collection)</li>
+<li><code>local_sample_embs</code> (BERT encodings of the sample pids, created by <code>Checkpoint.docFromText</code>)</li>
+<li><code>centroids</code> (from <code>_train_kmeans</code>)</li>
+<li><code>bucket_cutoffs</code> (the bin “boundaries” used for quantization from <code>_compute_avg_residual</code>)</li>
+<li><code>bucket_weights</code> (the quantized values, from <code>_compute_avg_residual</code>)</li>
+<li><code>avg_residual</code> (a single float, from <code>_compute_avg_residual</code>)</li>
+<li><code>sample</code> (95% of the values from <code>local_sample_embs.half()</code>)</li>
+<li><code>sample_heldout</code> (5% of the values from <code>local_sample_embs.half()</code>)</li>
+<li><code>embs</code> (encoded passages)</li>
+<li><code>doclens</code> (number of tokens in each passage)</li>
+<li><code>codes</code> (centroid IDs (values) and document token IDs (indices))</li>
+<li><code>ivf</code> (document token IDs)</li>
+<li><code>values</code> (centroid IDs)</li>
+</ul></li>
+<li>colbert/modeling/checkpoint.py
+<ul>
+<li><code>tensorize_output</code> (tuple (<code>text_batches</code>, <code>reverse_indices</code>) output from <code>DocTokenizer.tensorize</code>)</li>
+<li><code>batches</code> (BERT encodings, output from <code>Checkpoint.doc</code>)</li>
+<li><code>D</code> (sorted and reshaped <code>batches</code>)</li>
+</ul></li>
+</ul>
+<p>I then replaced the corresponding files in the <code>/ColBERT</code> directory (which is why I used <code>git clone</code> and <code>pip install e .</code>) with the following lines for Modal:</p>
+<div class="sourceCode" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1">image <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> image.add_local_file(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"collection_indexer.py"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"/ColBERT/colbert/indexing/collection_indexer.py"</span>)</span>
+<span id="cb7-2">image <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> image.add_local_file(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"checkpoint.py"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"/ColBERT/colbert/modeling/checkpoint.py"</span>)</span></code></pre></div>
+<p>Here are the results when comparing these artifacts between <code>colbert-ai</code> installs using <code>torch==1.13.1</code> and <code>torch==2.1.0</code>:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Artifact</th>
+<th style="text-align: center;"><code>torch.allclose</code></th>
+<th style="text-align: center;"></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><code>sampled_pids</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>num_passages</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><mark><code>local_sample_embs</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><mark><code>centroids</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><mark><code>bucket_cutoffs</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><mark><code>bucket_weights</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><mark><code>avg_residual</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><mark><code>sample</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><mark><code>sample_heldout</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><mark><code>embs</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>doclens</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><mark><code>codes</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><mark><code>ivf</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><mark><code>values</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>tensorize_output</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><mark><code>batches</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><mark><code>D</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+</tbody>
+</table>
+<p>After reviewing these comparisons, my hypothesis was that the first difference (in <code>local_sample_embs</code>) affected all subsequent artifacts. The difference in <code>local_sample_embs</code> can be traced down to the difference in <code>batches</code> and <code>D</code>. To test this hypothesis, I “injected” the <code>local_sample_embs</code> from the <code>torch==1.13.1</code> install into the <code>collection_indexer.py</code> when indexing with <code>torch==2.1.0</code>:</p>
+<div class="sourceCode" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1">local_sample_embs <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.load(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"/colbert-maintenance/torch2.x/20250818-0.2.22.main.torch.1.13.1-1k-1/local_sample_embs.pt"</span>)</span></code></pre></div>
+<p>I then re-compared the artifacts, and my hypothesis was correct!</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Artifact</th>
+<th style="text-align: center;"><code>torch.allclose</code></th>
+<th style="text-align: center;"></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><code>centroids</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>bucket_cutoffs</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>bucket_weights</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>avg_residual</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>sample</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>sample_heldout</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><mark><code>embs</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>doclens</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><mark><code>codes</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><mark><code>ivf</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><mark><code>values</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="comparing-the-bertmodels" class="level2">
+<h2 class="anchored" data-anchor-id="comparing-the-bertmodels">Comparing the <code>BertModel</code>s</h2>
+<p>Where do <code>local_sample_embs</code> come from? The highest-level method is <code>CollectionEncoder.encode_passages</code>. Inside <code>CollectionEncoder.encode_passages</code> the collection of texts, <code>passages</code> is fed to <code>Checkpoint.docFromText</code>. Inside there, the tokenized text is passed to <code>Checkpoint.doc</code>, which passes them to <code>ColBERT.doc</code>, which finally passes the <code>input_ids</code> and <code>attention_mask</code> to <code>ColBERT.bert</code>. Since there was a divergence in <code>local_sample_embs</code>, I figured there would be a divergence in either the weights and/or the logits of <code>ColBERT.bert</code> between both PyTorch version installs.</p>
+<p>I installed each image of <code>colbert-ai</code> and separately saved the <code>BertModel</code> weights as well as a dictionary with outputs from each of the 10 <code>BertEncoder</code> layers. These outputs were accessed using a forward hook:</p>
+<div class="sourceCode" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1">outputs_dict <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> {}</span>
+<span id="cb9-2"></span>
+<span id="cb9-3"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> capture_output(name):</span>
+<span id="cb9-4">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> hook_fn(module, <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">input</span>, output):</span>
+<span id="cb9-5">        outputs_dict[name] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> output[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>].detach()</span>
+<span id="cb9-6">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> hook_fn</span>
+<span id="cb9-7"></span>
+<span id="cb9-8">hooks <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> []</span>
+<span id="cb9-9"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> i <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">range</span>(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">10</span>):</span>
+<span id="cb9-10">    hooks.append(checkpoint.bert.encoder.layer[i].register_forward_hook(capture_output(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"1.13.1_</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>i<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>)))</span>
+<span id="cb9-11"></span>
+<span id="cb9-12"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">with</span> torch.no_grad():</span>
+<span id="cb9-13">    D <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> checkpoint.bert(input_ids, attention_mask<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>attention_mask)[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>]</span>
+<span id="cb9-14"></span>
+<span id="cb9-15"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> h <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> hooks: h.remove()</span></code></pre></div>
+<p>Both <code>colbert-ai</code> installs (<code>torch==1.13.1</code> and <code>torch==2.1.0</code>) had equal <code>BertModel</code> weights. However, both of them have diverging <code>BertEncoder</code> outputs.</p>
+<p>Here are the mean absolute differences between corresponding <code>BertEncoder</code> layer outputs between <code>torch==1.13.1</code> and <code>torch==2.1.0</code>:</p>
+<div class="sourceCode" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">for</span> i <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">range</span>(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">10</span>):</span>
+<span id="cb10-2">    a_ <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> a[<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"1.13.1_</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>i<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>]</span>
+<span id="cb10-3">    b_ <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> b[<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"2.1_</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>i<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span>]</span>
+<span id="cb10-4">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(i, torch.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">abs</span>(a_ <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span> b_).<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">float</span>().mean())</span></code></pre></div>
+<pre><code>0 tensor(2.8141e-08, device='cuda:0')
+1 tensor(5.9652e-08, device='cuda:0')
+2 tensor(8.0172e-08, device='cuda:0')
+3 tensor(7.8228e-08, device='cuda:0')
+4 tensor(7.9968e-08, device='cuda:0')
+5 tensor(8.3589e-08, device='cuda:0')
+6 tensor(8.7348e-08, device='cuda:0')
+7 tensor(8.5140e-08, device='cuda:0')
+8 tensor(8.5651e-08, device='cuda:0')
+9 tensor(8.1636e-08, device='cuda:0')</code></pre>
+<p>The difference increases about 2x as we go deeper through the model.</p>
+<p>Here are the max absolute differences, which increases 2x by the final layer:</p>
+<div class="sourceCode" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span> tensor(<span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3.5763e-07</span>, device<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'cuda:0'</span>)</span>
+<span id="cb12-2"><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span> tensor(<span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">4.7684e-07</span>, device<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'cuda:0'</span>)</span>
+<span id="cb12-3"><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span> tensor(<span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.9605e-07</span>, device<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'cuda:0'</span>)</span>
+<span id="cb12-4"><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3</span> tensor(<span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5.9605e-07</span>, device<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'cuda:0'</span>)</span>
+<span id="cb12-5"><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">4</span> tensor(<span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">7.1526e-07</span>, device<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'cuda:0'</span>)</span>
+<span id="cb12-6"><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span> tensor(<span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">7.1526e-07</span>, device<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'cuda:0'</span>)</span>
+<span id="cb12-7"><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">6</span> tensor(<span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">7.1526e-07</span>, device<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'cuda:0'</span>)</span>
+<span id="cb12-8"><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">7</span> tensor(<span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">9.5367e-07</span>, device<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'cuda:0'</span>)</span>
+<span id="cb12-9"><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">8</span> tensor(<span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">9.5367e-07</span>, device<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'cuda:0'</span>)</span>
+<span id="cb12-10"><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">9</span> tensor(<span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.1921e-06</span>, device<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'cuda:0'</span>)</span></code></pre></div>
+</section>
+<section id="closing-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="closing-thoughts">Closing Thoughts</h2>
+<p>From this analysis, I can conclude that the difference in index artifacts generated by <code>colbert-ai</code> using different <code>torch==1.13.1</code> vs.&nbsp;<code>torch==2.1.0</code> is due to floating point differences in the forward pass of the <code>BertModel</code> used to generate token-level embeddings from text passages. I have not yet analyzed the <code>torch==2.1.0</code> release notes to make an educated guess on why these differences occur. But given that it’s during the forward pass of the model, I would wager there was some update to the underlying C++ code for the <code>torch.nn</code> module.</p>
+<p>I will move forward with comparing intermediate artifacts between each subsequent versions where the final index artifacts are different 2.4.1 –&gt; 2.5.0, and 2.7.1 –&gt; 2.8.0. Once that’s complete, I’ll dive into the PyTorch release notes and see if I can reasonably point to a few PRs behind this change. Once I have a reasonable handle on understanding <code>colbert-ai</code> indexing behavior with different versions of PyTorch 2.x, I’ll perform a similar analysis with <code>colbert-ai</code> training and document my findings.</p>
+<p>Thanks for reading until the end! I’ll be posting more blog post and/or video updates around ColBERT maintenance as soon as I have something more to share.</p>
+
+
+</section>
+
+ ]]></description>
+  <category>ColBERT</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-08-18-colbert-maintenance/</guid>
+  <pubDate>Tue, 19 Aug 2025 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>TIL: Launching Jupyter with a Custom Modal Image and Volume</title>
   <dc:creator>Vishal Bakshi</dc:creator>
@@ -10089,120 +11801,6 @@ font-style: inherit;">0</span>]</span></code></pre></div>
   <category>fastai</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2025-06-11-CELoss/</guid>
   <pubDate>Wed, 11 Jun 2025 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>Proof, Pricing, and Passion: Finding My Path in Machine Learning</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2025-06-09-fireside-chat/</link>
-  <description><![CDATA[ 
-
-
-
-
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<iframe width="560" height="315" src="https://www.youtube.com/embed/Z328Nl6c-8k?si=Ey9ehhiHqoCQfmum" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
-</iframe>
-<p>A recent fireside chat with three successful AI consultants—Jason Liu, Andy Walters, and Vignesh Mohankumar—gave me a much clearer, more realistic perspective on what it takes to build a career in this space. While a previous <a href="https://www.youtube.com/watch?v=nyNQtkiW-ME">paradigm-shifting conversation between Jason Liu and Hamel Husain</a> had inspired me, this conversation answered a critical question I’ve been wrestling with:</p>
-<blockquote class="blockquote">
-<p>What do you think is the minimum amount of professional experience to have before going full-time consulting?</p>
-</blockquote>
-<p>I was all ears on this one. Below are the responses from Jason, Vignesh and Andy (emphasis mine)</p>
-<blockquote class="blockquote">
-<p>Jason: <mark><strong>the thing you want to have is proof.</strong></mark> There are people making a million dollars a year doing Zapier integrations and automations. You can probably just figure that out, just charge very little, do a couple of free jobs, get some proof, maybe if you help a business owner with their automations you can ask if they have anyone they can refer you to, then you get the next job and the next job. I think it depends on what kind of things you’re promising and what kind of solutions you’re promising.</p>
-</blockquote>
-<blockquote class="blockquote">
-<p>Vignesh: I think the fact that I was basically a staff level engineer is really what’s helping me now, but it’s not to say that you don’t need that, I think like you said there’s a lot of things you can do, but <mark><strong>I think for the type of work I’m doing it would be very hard to do if you were less than 5 years of experience, or really, honestly, probably 8</strong></mark>….but it’s about what have you actually done and can you actually prove it.</p>
-</blockquote>
-<blockquote class="blockquote">
-<p>Andy: I started with zero AI knowledge. I was previously a programmer. I never worked at a startup that was successful. I worked at little agencies my whole career. I am where I am today so it’s possible. <mark><strong>It all depends on your skill set. It’s about staffing your weaknesses.</strong></mark> If you want to go big and you’re not good at something if you can partner with somebody who’s good at that thing, now you can move on and go further. It depends on how fast you want to scale, how honest you can be with yourself about your weaknesses and how good you are at acquiring the talent to fill in those weaknesses.</p>
-</blockquote>
-<p>Jason and Vignesh agreed upon the fact that you can land jobs if you can prove that you can deliver results (at the appropriate scale). For someone like me, who has never worked professionally in ML, getting that proof (at scale, in a setting that emulates a real business) is the tricky part. I would imagine that any proof I can currently collect (research projects, Kaggle competitions, educational content, etc.) will help me get a foot in the door at a company or a lab, which will then unlock my ability to get more proof in a professional setting that could translate to consulting. I could be wrong (tweet at me if I am) but going from 0-to-consulting without any other professional ML experience doesn’t seem likely (or, at least I haven’t seen any examples of this, except for unicorns like Jeremy Howard).</p>
-<p>But knowing when to start is only half the battle; understanding the pivotal moments that accelerate a consulting career is just as important, which the speakers addressed next.</p>
-</section>
-<section id="inflection-points-in-consulting" class="level2">
-<h2 class="anchored" data-anchor-id="inflection-points-in-consulting">Inflection points in consulting</h2>
-<p>Q: What felt like the inflection point for the way that you were able to bring in revenue or demand higher fees?</p>
-<blockquote class="blockquote">
-<p>Jason: For me a lot of it was coming down to my writing. At some point it became: “Hey Jason, I’ve seen a couple of your blog posts show up on my Slack, I don’t really know who you are, I finally clicked the website and I realized you were available so can we figure out if it makes sense to work together?” And then I would share another blog post after the call and they would be like “turns out my CTO already read this, what is your availability?”</p>
-</blockquote>
-<blockquote class="blockquote">
-<p>Vignesh: There was one month where I got a project and I finished it in a week or two and it was more money than I had made if I just worked full-time, hourly, for a month and a half. It was a really pressing problem that came up. I realized I’d rather sit there for 29 days a month and find a project-based thing that I could do for one day a month, then work hourly. That’s what shifted it for me.</p>
-</blockquote>
-<blockquote class="blockquote">
-<p>Jason: Going from time-based to project-based pricing, and then getting comfortable understanding the value that your project delivers and increase your fee to reflect the size of the problem.</p>
-</blockquote>
-<p>In the Hamel/Jason discussion on AI consulting, they talk about how publishing free content is a viable marketing plan. This really resonated with me as a fast.ai community member, encouraged by <a href="https://medium.com/@racheltho/why-you-yes-you-should-blog-7d2544ac1045">Rachel Thomas to blog</a> since “it’s like a resume, only better.” After I watched Jason and Hamel’s discussion, I immediately set a goal to publish 50 ML vidoes and 50 ML blog posts in 2025, and it has been driving me forward ever since. Reading that Jason’s leads often come from people reading his blog further solidified by belief that this is the way. Obviously, what you’re writing about matters, but I think that catches up with quantity over time.</p>
-<p>Both of these inflection points are about detaching income from hours and tying it to the value you create. But what’s the upper limit? This led to an interesting exchange about whether AI is removing the ceiling on how much impact a single consultant can have.</p>
-</section>
-<section id="is-there-a-ceiling-for-one-consultant" class="level2">
-<h2 class="anchored" data-anchor-id="is-there-a-ceiling-for-one-consultant">Is there a ceiling for one consultant?</h2>
-<p>I’ve heard Jason say some iteration of the following in a couple of videos now:</p>
-<blockquote class="blockquote">
-<p>Jason: I would be surprised if there’s anybody I know that can be like an individual person even doing $10MM a year just feels very difficult whereas if you just have a couple of small operational staff you can probably get pretty far.</p>
-</blockquote>
-<p>This was the first video (that I’ve watched) where someone pushed back on that.</p>
-<blockquote class="blockquote">
-<p>Vignesh: If these tools are going to keep getting better, then I don’t know if there is a limit anymore at some point.</p>
-</blockquote>
-<p>I think this both an inspiring and realistic take. My own self-prescribed limits have continuously been broken with the help of AI. It’s hard for me to quantify how much my growth in ML has accelerated due to AI (as I obviously don’t have a control to compare for that) but anecdotally, every month and every year that I’ve increased my use of AI to augment my learning and implementation skills, I’ve accomplished tasks that I didn’t expect to. You could argue that every project, blog post, and video I’ve published could not have been possible without the support of AI. How this translates to getting paid (and how much I get paid), only time will tell. Going back to the previous topic on when to start consulting, I think the use of AI can help build that proof needed for a 0-to-consulting trajectory. It may require doing a couple free or low-paying jobs, but I think that’s reasonable to expect. This is probably a controversial take, and I’m not condoning or advocating for exploitation, but I do think that when you work for free as a beginner, you are “paying” (with your labor) to get that proof needed to unlock paid work. Working for free can also look like joining a study group/discord server and taking on tasks that need to be done.</p>
-<p>While the potential to scale with AI is an exciting thought experiment, financial upside is rarely the sole motivator for taking the risk of going independent. The conversation also explored the fundamental ‘why’ behind this career path, and Vignesh’s reasons resonated deeply with my own.</p>
-</section>
-<section id="what-attracts-me-to-consulting" class="level2">
-<h2 class="anchored" data-anchor-id="what-attracts-me-to-consulting">What attracts me to consulting</h2>
-<blockquote class="blockquote">
-<p>Q: Why didn’t you join a startup (or starting a company) versus doing your own thing?</p>
-</blockquote>
-<blockquote class="blockquote">
-<p>Vignesh: I just loving working on new problems all of the time, ideally multiple problems at the same time. I think consulting is really interesting because you can price based on the actual value you’re delivering. That keeps me going in some ways—what’s the most valuable things I can be working on? How can I help people the most? The last piece is that I just love owning the brand. Anything I’m writing, anyone I’m meeting is all tied to me…I scale it by finding more valuable projects and more important problems.</p>
-</blockquote>
-<p>All of these points resonate with me. As a hobby ML researcher, I value the following freedoms:</p>
-<ul>
-<li>The freedom to start, pause, or stop a project at will.</li>
-<li>The freedom of learning and building in public without the constraints of private, proprietary work.</li>
-<li>The freedom to choose my focus.</li>
-<li>The freedom to control my pace—going slow. Going fast. Going deep. Staying shallow. I choose at all times which of these modes I’m in.</li>
-<li>The freedom from an obsession with results, allowing me to instead chase ideas, concepts, and their clear explanation.</li>
-</ul>
-<p>The cost of these freedoms, currently, is that I do this work for free. Finding a situation where I can continue to have these freedoms is my next challenge.</p>
-<p>Vignesh’s drive for autonomy and interesting problems perfectly mirrors the freedoms I value as a hobby researcher. But what I found most encouraging was the discussion that followed, which highlighted that his path isn’t the only one; different personalities and preferences can also lead to fulfilling consulting careers.</p>
-</section>
-<section id="on-different-paths-to-consulting" class="level2">
-<h2 class="anchored" data-anchor-id="on-different-paths-to-consulting">On different paths to consulting</h2>
-<p>Vignesh and Andy had diametrically opposed preferences and paths to consulting (emphasis mine):</p>
-<blockquote class="blockquote">
-<p>Vignesh: I like coding a lot. I love writing code. I love learning things. So it works. It’s like my dream.</p>
-</blockquote>
-<blockquote class="blockquote">
-<p>Andy: I think I’m different than Vignesh in that like I was an okay engineer, but I was never a great engineer, and I really enjoyed the relationship aspect of it, leading people, that kind of stuff, that’s actually more fun to me. I like meetings…I enjoy it. <mark><strong>It’s all about figuring out what you really enjoy and pushing on that a lot.</strong></mark></p>
-</blockquote>
-<p>I think it was awesome and important for viewers to see these diverse preferences both leading to fulfilling consulting careers. Ultimately, while landing paid work is goal 1B, doing what I enjoy and excites me is 1A and this confirmed that motivation.</p>
-<p>The idea that you should build a career around what you genuinely enjoy is a powerful one. And what makes this path so compelling right now is the shared belief among all the speakers that the opportunity is vast enough to accommodate all of these different approaches.</p>
-</section>
-<section id="the-work-is-literally-falling-off-trucks" class="level2">
-<h2 class="anchored" data-anchor-id="the-work-is-literally-falling-off-trucks">The work is literally falling off trucks</h2>
-<p>I’ll end with Andy’s closing thoughts:</p>
-<blockquote class="blockquote">
-<p>Andy: I think the biggest lesson I’ve learned through all of this is it’s all about breaking your context into the next level. There is this cascading series of contexts you have to break yourself into and it’s always uncomfortable and it feels painful and risky…keep pushing, keep growing, and even when it doesn’t work the first time you just keep pulling the thread. It’s surprising how far you can get. We firmly believe that over the next 5 years there’s at least a trillion dollars of integration services on the table for companies to integrate AI into their offerings. The work is literally falling off the trucks. It’s out there to seize, go seize it.</p>
-</blockquote>
-<p>When you are constantly pushing yourself to grow and take on the next challenging context, you will find yourself working at the edge of your knowledge and capacity. This is an ideal place to be. However, the downside is never truly knowing or feeling how much you have progressed. It’s a constant state of “I am stuck on X which I need to resolve so I can get to Y”. I think documenting your journey (through writing blog posts/tweets and creating videos) helps balance this bleeding-edge approach by concretely and quantitatively showing you what you have learned and how much you have achieved.</p>
-<p>Andy’s point that “the work is literally falling off the trucks” should be inspiring to everyone, regardless of whether or not you want to pursue consulting. I think we are still in the very early stages of AI adoption, which means that there is a lot of implementation work that needs to get done. It can seem (falsely) that the field of AI is accelerating at an unsustainable pace, but what is unsustainble in my opinion is that veneer. The fundamentals still matter. Communicating concepts clearly still matters. These are relatively low-hanging fruit.</p>
-</section>
-<section id="closing-thoughts" class="level2">
-<h2 class="anchored" data-anchor-id="closing-thoughts">Closing thoughts</h2>
-<p>I thoroughly enjoying this fireside chat. I came away from it with more questions and some answers.</p>
-<p>To be honest, I don’t know where my ML journey is going to take me. When I’m feeling optimistic, I imagine myself working in an organization or independently with the same joy that I find myself working on my personal projects today. On my worst days, I wonder if I’ll ever leave the purgatory of hobby ML. I think the key to my success is to be consistent regardless of what I’m feeling.</p>
-<p>Hearing Andy talk about staffing weaknesses and Vignesh about AI raising the ceiling made me reflect on my own approach. When it comes to using AI, and what capabilities it will unlock for me, I keep waiting for a “choir of angels” (<a href="https://xkcd.com/310/">xkcd</a>) but instead have found a steady plodding forward, task to task. I think Vignesh is right about AI removing the ceiling, and Andy is right about supplementing your weaknesses with others’ strengths. Combining these two ideas, I think my task is to become more aware about 1) what my current ceiling is/what my current weaknesses are and 2) understanding how to augment them with AI. The sycophantic nature of AI makes it difficult to use it for identifying my weaknesses, but I’ve found success by asking Claude to be a “hardass” (and then asking it to critique the hardass), or using Gemini 2.5-Pro for such questions, which I find is more straightforward and informative and less of a coach/cheerleader.</p>
-<p>I’ll end by saying that I don’t usually write posts like these, and keep these thoughts to myself, but I’m finding that to strengthen my relationship with my audience I will have to share more of myself in my writing. This is the first of what I hope will be many posts connecting what I’m learning from experts in the field to my own journey.</p>
-<p>You can reach me on <a href="https://x.com/vishal_learner">Twitter</a> and find more content on my <a href="https://www.youtube.com/@vishal_learner">YouTube channel</a>.</p>
-
-
-</section>
-
- ]]></description>
-  <category>Career</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2025-06-09-fireside-chat/</guid>
-  <pubDate>Mon, 09 Jun 2025 07:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
