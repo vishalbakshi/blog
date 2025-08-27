@@ -197,7 +197,7 @@ After running the scripts with this model modification, mixed precision 8-item b
 |:-:|:-:|:-:|:-:|
 |Per-Layer `BertModel` Outputs|Mixed|8|`True`|
 |`checkpoint.bert(input_ids, attention_mask=attention_mask)[0]`|Mixed|8|`True`
-|`checkpoint.linear(D)`|Mixed|8|`False`
+|`checkpoint.linear(D)`|Mixed|8|`True`
 |`torch.nn.functional.normalize(D, p=2, dim=2)`|Mixed|8|`True`
 
 Here are the two modules in question: (`layer.intermediate.dense` and `layer.output.dense`)
