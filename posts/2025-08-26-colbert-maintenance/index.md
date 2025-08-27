@@ -154,6 +154,7 @@ I found that the similarity of intermediate artifacts generated in `checkpoint.d
 Here's a table showing the different artifacts of different precision types I compared between `torch==2.4.1` and `torch.2.5.0`:
 
 |Artifact|Precision|Batch Size|`torch.allclose`|
+|:-:|:-:|:-:|:-:|
 |Per-Layer `BertModel` Outputs|Full|32|`True`|
 |`checkpoint.bert(input_ids, attention_mask=attention_mask)[0]`|Full|32|`True`
 |`checkpoint.linear(D)`|Full|32|`True`
@@ -193,6 +194,7 @@ for layer in checkpoint.bert.encoder.layer:
 After running the scripts with this model modification, mixed precision 8-item batches yielded identical results across PyTorch versions!
 
 |Artifact|Precision|Batch Size|`torch.allclose`|
+|:-:|:-:|:-:|:-:|
 |Per-Layer `BertModel` Outputs|Mixed|8|`True`|
 |`checkpoint.bert(input_ids, attention_mask=attention_mask)[0]`|Mixed|8|`True`
 |`checkpoint.linear(D)`|Mixed|8|`False`
