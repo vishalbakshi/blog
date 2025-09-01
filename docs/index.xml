@@ -586,6 +586,581 @@ Creativity Support Tool Epistemic Artifacts
   <pubDate>Mon, 01 Sep 2025 07:00:00 GMT</pubDate>
 </item>
 <item>
+  <title>A Summary of and My Thoughts on the DocWrangler Paper</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-08-30-DocWrangler/</link>
+  <description><![CDATA[ 
+
+
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>I’ll summarize the main points from the <a href="https://arxiv.org/abs/2504.14764">“Steering Semantic Data Processing with DocWrangler” paper by Shreya Shankar et al</a> and share my commentary (<a href="https://vishalbakshi.github.io/blog/posts/2025-07-16-ColBERTv1/">something I’ve been doing more of lately</a>).</p>
+<p>This work is inspiring and fascinating. Shreya previewed DocWrangler during the AI Evals course, but reading the paper—especially the user study section—helped me grasp its magnitude. While I lack formal data visualization training, what I’ve read (like <a href="https://vishalbakshi.github.io/blog/posts/2023-05-20-visualization-analysis-and-design/">Visualization Analysis &amp; Design by Tamara Munzner</a>) taught me about the fundamental building blocks of data, UI, analysis goals, and their relationships. For example:</p>
+<blockquote class="blockquote">
+<p>Search can be classified according to whether the identity and location of targets are known or not</p>
+<ul>
+<li>both are known with <em>lookup</em></li>
+<li>the target is known but its location is not for <em>locate</em></li>
+<li>the location is known but the target is not for <em>browse</em></li>
+<li>neither the target nor the location are known for <em>explore</em></li>
+</ul>
+</blockquote>
+<p>or:</p>
+<blockquote class="blockquote">
+<p>The intent of the user is to generate new material.</p>
+<p>There are three kinds of produce goals:</p>
+<ul>
+<li>annotate (adds a new attribute to the data)</li>
+<li>record (saves visualization artifacts as persistent artifacts)</li>
+<li>derive (produce new data elements based on existing data elements)</li>
+</ul>
+</blockquote>
+<p>Reading the DocWrangler paper felt similar—like discovering building blocks of a fundamentally new paradigm. LLMs enabling large-scale data analysis is already paradigm-shifting, so our analysis methods should match that novelty. Exciting time to work with data!</p>
+<div class="callout callout-style-default callout-caution callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-1-contents" aria-controls="callout-1" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Paper Quotes Will be Collapsible
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-1" class="callout-1-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>I’m trying out collapsible sections for paper quotes so that it shortens the blog post.</p>
+</div>
+</div>
+</div>
+</section>
+<section id="abstract" class="level2">
+<h2 class="anchored" data-anchor-id="abstract">Abstract</h2>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-2-contents" aria-controls="callout-2" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+The LLM Paradox
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-2" class="callout-2-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>…building effective semantic data processing pipelines presents a departure from traditional data pipelines: <mark>users need to understand their data to write effective pipelines, yet they need to construct pipelines to extract the data necessary for that understanding</mark>…</p>
+</div>
+</div>
+</div>
+<p>With structured data, you have deterministic algorithms (groupby, aggregate, filter) available through stable APIs like Pandas. With unstructured data and LLMs, no stable API exists. Anthropic doesn’t have a reference page for semantic data processing—just <a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview">guidelines on structuring prompts</a>. These guidelines may or may not work depending on your model, task, and data. Success requires iteration: prompt → inspect results → improve prompt. Each pipeline step affects the next, accumulating ambiguity throughout.</p>
+<p>Large collections of unstructured text (emails, documents, reports, transcripts) contain variations of similar data. An email thread about a project might refer to tasks using different words and phrases. Company reports express sentiment differently across documents. Compare this to a 5-point Likert scale from a survey. Before identifying characteristics in unstructured data, you must interpret how different variations of the same characteristic are expressed. This requires processing lots of information—where LLMs excel. But determining which concrete steps, in which order, with which prompts requires going back and forth between understanding your data and constructing/improving your pipeline.</p>
+<p>Fellow fast.ai students will recognize this philosophy: you often need a quick and dirty model to view actual vs.&nbsp;predicted results before identifying what needs data cleaning.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-3-contents" aria-controls="callout-3" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+DocWrangler is an IDE
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-3" class="callout-3-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>…[DocWrangler is] a mixed-initiative integrated development environment (IDE) for semantic data processing…</p>
+</div>
+</div>
+</div>
+<p>It’s important to highlight the difference between DocWrangler and DocETL. DocWrangler is the graphical user interface where Shreya and her team have designed intentionally a specific set of interaction components to construct semantic data processing pipelines. It is an opinionated frontend with specific goals. DocETL is the back-end which runs the pipeline as <a href="https://ucbepic.github.io/docetl/tutorial/#creating-the-pipeline:~:text=Create%20a%20file%20named%20pipeline.yaml%20with%20the%20following%20structure%3A">defined by a YAML file</a>. In theory, you can write whatever front-end you want on top of DocETL.</p>
+</section>
+<section id="introduction" class="level2">
+<h2 class="anchored" data-anchor-id="introduction">Introduction</h2>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-4-contents" aria-controls="callout-4" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Semantic Data Processing
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-4" class="callout-4-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>semantic data processing: a paradigm where users can instruct LLMs to manipulate data through familiar data processing operators like map, reduce, filter, and groupby.</p>
+</div>
+</div>
+</div>
+<p>Even though LLMs don’t have a deterministic, stable API to perform common algorithms, we can still use them for that end. Say we have a collection of 10,000 documents, we can use a semantic <code>map</code> “to extract mentions of medications and reported side effects, followed by a semantic reduce to summarize effects per medication.”</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-5-contents" aria-controls="callout-5" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+The Three Gulfs
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-5" class="callout-5-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p><mark>gulf of comprehension</mark>: Documents contain too much information for humans to fully process [and for LLMs to accurately process].</p>
+<p><mark>gulf of specification</mark>: users must first discover their true intent—often only possible after exploring sufficient data to understand what questions the data can reasonably answer.</p>
+<p><mark>gulf of generalization</mark>: even with clear, unambiguous prompts, LLMs may fail to generalize correctly to the user’s actual data</p>
+</div>
+</div>
+</div>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="The Three Gulfs Framework"><img src="https://vishalbakshi.github.io/blog/posts/2025-08-30-DocWrangler/1.png" class="img-fluid figure-img" alt="The Three Gulfs Framework"></a></p>
+<figcaption>The Three Gulfs Framework</figcaption>
+</figure>
+</div>
+<p>The Three Gulfs Framework drives DocWrangler’s design philosophy. The comprehension gulf motivates using LLMs, but LLMs aren’t a silver bullet. The specification gulf connects to the LLM paradox—deciding whether to apply semantic map or reduce requires knowing your data’s contents. In medical notes, some contain brand names, others generic names, others medication classes. You need to run map operations and examine samples to identify these patterns before crafting your final prompt and pipeline. The generalization gulf highlights LLMs’ fundamental limitation: they struggle with out-of-domain data.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-6-contents" aria-controls="callout-6" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+DocWrangler Features Address the Three Gulfs
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-6" class="callout-6-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>The <mark><strong>in-situ user notes</strong></mark> feature tackles the comprehension gulf by enabling users to annotate observations directly on both documents and outputs. The <mark><strong>LLM-assisted prompt refinement</strong></mark> feature addresses the specification gulf through an interactive interface where an LLM analyzes the pipeline, documents, outputs, and user notes to suggest more effective prompts. The <mark><strong>LLM-assisted operation decomposition</strong></mark> feature targets the generalization gulf by identifying when the pipeline is inadequate for the documents, using an LLM-as-judge that runs in the background.</p>
+</div>
+</div>
+</div>
+<p>In-situ user notes attach as text attributes to specific data items, providing context when the LLM helps refine prompts or suggest task decomposition. I think the quality of in-situ user notes drives the entire effort to bridge the three gulfs.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-7-contents" aria-controls="callout-7" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+How Users Intuitively Resolve the LLM Paradox
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-7" class="callout-7-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>Users also employed intentionally vague prompts in map operations to learn more about their data, reminiscent of epistemic actions, i.e., actions taken not to directly achieve a goal but to gather information that reveals new possibilities.</p>
+</div>
+</div>
+</div>
+<p>I want to highlight this because 1) this behavior stems from DocWrangler’s design, and 2) it demonstrates good problem-solving skills. I often run intermediate code while trying to understand relationships between high-level abstractions and low-level functionality in a codebase. Intentionally vague prompts expose the LLM’s and data’s “tells”—what does the LLM naturally parse from the data? What data characteristics work best with LLM processing? A common theme: the study users are smart, and DocWrangler facilitates smart decisions.</p>
+</section>
+<section id="related-work" class="level2">
+<h2 class="anchored" data-anchor-id="related-work">Related Work</h2>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-8-contents" aria-controls="callout-8" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+The LLM Stability-Capability Tradeoff
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-8" class="callout-8-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>In semantic data processing, LLMs aren’t just writing scripts in a traditional data processing language, they provide entirely new black-box capabilities for unstructured data transformations.</p>
+</div>
+</div>
+</div>
+<p>Returning to my point about stable APIs for structured data: LLMs offer a unique trade-off. No stable API, but functionality well-suited for unstructured data—summarization, theme extraction, sentiment analysis. My imagination around LLM capabilities is limited by my traditional data analysis background. Reading this paper, especially the user study, improved my understanding of how to interact with LLMs and leverage their semantic data processing capabilities.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-9-contents" aria-controls="callout-9" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+How Users Intuitively Resolve the LLM Paradox
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-9" class="callout-9-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>However, we lack general-purpose interfaces for semantic data processing across diverse document and operator types. Designing such interfaces is not straightforward, as users encounter the “gulf of envisioning”—<mark>the cognitive gap between having a goal and translating it into effective LLM instructions—while also understanding how to evaluate whether the output meets their original intentions</mark>.</p>
+</div>
+</div>
+</div>
+<p>I’m tired of the generic chatbot interface—the same blank screen with a narrow text box, buttons for tools/thinking/conciseness, and uniform static messages. Occasionally Claude generates an artifact. As someone without UI design expertise, I’ve wondered why we see this same interface everywhere, even for domain-specific tasks. This excerpt answers that question: it’s hard to design interactive LLM interfaces that alternate between user goals and LLM-generated outputs.</p>
+</section>
+<section id="docetl-background-and-example" class="level2">
+<h2 class="anchored" data-anchor-id="docetl-background-and-example">DocETL Background and Example</h2>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-10-contents" aria-controls="callout-10" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+What’s in a DocETL LLM Operation?
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-10" class="callout-10-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>Each LLM-powered operator is defined through two components: a natural language prompt that specifies what the operation should do, and an output schema that determines the structure of data the LLM should generate.</p>
+</div>
+</div>
+</div>
+<p>Every experience I’ve had with structured data responses has been positive. I discovered this concept through FastHTML’s <code>__ft__</code> method for dataclasses, then later through Anthropic’s XML response format documentation. Having an output schema makes you think about your needs—what data and data types fulfill them, and what format works for post-processing. In DocETL pipelines, the output schema determines the input schema for the next operation.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-11-contents" aria-controls="callout-11" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+The <code>resolve</code> Operator
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-11" class="callout-11-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p><code>resolve</code> (performs entity resolution and canonicalization across documents).</p>
+</div>
+</div>
+</div>
+<p>Highlighting this operator because I was not familiar with the terms ‘entity resolution’ (figuring out when different text references actually refer to the same real-world thing) and ‘canonicalization’ (converting these different variations into one standard, consistent form). One example could be resolving different medication names, generic or brand name.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-12-contents" aria-controls="callout-12" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Data Presentation Facilitates Different Analyses
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-12" class="callout-12-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>showing aggregates first helps users identify patterns, while enabling drill-down into specific examples supports verification</p>
+</div>
+</div>
+</div>
+<p>Quick aside: I generally dislike dashboards because they facilitate bloated data presentation. I’ve repeatedly seen people equate visualization quantity with quality—like showing you have data is itself a feat. Sometimes it is, especially when organizations try to change their data culture. But after seven years as a data analyst, I think 90% of data presentation only requires (and is most effective with) simple tables or bar plots. Start with high-level aggregate tables or bar plots, then drill down to lower-level categories as you scroll. <em>chef’s kiss</em>.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-13-contents" aria-controls="callout-13" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Five DocWrangler Design Goals
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-13" class="callout-13-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<ul>
+<li>D1. <strong>Scaffold Pipeline Initialization</strong>: Help users create and configure <mark>operations</mark> with minimal friction, with built-in guidance and quick experimentation.</li>
+<li>D2. <strong>Facilitate Efficient Data Inspection and Notetaking</strong>: Enable users to <mark>validate</mark> inputs and outputs individually and in aggregate, while supporting note-taking to capture insights and patterns.</li>
+<li>D3. <strong>Guide Pipeline Improvement</strong>: Offer assistance for translating user feedback into effective <mark>pipeline modifications</mark>, both at the individual operation level (e.g., prompt improvements) and pipeline level (e.g., operation decomposition).</li>
+<li>D4. <strong>Maintain End-to-End Observability</strong>: Ensure <mark>transparency</mark> into transformation logic at each pipeline step (e.g., inputs, outputs, LLM prompts).</li>
+<li>D5. <strong>Minimize Context Switching</strong>: Integrate all essential analytical capabilities within a <mark>unified interface</mark>, minimizing the need for external tools (e.g., spreadsheets, custom scripts, AI assistants like ChatGPT).</li>
+</ul>
+</div>
+</div>
+</div>
+<p>Combining the highlighted terms into a single phrase: the goal of Doc Wrangler is to operationalize semantic data processing with built-in data validation and annotation, LLM-assisted pipeline modification, and full pipeline transparency in a unified interface.</p>
+</section>
+<section id="docwrangler-system" class="level2">
+<h2 class="anchored" data-anchor-id="docwrangler-system">DocWrangler System</h2>
+<p>I’m planning on doing a video demo of DocWrangler so I won’t go into details about the interface from the paper. Instead, I will highlight a couple of aspects of operation decomposition which I think is the most interesting part of the system. Mainly because task decomposition is something that I’ve been thinking a lot about recently. On that note, <a href="https://x.com/sh_reya/status/1957499705321210106">here’s a tweet from Shreya</a> that gives the best explanation and motivation for task decomposition that I’ve come across yet:</p>
+<blockquote class="blockquote">
+<p>What struck us was that these weren’t prompt-engineering problems. They were structural decomposition problems. Every serious task required breaking down into sub-task, where, crucially, each sub-task is something that an LLM can reliably do. But even expert engineers couldn’t predict the right decomposition without long cycles of trial and error. This is what makes LLM pipelines different from SQL.</p>
+<p>In a database, users declare what they want, and the optimizer finds a good plan. We can assume the query itself is correct. For LLMs, we can’t even write a pipeline that works “as is” on state-of-the-art models. So the optimizer must generate and test different pipelines on the user’s behalf. Optimizers need to test many different logical rewrites of the initial pipeline to see what will work best.</p>
+</blockquote>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-14-contents" aria-controls="callout-14" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Operation Decomposition Feature
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-14" class="callout-14-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>While they are inspecting symptom outputs, DocWrangler notifies the user (Fig. 6A) that the operation may be too complex (D3). Clicking on the notification triggers the the Operation Decomposition feature. A dialog appears, showing examples of incorrect LLM results when handling both discomfort assessment and symptom extraction simultaneously (Fig. 6B). The analyst clicks “Automatically Decompose” (Fig. 6C), and the system transparently streams its accuracy optimization process (Fig. 6D), evaluating different candidate plans with LLM-as-judge evaluators [105] (D4).</p>
+</div>
+</div>
+</div>
+<p>I like how data validation is built into the operation decomposition feature. The LLM presents evidence for why it thinks the task should be decomposed. The accuracy optimization process involves different candidate paths evaluated by an LLM judge, which is a really interesting way to use LLMs for pipeline optimization.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-15-contents" aria-controls="callout-15" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Managing Context Windows for AI-Assisted Features
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-15" class="callout-15-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>For each document, we remove text from the middle while preserving beginnings and endings, replacing the removed content with an ellipsis. Essentially, as the conversation history grows, documents progressively lose more middle content to accommodate new messages within the context window. We specifically preserve document beginnings and endings because introductions typically contain key metadata and conclusions often summarize content, both important for maintaining document context for the LLM.</p>
+</div>
+</div>
+</div>
+<p>This made me think about human document design. From elementary school, we learn to structure papers with introduction, thesis, body paragraphs (one per supporting point), and conclusion. We’ve collectively standardized information structure, even in unstructured formats. This enables clever removal of likely low-importance content to fit context windows.</p>
+</section>
+<section id="user-study-findings" class="level2">
+<h2 class="anchored" data-anchor-id="user-study-findings">User Study Findings</h2>
+<p>This is my favorite section of the paper, and I’m excited to share what I found particularly informative and interesting.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-16-contents" aria-controls="callout-16" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+How many users do you need?
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-16" class="callout-16-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>even five participants can uncover valuable usability insights</p>
+</div>
+</div>
+</div>
+<p>I didn’t know research showed you only need 5 participants for valuable usability insights. Makes sense though—in my 3-5 person teams, getting their feedback on reports or data products significantly improves the output. This 5-person threshold makes UX research accessible for bootstrapped teams.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-17-contents" aria-controls="callout-17" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Prompting goals beyond raw outputs
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-17" class="callout-17-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>To better understand LLM behavior at a glance, participants often adjusted operation outputs for interpretability…these added attributes (e.g., rationales, summaries, indicators) were not used as final task outputs. Instead, they served to help participants verify whether the LLM had correctly interpreted their intent—bridging the specification gulf.</p>
+</div>
+</div>
+</div>
+<p>Returning to the LLM paradox: users cleverly augmented LLM outputs with interpretability clues to better understand how the LLM handles tasks, enabling better decisions about improving prompts or decomposing operations. This interpretability output also informs the LLM during prompt refinement or operation decomposition assistance. This exemplifies the stability-capability tradeoff I mentioned—sure, it takes fuzzy, squishy data processing to understand LLM behavior, but that fuzziness provides information richness you can’t get with structured data.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-18-contents" aria-controls="callout-18" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Binary Classification + Likert Scale Use!
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-18" class="callout-18-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>when analyzing doctor-patient trust, P1 initially used a free-form <code>trust_summary</code> attribute, but added a boolean trust attribute to validate results more easily via a histogram. As shown in Fig. 8, the LLM labeled all examples as “true,” so P1 switched to a 5-point Likert scale for more granularity</p>
+</div>
+</div>
+</div>
+<p>I’m always interested in effective Likert scale use (usually find them ineffective) and examples of binary classification (easier for LLMs). This excerpt highlights both. The <code>trust_summary</code> became a boolean <code>trust</code> attribute, which when all labeled “true” led to a 5-point Likert scale revealing proper trust distribution. Another example where structured data from a survey’s true/false trust question couldn’t tease out the nuance you get by transforming unstructured trust summaries into Likert scales with an LLM.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-19-contents" aria-controls="callout-19" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Let the Results Guide You
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-19" class="callout-19-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>Unlike typical data science workflows where users begin with exploratory data analysis [57], all participants skipped manual document review and jumped straight into writing map operations. As they inspected outputs, they frequently revised their pipelines in response to what they saw—what we call opportunistic realignment.</p>
+</div>
+</div>
+</div>
+<p>This reminds me of fast.ai’s approach. When confronting a problem, train models first and examine results—baseline heuristic, then traditional ML, then neural nets. Some upfront cleaning and quick viz helps, but much data intuition comes from training models and examining results. As Jeremy Howard shows in his <a href="https://vishalbakshi.github.io/blog/index.html#category=paddy%20doctor">Paddy Doctor Kaggle series</a>, get through your entire pipeline first, then change one thing at a time following intuition rather than running hyperparameter sweeps. You need fast, tight feedback loops—manual document review prohibits this. Makes sense users jump straight to operations. I’ll remember this when using DocWrangler.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-20-contents" aria-controls="callout-20" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Using Operation Decomposition to Write Better Prompts
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-20" class="callout-20-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>even though the Operation Decomposition feature was designed to help address the generalization gulf, users sometimes adopted it as a way to improve specification too—using suggestions to rethink how they framed their tasks or restructure their prompts.</p>
+</div>
+</div>
+</div>
+<p>When tackling LLM-assisted problems, you may not know what tasks are involved or their order. Makes sense that complex task decomposition informs users’ overall approach. Another example of how “The LLM Paradox” creates new problem-solving opportunities.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-21-contents" aria-controls="callout-21" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+LLMs Uncover Serendipitous Opportunities for Analysis
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-21" class="callout-21-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>Some users shifted direction after spotting surprising or useful patterns in the LLM’s outputs. These “serendipitous” findings weren’t requested explicitly, but appeared occasionally, revealing new opportunities for analysis.</p>
+</div>
+</div>
+</div>
+<p>This resembles exploring structured data through different groupbys and aggregations—unexpected insights surface in visualizations. But there’s a fundamental difference. With structured data, you can list all columns and explore methodically. With unstructured data at scale, you may not know what information is buried in documents. These “new opportunities” involve LLMs discovering previously unknown data attributes.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-22-contents" aria-controls="callout-22" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Prompt Rubber Ducking
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-22" class="callout-22-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>“prompt rubber ducking”: how interacting with LLMs helped them figure out what questions to ask about their data. In this way, semantic data processing pipelines don’t just answer predefined questions, they also help shape users’ understanding of what questions are worth asking—perhaps similar to the “berry picking” model of information seeking, where users iteratively refine their search as they gain new insights</p>
+</div>
+</div>
+</div>
+<p>The “berry picking” model definition:</p>
+<blockquote class="blockquote">
+<p>Bates, 1989 proposed the berry-picking model of information seeking, which has two main points. The first is that, in the process of reading and learning from the information encountered throughout the search process, the searchers’ information needs, and consequently their queries, continually shift (see Figure 3.3). Information encountered at one point in a search may lead in a new, unanticipated direction. The original goal may become partly fulfilled, thus lowering the priority of one goal in favor of another. The second point is that searchers’ information needs are not satisfied by a single, final retrieved set of documents, but rather by a series of selections and bits of information found along the way. This is in contrast to the assumption that the main goal of the search process is to hone down the set of retrieved documents into a perfect match of the original information need. (<a href="https://searchuserinterfaces.com/book/sui_ch3_models_of_information_seeking.html#section_3.3">source</a>)</p>
+</blockquote>
+<p>This model matches anyone’s Google or Wikipedia journey—you start with one page, encounter new terms, look those up, find related concepts, look those up, step back, move forward. Non-linear information seeking. This matches the earlier user behavior where users skip manual document review and jump straight into map operations to discover patterns. Semantic data processing is like LLMs going on their own Google/Wikipedia journey.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-23-contents" aria-controls="callout-23" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Thinking Fast and Slow
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-23" class="callout-23-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>system responsiveness allowed rapid iteration…output schemas acted as “speed breaks”, slowing exploration just enough for meaningful reflection</p>
+</div>
+</div>
+</div>
+<p>This testifies to DocWrangler’s UI design. One reason vibe coding fails is that chatbot interfaces lack user interaction elements that switch between rapid iteration and meaningful reflection. Problem-solving (<a href="https://math.libretexts.org/Courses/Coalinga_College/Math_for_Educators_(MATH_010A_and_010B_CID120)/05%3A_Problem_Solving/5.02%3A_George_Polya's_Strategy">Polya’s method</a>) involves: understanding the problem, breaking it into steps, generating a plan, and working iteratively in small chunks. While users could follow this method themselves, having a UI that conduces this organically is impressive.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-24-contents" aria-controls="callout-24" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+LLM Take the Wheel!
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-24" class="callout-24-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>A key factor in whether participants accepted [LLM] suggestions was their confidence in implementing the changes on their own.</p>
+</div>
+</div>
+</div>
+<p>LLM users relate to situations where LLMs suggest commands or functions outside their understanding. I’ll often trust the LLM if the code works—especially for bash commands. But if suggested code is fundamental to my script and in Python, I’ll understand each line and likely implement from scratch.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-25-contents" aria-controls="callout-25" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+LLMs Blur Traditional Data Analysis Phases
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-25" class="callout-25-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>LLM pipelines blur the boundary between data cleaning and analysis, unlike traditional workflows where these phases are less intertwined</p>
+</div>
+</div>
+</div>
+<p>Users requested LLM error tracing features. In one example, a user wanted to identify where dosage was incorrectly listed as 200 grams instead of 200 milligrams. The LLM faithfully reproduced this error without understanding 200 grams is incorrect. This emphasizes the need for domain experts reviewing LLM inputs/outputs and the importance of citations now common in frontier model interfaces—though citations don’t guarantee correct LLM interpretation.</p>
+</section>
+<section id="real-world-deployment-and-usage" class="level2">
+<h2 class="anchored" data-anchor-id="real-world-deployment-and-usage">Real-World Deployment and Usage</h2>
+<p>In addition to their 10 Think-A-Loud interview sessions with participants in the user study, the authors also deployed DocWrangler online and collected telemetry data for about 1500 interactions (pipelines). This section details some of the interesting findings.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-26-contents" aria-controls="callout-26" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Prompt Refinement Addresses Skill Issue
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-26" class="callout-26-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>users often struggle with formulating effective prompts from the outset.</p>
+</div>
+</div>
+</div>
+<p>There was evidence that users needed the prompt confinement LLM assistance to improve their initial prompts, which were often ineffective. This highlights the importance of prompt engineering as a skill but also provides evidence that the DocWrangler interface was designed correctly.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-27-contents" aria-controls="callout-27" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Pipeline Development Trends
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-27" class="callout-27-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>53% of pipelines grew more complex by adding operations or upgrading models; 18% actually became simpler through operation consolidation or reduced sample sizes; and 29% maintained the same operations while only changing prompts or output schemas</p>
+</div>
+</div>
+</div>
+<p>I’d like to understand which tasks led to complexity growth versus simplification. Did complexity grow because humans better understood workflows by breaking tasks into sub-tasks, or because they had to adjust to LLM limitations? I’m confused why “upgrading models” counts as complexity growth.</p>
+</section>
+<section id="discussion" class="level2">
+<h2 class="anchored" data-anchor-id="discussion">Discussion</h2>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-28-contents" aria-controls="callout-28" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Creativity Support Tool Epistemic Artifacts
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-28" class="callout-28-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>We observed users creating what creativity support tool (CST) research calls epistemic artifacts [89]—exploratory objects that help users discover possibilities…any system addressing ambiguous tasks may benefit from CST design principles; e.g., supporting exploration without predefined goals and allowing movement between different levels of abstraction</p>
+</div>
+</div>
+</div>
+<p>I love epistemic artifacts—one reason I love notebooks. Notebooks let you quickly probe variables and data structures, visualizing them, wrapping them in functions, adjusting code on-the-fly in a unified interface. It’s why chatbot interfaces resemble notebooks and why AnswerAI’s SolveIt platform works (combining LLM interaction with editable notebooks).</p>
+<p>“Addressing ambiguous tasks” is core to problem-solving. Makes sense that DocWrangler’s interface—allowing data “exploration without predefined goals” and movement “between different levels of abstraction”—is such an effective problem-solving tool for study users.</p>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>Few papers light up different parts of my brain—connecting past experiences with unconsidered opportunities, intertwining with my interests while providing chances to build new skills. The ColBERT papers, TinyStories, and Small-scale Proxies are examples. DocWrangler fits this mold. I feel introduced to a fundamental interaction pattern beyond generic chatbot interfaces. I’m excited to try DocWrangler with familiar data and record findings in future blog posts or videos. Thanks for sticking around until the end!</p>
+
+
+</section>
+
+ ]]></description>
+  <category>LLM</category>
+  <category>DocWrangler</category>
+  <category>paper summary</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-08-30-DocWrangler/</guid>
+  <pubDate>Mon, 01 Sep 2025 07:00:00 GMT</pubDate>
+</item>
+<item>
   <title>The Term “Non-Deterministic” and LLMs</title>
   <dc:creator>Vishal Bakshi</dc:creator>
   <link>https://vishalbakshi.github.io/blog/posts/2025-08-30-non-deterministic/</link>
@@ -9747,140 +10322,6 @@ font-style: inherit;">=</span> _pad_input(attn_output_unpad, indices_q, batch_si
   <category>LLM-Foundry</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2025-06-30-debug-fa2-llm-foundry/</guid>
   <pubDate>Mon, 30 Jun 2025 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>Introducing portfolio-llm: A Professional Portfolio You Can Chat With</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2025-06-26-portfolio-llm/</link>
-  <description><![CDATA[ 
-
-
-
-
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<p>For my latest project, I wanted to solve a problem I was facing: I have published a large volume of machine learning blog posts and videos, and I was not sure how to unify all of my work.</p>
-<p>I’ve also been interested in the <a href="https://llmstxt.org/">llms.txt standard created by Jeremy Howard</a>, so I had an idea: what if I wrote an llms_ctx.txt for my own professional portfolio to make it interactive and queryable?</p>
-<p>In this post, I’m going to share the result of that experiment: a professional portfolio you can chat with. I’ll walk through the entire process, from concept and design to the rigorous evaluation framework I built to test the system. I’ll also share my thoughts on how this approach changes the job search paradigm.</p>
-<iframe width="560" height="315" src="https://www.youtube.com/embed/Qhax3JerFP0?si=BNFnHmw6cNfW5SlN" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
-</iframe>
-</section>
-<section id="the-goal-an-interactive-conversation" class="level2">
-<h2 class="anchored" data-anchor-id="the-goal-an-interactive-conversation">The Goal: An Interactive Conversation</h2>
-<p>You can see a demo of my llms_ctx.txt on Claude.ai in the video embedded above. Here are a couple screenshot examples:</p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="Claude.ai chat screenshot"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-26-portfolio-llm/1.png" class="img-fluid figure-img" alt="Claude.ai chat screenshot"></a></p>
-<figcaption>Claude.ai chat screenshot</figcaption>
-</figure>
-</div>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2" title="A not very concise response"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-26-portfolio-llm/2.png" class="img-fluid figure-img" alt="A not very concise response"></a></p>
-<figcaption>A not very concise response</figcaption>
-</figure>
-</div>
-</section>
-<section id="how-it-works-the-llms_ctx.txt-file" class="level2">
-<h2 class="anchored" data-anchor-id="how-it-works-the-llms_ctx.txt-file">How It Works: The <code>llms_ctx.txt</code> File</h2>
-<p>The <code>llms_ctx.txt</code> file contains 5 sections (following the llms.txt standard):</p>
-<ul>
-<li>A header: <code># Vishal Bakshi: Building Reliable Systems</code></li>
-<li>A blockquote with a high-level summary</li>
-</ul>
-<blockquote class="blockquote">
-<p>Vishal Bakshi has a background in engineering, data analytics, and education, now focusing on Applied AI and ML research. He specializes in building reliable systems, with an emphasis on resource-constrained research, deep evaluation, and a first-principles understanding of machine learning.</p>
-</blockquote>
-<ul>
-<li>A <code>## High-Level Overview &amp; FAQ</code> section with QA pairs.</li>
-<li>A <code>## Portfolio Deep Dive Q&amp;A</code> section with QA pairs.</li>
-<li>A <code>## Out-of-Scope Questions</code> section with QA pairs.</li>
-</ul>
-<p>The creation of my <code>llms_ctx.txt</code> file was an iterative process heavily collaborated with Gemini 2.5 Pro.</p>
-<p>I first create two txt files: one containing metadata for my videos, and one containing metadata for my blog posts. I chose to keep the metadata simple: the existing title and description. A potential improvement on this could be producing an AI-generated summary of each content piece and adding that as a third field.</p>
-<p>I provided Gemini these two files and asked it to generate 5-8 themes across my body of work, and citing which blog posts and videos best represented each theme. It provided by 8 themes. I then iterated on this list manually, adding and removing content pieces and adjusting theme names as needed. You can view the full list of themes and corresponding content pieces <a href="https://github.com/vishalbakshi/portfolio-llm?tab=readme-ov-file#for-a-deeper-dive">on the GitHub repo for this project</a>.</p>
-<p>I then asked Gemini to produce three sets of questions:</p>
-<ul>
-<li>High-Level Overview &amp; FAQ</li>
-<li>Portfolio Deep Dive Q&amp;A</li>
-<li>Out-of-Scope Questions</li>
-</ul>
-<p>I then wrote a first draft set of answers for each of the 40 or so questions Gemini created across these three categories. I iterated on my answers with Gemini to make them more readable and effective.</p>
-</section>
-<section id="evaluation" class="level2">
-<h2 class="anchored" data-anchor-id="evaluation">Evaluation</h2>
-<p>I wanted to test for three users:</p>
-<ul>
-<li>First interaction (has not read my list of themes, blog posts or wactched any of my vidoes)</li>
-<li>Portfolio deep dive (has read my list of themes, and a few blog posts/videos)</li>
-<li>Out of scope (a user who asks unrelated or unspecified questions in my llms_ctx.txt)</li>
-</ul>
-<p>I wanted to test two types of questions:</p>
-<ul>
-<li>Unit Test questions (verbatim to the questions in the llms_ctx.txt, tests if the LLM can retrieve answers explicitly listed)</li>
-<li>Paraphrased/Follow-Up questions (questions that are similar in meaning but different in phrasing than the questions listed in llms_ctx.txt, or questions that cover multiple QA pairs)</li>
-</ul>
-<p>For each question, across all users and question types, I created <a href="https://github.com/vishalbakshi/portfolio-llm/blob/main/evals.csv">an evaluation spreadsheet</a> with the following columns:</p>
-<ul>
-<li>Model</li>
-<li>Prompt Type (Unit Test, Paraphrased)</li>
-<li>User</li>
-<li>Prompt (the question)</li>
-<li>Response</li>
-<li>Gold Answer (either verbatim from llms_ctx.txt or a bulleted list of content the answer should cover)</li>
-<li>Completeness (Full, Partial, None)</li>
-<li>Accuracy (Perfect, Minor Error, Major Error)</li>
-<li>Conciseness (Concise, Verbose)</li>
-<li>Hallucination (None, Speculation, Factual Fabrication)</li>
-<li>Format Adherence (Followed, Ignored)</li>
-</ul>
-<p>I generate an <a href="https://github.com/vishalbakshi/portfolio-llm/blob/main/evals.txt">XML-style version of my evals</a> with <a href="https://github.com/vishalbakshi/portfolio-llm/blob/main/Evals%20XML%20Generation.ipynb">a notebook</a> so I could feed it to an LLM for feedback.</p>
-<p>For my first round of evaluation I used only two metrics: Fidelity (High, Medium, Low) and Hallucinations (High, Medium, Low). Upon conversing with Gemini, I learned that I was conflating verbosity with Hallucinations and should decompose Fidelity into Completeness and Accuracy for more clarity in evaluation.</p>
-<p>My evaluation results were almost perfect (118/120 “Full” Completeness, 120/120 “Perfect” Accuracy and 120/120 “None” Hallucinations). I’m always wary of such high evaluation results:</p>
-<blockquote class="twitter-tweet blockquote">
-<p lang="en" dir="ltr">
-If your eval system says you are achieving 100% w/AI accuracy then your product is actually deeply broken, or you are tracking an irrelevant set of metrics
-</p>
-— Hamel Husain (<span class="citation" data-cites="HamelHusain">@HamelHusain</span>) <a href="https://twitter.com/HamelHusain/status/1843066772003733783?ref_src=twsrc%5Etfw">October 6, 2024</a>
-</blockquote>
-<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
-<p>However, Claude Sonnet 4 (the model I used via Claude.ai) is highly capable and I provided it well-structured (question-answer pairs) context so it’s a relatively easy Q&amp;A task. I’m essentially providing it 120 few-shot examples of QA pairs which it can also use as a knowledge base.</p>
-</section>
-<section id="what-i-learned-in-the-process" class="level2">
-<h2 class="anchored" data-anchor-id="what-i-learned-in-the-process">What I Learned in the Process</h2>
-<ul>
-<li>I realized that the style of the response is also dictated by the user prompt which is not in my control. So I’m focused more on the content delivered. It’s up to the user of Claude/Gemini/ChatGPT/etc. to dictate the style (verbose, explanatory, etc.)</li>
-<li>I noticed that Claude doesn’t always include the URLs. Not sure how to improve that.</li>
-<li>Realizing the benefit of having a chat ui interface as it would allow me to better control the model’s responses by injecting additional instructions or analyzing the response before it’s sent to the reader.</li>
-<li>I realized long-term patterns in my work that I don’t see when I’m in the weeds. For example, for fastbook-benchmark, AgentFastbook, and TinyScaleLab I have focused on evals first while I develop other foundational skills.</li>
-<li>Evaluating the model responses helped me identify gaps in my answers that I iterate upon.</li>
-</ul>
-</section>
-<section id="what-this-means-for-job-seekers-and-employers" class="level2">
-<h2 class="anchored" data-anchor-id="what-this-means-for-job-seekers-and-employers">What this Means for Job Seekers and Employers</h2>
-<p>I might just be uninformed, but I think this is a novel approach to sharing a portfolio. I think this llms_ctx.txt approach could benefit both the job seeker and the employer. The job seeker benefits from the creation of the llms_ctx.txt file as they are forced to deeply think about common themes in their work and answer both broad and targeted questions about their projects and experience. The job seeker can also get a “sanity check” on what roles they are well suited for by posing as a hiring manager in a conversation with an LLM they have provided this context to. I also think that this portfolio style could benefit the hiring manager. The hiring manager can have a deep conversation with the LLM to evaluate the candidate across different desired skills/job requirements/experience requirements, especially those that are not explicitly mentioned but need to be inferred from th candidate’s body of work.</p>
-<p>There’s also an opportunity to operationalize and systematize my end-to-end process for generating the llms_ctx.txt. You could imagine a UI which guides the user across the pipeline that I followed:</p>
-<ul>
-<li>Construct metadata around their existing work (blogs, videos, repos, resume, CV)</li>
-<li>Generate and iterate on themes underpinning their work.</li>
-<li>Generate and iterate on questions and answers related to those themes.</li>
-<li>Construct the llms_txt.ctx</li>
-<li>Evaluate model responses across 3 dimensions (Completeness, Accuracy, Hallucinations).</li>
-</ul>
-<p>I believe this end-to-end process could be operationalized into a valuable app, and I’m open-sourcing the methodology in the hopes that others will build upon it.</p>
-</section>
-<section id="try-it-yourself" class="level2">
-<h2 class="anchored" data-anchor-id="try-it-yourself">Try It Yourself</h2>
-<p>I’ll end with a call to action: try this for your own work/experience and let me know how it goes! I’m happy to be a test user for your llms_ctx.txt. Just ping me <a href="https://x.com/vishal_learner">on Twitter</a>.</p>
-<p>I hope this project unlocks a new universe of opportunities in the job search space. I also hope that this approach allows folks from unconventional or non-traditional backgrounds (like myself) who rely on self-taught and boostrapped methods of experience (taking courses, writing blog posts, publishing YouTube videos) to synthesize their work in a cohesive way. I will continue to iterate on my llms_ctx.txt file, and have conversations with an LLM using it at each step of my professional journey, improving both the file and my professional development along the way.</p>
-
-
-</section>
-
- ]]></description>
-  <category>Career</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2025-06-26-portfolio-llm/</guid>
-  <pubDate>Thu, 26 Jun 2025 07:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
