@@ -49,7 +49,7 @@ What I think people mean by saying "LLMs are non-deterministic" is something lik
 
 > users need to understand their data to write effective pipelines, yet they need to construct pipelines to extract the data necessary for that understanding
 
-Thinking on that a bit more, what I think people mean by saying "LLMs are non-deterministic" is: what inputs to give LLMs for a desired output is ambiguous. Prompt engineering being a thing is a great example of this. I don't know enough mathematics to know if there's a term for this. "Input ambiguous"? "Non-deterministic on both ends"? The best Sonnet 4 came up with was "non-invertible" (other options was non-transparent). GPT-5 Thinking came up with a more sophisticated response _Prompting LLMs is an ill-posed inverse problem._
+Thinking on that a bit more, what I think people mean by saying "LLMs are non-deterministic" is: what inputs to give LLMs for a desired output is ambiguous. Prompt engineering being a thing is a great example of this. I don't know enough mathematics to know if there's a term for this. "Input ambiguous"? "Non-deterministic on both ends"? The best Sonnet 4 came up with was "non-invertible" (other option was "non-transparent"). GPT-5 Thinking came up with a more sophisticated response _Prompting LLMs is an ill-posed inverse problem._
 
 > - Inverse problem: you start from a desired output and try to find an input (prompt) that yields it.
 > - Ill-posed (Hadamard): the inverse fails one or more of

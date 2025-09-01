@@ -10,7 +10,581 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.7.32</generator>
-<lastBuildDate>Sat, 30 Aug 2025 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Mon, 01 Sep 2025 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>A Summary of and My Thoughts on the DocWrangler Paper</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-09-01-DocWrangler/</link>
+  <description><![CDATA[ 
+
+
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>I’ll summarize the main points from the <a href="https://arxiv.org/abs/2504.14764">“Steering Semantic Data Processing with DocWrangler” paper by Shreya Shankar et al</a> and share my commentary (<a href="https://vishalbakshi.github.io/blog/posts/2025-07-16-ColBERTv1/">something I’ve been doing more of lately</a>).</p>
+<p>This work is inspiring and fascinating. Shreya previewed DocWrangler during the AI Evals course, but reading the paper—especially the user study section—helped me grasp its magnitude. While I lack formal data visualization training, what I’ve read (like <a href="https://vishalbakshi.github.io/blog/posts/2023-05-20-visualization-analysis-and-design/">Visualization Analysis &amp; Design by Tamara Munzner</a>) taught me about the fundamental building blocks of data, UI, analysis goals, and their relationships. For example:</p>
+<blockquote class="blockquote">
+<p>Search can be classified according to whether the identity and location of targets are known or not</p>
+<ul>
+<li>both are known with <em>lookup</em></li>
+<li>the target is known but its location is not for <em>locate</em></li>
+<li>the location is known but the target is not for <em>browse</em></li>
+<li>neither the target nor the location are known for <em>explore</em></li>
+</ul>
+</blockquote>
+<p>or:</p>
+<blockquote class="blockquote">
+<p>The intent of the user is to generate new material.</p>
+<p>There are three kinds of produce goals:</p>
+<ul>
+<li>annotate (adds a new attribute to the data)</li>
+<li>record (saves visualization artifacts as persistent artifacts)</li>
+<li>derive (produce new data elements based on existing data elements)</li>
+</ul>
+</blockquote>
+<p>Reading the DocWrangler paper felt similar—like discovering building blocks of a fundamentally new paradigm. LLMs enabling large-scale data analysis is already paradigm-shifting, so our analysis methods should match that novelty. Exciting time to work with data!</p>
+<div class="callout callout-style-default callout-caution callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-1-contents" aria-controls="callout-1" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Paper Quotes Will be Collapsible
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-1" class="callout-1-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>I’m trying out collapsible sections for paper quotes so that it shortens the blog post.</p>
+</div>
+</div>
+</div>
+</section>
+<section id="abstract" class="level2">
+<h2 class="anchored" data-anchor-id="abstract">Abstract</h2>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-2-contents" aria-controls="callout-2" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+The LLM Paradox
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-2" class="callout-2-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>…building effective semantic data processing pipelines presents a departure from traditional data pipelines: <mark>users need to understand their data to write effective pipelines, yet they need to construct pipelines to extract the data necessary for that understanding</mark>…</p>
+</div>
+</div>
+</div>
+<p>With structured data, you have deterministic algorithms (groupby, aggregate, filter) available through stable APIs like Pandas. With unstructured data and LLMs, no stable API exists. Anthropic doesn’t have a reference page for semantic data processing—just <a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview">guidelines on structuring prompts</a>. These guidelines may or may not work depending on your model, task, and data. Success requires iteration: prompt → inspect results → improve prompt. Each pipeline step affects the next, accumulating ambiguity throughout.</p>
+<p>Large collections of unstructured text (emails, documents, reports, transcripts) contain variations of similar data. An email thread about a project might refer to tasks using different words and phrases. Company reports express sentiment differently across documents. Compare this to a 5-point Likert scale from a survey. Before identifying characteristics in unstructured data, you must interpret how different variations of the same characteristic are expressed. This requires processing lots of information—where LLMs excel. But determining which concrete steps, in which order, with which prompts requires going back and forth between understanding your data and constructing/improving your pipeline.</p>
+<p>Fellow fast.ai students will recognize this philosophy: you often need a quick and dirty model to view actual vs.&nbsp;predicted results before identifying what needs data cleaning.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-3-contents" aria-controls="callout-3" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+DocWrangler is an IDE
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-3" class="callout-3-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>…[DocWrangler is] a mixed-initiative integrated development environment (IDE) for semantic data processing…</p>
+</div>
+</div>
+</div>
+<p>It’s important to highlight the difference between DocWrangler and DocETL. DocWrangler is the graphical user interface where Shreya and her team have designed intentionally a specific set of interaction components to construct semantic data processing pipelines. It is an opinionated frontend with specific goals. DocETL is the back-end which runs the pipeline as <a href="https://ucbepic.github.io/docetl/tutorial/#creating-the-pipeline:~:text=Create%20a%20file%20named%20pipeline.yaml%20with%20the%20following%20structure%3A">defined by a YAML file</a>. In theory, you can write whatever front-end you want on top of DocETL.</p>
+</section>
+<section id="introduction" class="level2">
+<h2 class="anchored" data-anchor-id="introduction">Introduction</h2>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-4-contents" aria-controls="callout-4" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Semantic Data Processing
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-4" class="callout-4-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>semantic data processing: a paradigm where users can instruct LLMs to manipulate data through familiar data processing operators like map, reduce, filter, and groupby.</p>
+</div>
+</div>
+</div>
+<p>Even though LLMs don’t have a deterministic, stable API to perform common algorithms, we can still use them for that end. Say we have a collection of 10,000 documents, we can use a semantic <code>map</code> “to extract mentions of medications and reported side effects, followed by a semantic reduce to summarize effects per medication.”</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-5-contents" aria-controls="callout-5" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+The Three Gulfs
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-5" class="callout-5-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p><mark>gulf of comprehension</mark>: Documents contain too much information for humans to fully process [and for LLMs to accurately process].</p>
+<p><mark>gulf of specification</mark>: users must first discover their true intent—often only possible after exploring sufficient data to understand what questions the data can reasonably answer.</p>
+<p><mark>gulf of generalization</mark>: even with clear, unambiguous prompts, LLMs may fail to generalize correctly to the user’s actual data</p>
+</div>
+</div>
+</div>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="The Three Gulfs Framework"><img src="https://vishalbakshi.github.io/blog/posts/2025-09-01-DocWrangler/1.png" class="img-fluid figure-img" alt="The Three Gulfs Framework"></a></p>
+<figcaption>The Three Gulfs Framework</figcaption>
+</figure>
+</div>
+<p>The Three Gulfs Framework drives DocWrangler’s design philosophy. The comprehension gulf motivates using LLMs, but LLMs aren’t a silver bullet. The specification gulf connects to the LLM paradox—deciding whether to apply semantic map or reduce requires knowing your data’s contents. In medical notes, some contain brand names, others generic names, others medication classes. You need to run map operations and examine samples to identify these patterns before crafting your final prompt and pipeline. The generalization gulf highlights LLMs’ fundamental limitation: they struggle with out-of-domain data.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-6-contents" aria-controls="callout-6" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+DocWrangler Features Address the Three Gulfs
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-6" class="callout-6-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>The <mark><strong>in-situ user notes</strong></mark> feature tackles the comprehension gulf by enabling users to annotate observations directly on both documents and outputs. The <mark><strong>LLM-assisted prompt refinement</strong></mark> feature addresses the specification gulf through an interactive interface where an LLM analyzes the pipeline, documents, outputs, and user notes to suggest more effective prompts. The <mark><strong>LLM-assisted operation decomposition</strong></mark> feature targets the generalization gulf by identifying when the pipeline is inadequate for the documents, using an LLM-as-judge that runs in the background.</p>
+</div>
+</div>
+</div>
+<p>In-situ user notes attach as text attributes to specific data items, providing context when the LLM helps refine prompts or suggest task decomposition. I think the quality of in-situ user notes drives the entire effort to bridge the three gulfs.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-7-contents" aria-controls="callout-7" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+How Users Intuitively Resolve the LLM Paradox
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-7" class="callout-7-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>Users also employed intentionally vague prompts in map operations to learn more about their data, reminiscent of epistemic actions, i.e., actions taken not to directly achieve a goal but to gather information that reveals new possibilities.</p>
+</div>
+</div>
+</div>
+<p>I want to highlight this because 1) this behavior stems from DocWrangler’s design, and 2) it demonstrates good problem-solving skills. I often run intermediate code while trying to understand relationships between high-level abstractions and low-level functionality in a codebase. Intentionally vague prompts expose the LLM’s and data’s “tells”—what does the LLM naturally parse from the data? What data characteristics work best with LLM processing? A common theme: the study users are smart, and DocWrangler facilitates smart decisions.</p>
+</section>
+<section id="related-work" class="level2">
+<h2 class="anchored" data-anchor-id="related-work">Related Work</h2>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-8-contents" aria-controls="callout-8" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+The LLM Stability-Capability Tradeoff
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-8" class="callout-8-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>In semantic data processing, LLMs aren’t just writing scripts in a traditional data processing language, they provide entirely new black-box capabilities for unstructured data transformations.</p>
+</div>
+</div>
+</div>
+<p>Returning to my point about stable APIs for structured data: LLMs offer a unique trade-off. No stable API, but functionality well-suited for unstructured data—summarization, theme extraction, sentiment analysis. My imagination around LLM capabilities is limited by my traditional data analysis background. Reading this paper, especially the user study, improved my understanding of how to interact with LLMs and leverage their semantic data processing capabilities.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-9-contents" aria-controls="callout-9" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+How Users Intuitively Resolve the LLM Paradox
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-9" class="callout-9-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>However, we lack general-purpose interfaces for semantic data processing across diverse document and operator types. Designing such interfaces is not straightforward, as users encounter the “gulf of envisioning”—<mark>the cognitive gap between having a goal and translating it into effective LLM instructions—while also understanding how to evaluate whether the output meets their original intentions</mark>.</p>
+</div>
+</div>
+</div>
+<p>I’m tired of the generic chatbot interface—the same blank screen with a narrow text box, buttons for tools/thinking/conciseness, and uniform static messages. Occasionally Claude generates an artifact. As someone without UI design expertise, I’ve wondered why we see this same interface everywhere, even for domain-specific tasks. This excerpt answers that question: it’s hard to design interactive LLM interfaces that alternate between user goals and LLM-generated outputs.</p>
+</section>
+<section id="docetl-background-and-example" class="level2">
+<h2 class="anchored" data-anchor-id="docetl-background-and-example">DocETL Background and Example</h2>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-10-contents" aria-controls="callout-10" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+What’s in a DocETL LLM Operation?
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-10" class="callout-10-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>Each LLM-powered operator is defined through two components: a natural language prompt that specifies what the operation should do, and an output schema that determines the structure of data the LLM should generate.</p>
+</div>
+</div>
+</div>
+<p>Every experience I’ve had with structured data responses has been positive. I discovered this concept through FastHTML’s <code>__ft__</code> method for dataclasses, then later through Anthropic’s XML response format documentation. Having an output schema makes you think about your needs—what data and data types fulfill them, and what format works for post-processing. In DocETL pipelines, the output schema determines the input schema for the next operation.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-11-contents" aria-controls="callout-11" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+The <code>resolve</code> Operator
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-11" class="callout-11-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p><code>resolve</code> (performs entity resolution and canonicalization across documents).</p>
+</div>
+</div>
+</div>
+<p>Highlighting this operator because I was not familiar with the terms ‘entity resolution’ (figuring out when different text references actually refer to the same real-world thing) and ‘canonicalization’ (converting these different variations into one standard, consistent form). One example could be resolving different medication names, generic or brand name.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-12-contents" aria-controls="callout-12" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Data Presentation Facilitates Different Analyses
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-12" class="callout-12-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>showing aggregates first helps users identify patterns, while enabling drill-down into specific examples supports verification</p>
+</div>
+</div>
+</div>
+<p>Quick aside: I generally dislike dashboards because they facilitate bloated data presentation. I’ve repeatedly seen people equate visualization quantity with quality—like showing you have data is itself a feat. Sometimes it is, especially when organizations try to change their data culture. But after seven years as a data analyst, I think 90% of data presentation only requires (and is most effective with) simple tables or bar plots. Start with high-level aggregate tables or bar plots, then drill down to lower-level categories as you scroll. <em>chef’s kiss</em>.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-13-contents" aria-controls="callout-13" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Five DocWrangler Design Goals
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-13" class="callout-13-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<ul>
+<li>D1. <strong>Scaffold Pipeline Initialization</strong>: Help users create and configure <mark>operations</mark> with minimal friction, with built-in guidance and quick experimentation.</li>
+<li>D2. <strong>Facilitate Efficient Data Inspection and Notetaking</strong>: Enable users to <mark>validate</mark> inputs and outputs individually and in aggregate, while supporting note-taking to capture insights and patterns.</li>
+<li>D3. <strong>Guide Pipeline Improvement</strong>: Offer assistance for translating user feedback into effective <mark>pipeline modifications</mark>, both at the individual operation level (e.g., prompt improvements) and pipeline level (e.g., operation decomposition).</li>
+<li>D4. <strong>Maintain End-to-End Observability</strong>: Ensure <mark>transparency</mark> into transformation logic at each pipeline step (e.g., inputs, outputs, LLM prompts).</li>
+<li>D5. <strong>Minimize Context Switching</strong>: Integrate all essential analytical capabilities within a <mark>unified interface</mark>, minimizing the need for external tools (e.g., spreadsheets, custom scripts, AI assistants like ChatGPT).</li>
+</ul>
+</div>
+</div>
+</div>
+<p>Combining the highlighted terms into a single phrase: the goal of Doc Wrangler is to operationalize semantic data processing with built-in data validation and annotation, LLM-assisted pipeline modification, and full pipeline transparency in a unified interface.</p>
+</section>
+<section id="docwrangler-system" class="level2">
+<h2 class="anchored" data-anchor-id="docwrangler-system">DocWrangler System</h2>
+<p>I’m planning on doing a video demo of DocWrangler so I won’t go into details about the interface from the paper. Instead, I will highlight a couple of aspects of operation decomposition which I think is the most interesting part of the system. Mainly because task decomposition is something that I’ve been thinking a lot about recently. On that note, <a href="https://x.com/sh_reya/status/1957499705321210106">here’s a tweet from Shreya</a> that gives the best explanation and motivation for task decomposition that I’ve come across yet:</p>
+<blockquote class="blockquote">
+<p>What struck us was that these weren’t prompt-engineering problems. They were structural decomposition problems. Every serious task required breaking down into sub-task, where, crucially, each sub-task is something that an LLM can reliably do. But even expert engineers couldn’t predict the right decomposition without long cycles of trial and error. This is what makes LLM pipelines different from SQL.</p>
+<p>In a database, users declare what they want, and the optimizer finds a good plan. We can assume the query itself is correct. For LLMs, we can’t even write a pipeline that works “as is” on state-of-the-art models. So the optimizer must generate and test different pipelines on the user’s behalf. Optimizers need to test many different logical rewrites of the initial pipeline to see what will work best.</p>
+</blockquote>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-14-contents" aria-controls="callout-14" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Operation Decomposition Feature
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-14" class="callout-14-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>While they are inspecting symptom outputs, DocWrangler notifies the user (Fig. 6A) that the operation may be too complex (D3). Clicking on the notification triggers the the Operation Decomposition feature. A dialog appears, showing examples of incorrect LLM results when handling both discomfort assessment and symptom extraction simultaneously (Fig. 6B). The analyst clicks “Automatically Decompose” (Fig. 6C), and the system transparently streams its accuracy optimization process (Fig. 6D), evaluating different candidate plans with LLM-as-judge evaluators [105] (D4).</p>
+</div>
+</div>
+</div>
+<p>I like how data validation is built into the operation decomposition feature. The LLM presents evidence for why it thinks the task should be decomposed. The accuracy optimization process involves different candidate paths evaluated by an LLM judge, which is a really interesting way to use LLMs for pipeline optimization.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-15-contents" aria-controls="callout-15" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Managing Context Windows for AI-Assisted Features
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-15" class="callout-15-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>For each document, we remove text from the middle while preserving beginnings and endings, replacing the removed content with an ellipsis. Essentially, as the conversation history grows, documents progressively lose more middle content to accommodate new messages within the context window. We specifically preserve document beginnings and endings because introductions typically contain key metadata and conclusions often summarize content, both important for maintaining document context for the LLM.</p>
+</div>
+</div>
+</div>
+<p>This made me think about human document design. From elementary school, we learn to structure papers with introduction, thesis, body paragraphs (one per supporting point), and conclusion. We’ve collectively standardized information structure, even in unstructured formats. This enables clever removal of likely low-importance content to fit context windows.</p>
+</section>
+<section id="user-study-findings" class="level2">
+<h2 class="anchored" data-anchor-id="user-study-findings">User Study Findings</h2>
+<p>This is my favorite section of the paper, and I’m excited to share what I found particularly informative and interesting.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-16-contents" aria-controls="callout-16" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+How many users do you need?
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-16" class="callout-16-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>even five participants can uncover valuable usability insights</p>
+</div>
+</div>
+</div>
+<p>I didn’t know research showed you only need 5 participants for valuable usability insights. Makes sense though—in my 3-5 person teams, getting their feedback on reports or data products significantly improves the output. This 5-person threshold makes UX research accessible for bootstrapped teams.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-17-contents" aria-controls="callout-17" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Prompting goals beyond raw outputs
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-17" class="callout-17-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>To better understand LLM behavior at a glance, participants often adjusted operation outputs for interpretability…these added attributes (e.g., rationales, summaries, indicators) were not used as final task outputs. Instead, they served to help participants verify whether the LLM had correctly interpreted their intent—bridging the specification gulf.</p>
+</div>
+</div>
+</div>
+<p>Returning to the LLM paradox: users cleverly augmented LLM outputs with interpretability clues to better understand how the LLM handles tasks, enabling better decisions about improving prompts or decomposing operations. This interpretability output also informs the LLM during prompt refinement or operation decomposition assistance. This exemplifies the stability-capability tradeoff I mentioned—sure, it takes fuzzy, squishy data processing to understand LLM behavior, but that fuzziness provides information richness you can’t get with structured data.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-18-contents" aria-controls="callout-18" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Binary Classification + Likert Scale Use!
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-18" class="callout-18-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>when analyzing doctor-patient trust, P1 initially used a free-form <code>trust_summary</code> attribute, but added a boolean trust attribute to validate results more easily via a histogram. As shown in Fig. 8, the LLM labeled all examples as “true,” so P1 switched to a 5-point Likert scale for more granularity</p>
+</div>
+</div>
+</div>
+<p>I’m always interested in effective Likert scale use (usually find them ineffective) and examples of binary classification (easier for LLMs). This excerpt highlights both. The <code>trust_summary</code> became a boolean <code>trust</code> attribute, which when all labeled “true” led to a 5-point Likert scale revealing proper trust distribution. Another example where structured data from a survey’s true/false trust question couldn’t tease out the nuance you get by transforming unstructured trust summaries into Likert scales with an LLM.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-19-contents" aria-controls="callout-19" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Let the Results Guide You
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-19" class="callout-19-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>Unlike typical data science workflows where users begin with exploratory data analysis [57], all participants skipped manual document review and jumped straight into writing map operations. As they inspected outputs, they frequently revised their pipelines in response to what they saw—what we call opportunistic realignment.</p>
+</div>
+</div>
+</div>
+<p>This reminds me of fast.ai’s approach. When confronting a problem, train models first and examine results—baseline heuristic, then traditional ML, then neural nets. Some upfront cleaning and quick viz helps, but much data intuition comes from training models and examining results. As Jeremy Howard shows in his <a href="https://vishalbakshi.github.io/blog/index.html#category=paddy%20doctor">Paddy Doctor Kaggle series</a>, get through your entire pipeline first, then change one thing at a time following intuition rather than running hyperparameter sweeps. You need fast, tight feedback loops—manual document review prohibits this. Makes sense users jump straight to operations. I’ll remember this when using DocWrangler.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-20-contents" aria-controls="callout-20" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Using Operation Decomposition to Write Better Prompts
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-20" class="callout-20-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>even though the Operation Decomposition feature was designed to help address the generalization gulf, users sometimes adopted it as a way to improve specification too—using suggestions to rethink how they framed their tasks or restructure their prompts.</p>
+</div>
+</div>
+</div>
+<p>When tackling LLM-assisted problems, you may not know what tasks are involved or their order. Makes sense that complex task decomposition informs users’ overall approach. Another example of how “The LLM Paradox” creates new problem-solving opportunities.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-21-contents" aria-controls="callout-21" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+LLMs Uncover Serendipitous Opportunities for Analysis
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-21" class="callout-21-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>Some users shifted direction after spotting surprising or useful patterns in the LLM’s outputs. These “serendipitous” findings weren’t requested explicitly, but appeared occasionally, revealing new opportunities for analysis.</p>
+</div>
+</div>
+</div>
+<p>This resembles exploring structured data through different groupbys and aggregations—unexpected insights surface in visualizations. But there’s a fundamental difference. With structured data, you can list all columns and explore methodically. With unstructured data at scale, you may not know what information is buried in documents. These “new opportunities” involve LLMs discovering previously unknown data attributes.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-22-contents" aria-controls="callout-22" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Prompt Rubber Ducking
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-22" class="callout-22-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>“prompt rubber ducking”: how interacting with LLMs helped them figure out what questions to ask about their data. In this way, semantic data processing pipelines don’t just answer predefined questions, they also help shape users’ understanding of what questions are worth asking—perhaps similar to the “berry picking” model of information seeking, where users iteratively refine their search as they gain new insights</p>
+</div>
+</div>
+</div>
+<p>The “berry picking” model definition:</p>
+<blockquote class="blockquote">
+<p>Bates, 1989 proposed the berry-picking model of information seeking, which has two main points. The first is that, in the process of reading and learning from the information encountered throughout the search process, the searchers’ information needs, and consequently their queries, continually shift (see Figure 3.3). Information encountered at one point in a search may lead in a new, unanticipated direction. The original goal may become partly fulfilled, thus lowering the priority of one goal in favor of another. The second point is that searchers’ information needs are not satisfied by a single, final retrieved set of documents, but rather by a series of selections and bits of information found along the way. This is in contrast to the assumption that the main goal of the search process is to hone down the set of retrieved documents into a perfect match of the original information need. (<a href="https://searchuserinterfaces.com/book/sui_ch3_models_of_information_seeking.html#section_3.3">source</a>)</p>
+</blockquote>
+<p>This model matches anyone’s Google or Wikipedia journey—you start with one page, encounter new terms, look those up, find related concepts, look those up, step back, move forward. Non-linear information seeking. This matches the earlier user behavior where users skip manual document review and jump straight into map operations to discover patterns. Semantic data processing is like LLMs going on their own Google/Wikipedia journey.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-23-contents" aria-controls="callout-23" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Thinking Fast and Slow
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-23" class="callout-23-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>system responsiveness allowed rapid iteration…output schemas acted as “speed breaks”, slowing exploration just enough for meaningful reflection</p>
+</div>
+</div>
+</div>
+<p>This testifies to DocWrangler’s UI design. One reason vibe coding fails is that chatbot interfaces lack user interaction elements that switch between rapid iteration and meaningful reflection. Problem-solving (<a href="https://math.libretexts.org/Courses/Coalinga_College/Math_for_Educators_(MATH_010A_and_010B_CID120)/05%3A_Problem_Solving/5.02%3A_George_Polya's_Strategy">Polya’s method</a>) involves: understanding the problem, breaking it into steps, generating a plan, and working iteratively in small chunks. While users could follow this method themselves, having a UI that conduces this organically is impressive.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-24-contents" aria-controls="callout-24" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+LLM Take the Wheel!
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-24" class="callout-24-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>A key factor in whether participants accepted [LLM] suggestions was their confidence in implementing the changes on their own.</p>
+</div>
+</div>
+</div>
+<p>LLM users relate to situations where LLMs suggest commands or functions outside their understanding. I’ll often trust the LLM if the code works—especially for bash commands. But if suggested code is fundamental to my script and in Python, I’ll understand each line and likely implement from scratch.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-25-contents" aria-controls="callout-25" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+LLMs Blur Traditional Data Analysis Phases
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-25" class="callout-25-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>LLM pipelines blur the boundary between data cleaning and analysis, unlike traditional workflows where these phases are less intertwined</p>
+</div>
+</div>
+</div>
+<p>Users requested LLM error tracing features. In one example, a user wanted to identify where dosage was incorrectly listed as 200 grams instead of 200 milligrams. The LLM faithfully reproduced this error without understanding 200 grams is incorrect. This emphasizes the need for domain experts reviewing LLM inputs/outputs and the importance of citations now common in frontier model interfaces—though citations don’t guarantee correct LLM interpretation.</p>
+</section>
+<section id="real-world-deployment-and-usage" class="level2">
+<h2 class="anchored" data-anchor-id="real-world-deployment-and-usage">Real-World Deployment and Usage</h2>
+<p>In addition to their 10 Think-A-Loud interview sessions with participants in the user study, the authors also deployed DocWrangler online and collected telemetry data for about 1500 interactions (pipelines). This section details some of the interesting findings.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-26-contents" aria-controls="callout-26" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Prompt Refinement Addresses Skill Issue
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-26" class="callout-26-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>users often struggle with formulating effective prompts from the outset.</p>
+</div>
+</div>
+</div>
+<p>There was evidence that users needed the prompt confinement LLM assistance to improve their initial prompts, which were often ineffective. This highlights the importance of prompt engineering as a skill but also provides evidence that the DocWrangler interface was designed correctly.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-27-contents" aria-controls="callout-27" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Pipeline Development Trends
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-27" class="callout-27-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>53% of pipelines grew more complex by adding operations or upgrading models; 18% actually became simpler through operation consolidation or reduced sample sizes; and 29% maintained the same operations while only changing prompts or output schemas</p>
+</div>
+</div>
+</div>
+<p>I’d like to understand which tasks led to complexity growth versus simplification. Did complexity grow because humans better understood workflows by breaking tasks into sub-tasks, or because they had to adjust to LLM limitations? I’m confused why “upgrading models” counts as complexity growth.</p>
+</section>
+<section id="discussion" class="level2">
+<h2 class="anchored" data-anchor-id="discussion">Discussion</h2>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-28-contents" aria-controls="callout-28" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Creativity Support Tool Epistemic Artifacts
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-28" class="callout-28-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>We observed users creating what creativity support tool (CST) research calls epistemic artifacts [89]—exploratory objects that help users discover possibilities…any system addressing ambiguous tasks may benefit from CST design principles; e.g., supporting exploration without predefined goals and allowing movement between different levels of abstraction</p>
+</div>
+</div>
+</div>
+<p>I love epistemic artifacts—one reason I love notebooks. Notebooks let you quickly probe variables and data structures, visualizing them, wrapping them in functions, adjusting code on-the-fly in a unified interface. It’s why chatbot interfaces resemble notebooks and why AnswerAI’s SolveIt platform works (combining LLM interaction with editable notebooks).</p>
+<p>“Addressing ambiguous tasks” is core to problem-solving. Makes sense that DocWrangler’s interface—allowing data “exploration without predefined goals” and movement “between different levels of abstraction”—is such an effective problem-solving tool for study users.</p>
+</section>
+<section id="final-thoughts" class="level2">
+<h2 class="anchored" data-anchor-id="final-thoughts">Final Thoughts</h2>
+<p>Few papers light up different parts of my brain—connecting past experiences with unconsidered opportunities, intertwining with my interests while providing chances to build new skills. The ColBERT papers, TinyStories, and Small-scale Proxies are examples. DocWrangler fits this mold. I feel introduced to a fundamental interaction pattern beyond generic chatbot interfaces. I’m excited to try DocWrangler with familiar data and record findings in future blog posts or videos. Thanks for sticking around until the end!</p>
+
+
+</section>
+
+ ]]></description>
+  <category>LLM</category>
+  <category>DocWrangler</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-09-01-DocWrangler/</guid>
+  <pubDate>Mon, 01 Sep 2025 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>The Term “Non-Deterministic” and LLMs</title>
   <dc:creator>Vishal Bakshi</dc:creator>
@@ -124,7 +698,7 @@ font-style: inherit;">For"</span></span></code></pre></div>
 <blockquote class="blockquote">
 <p>users need to understand their data to write effective pipelines, yet they need to construct pipelines to extract the data necessary for that understanding</p>
 </blockquote>
-<p>Thinking on that a bit more, what I think people mean by saying “LLMs are non-deterministic” is: what inputs to give LLMs for a desired output is ambiguous. Prompt engineering being a thing is a great example of this. I don’t know enough mathematics to know if there’s a term for this. “Input ambiguous”? “Non-deterministic on both ends”? The best Sonnet 4 came up with was “non-invertible” (other options was non-transparent). GPT-5 Thinking came up with a more sophisticated response <em>Prompting LLMs is an ill-posed inverse problem.</em></p>
+<p>Thinking on that a bit more, what I think people mean by saying “LLMs are non-deterministic” is: what inputs to give LLMs for a desired output is ambiguous. Prompt engineering being a thing is a great example of this. I don’t know enough mathematics to know if there’s a term for this. “Input ambiguous”? “Non-deterministic on both ends”? The best Sonnet 4 came up with was “non-invertible” (other option was “non-transparent”). GPT-5 Thinking came up with a more sophisticated response <em>Prompting LLMs is an ill-posed inverse problem.</em></p>
 <blockquote class="blockquote">
 <ul>
 <li>Inverse problem: you start from a desired output and try to find an input (prompt) that yields it.</li>
@@ -9307,441 +9881,6 @@ If your eval system says you are achieving 100% w/AI accuracy then your product 
   <category>Career</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2025-06-26-portfolio-llm/</guid>
   <pubDate>Thu, 26 Jun 2025 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>Takeaways from Gemini Deep Research Report on Small Batch Training Challenges</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2025-06-18-small-batch-report/</link>
-  <description><![CDATA[ 
-
-
-
-
-<div id="cell-1" class="cell">
-<div class="sourceCode cell-code" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">import</span> torch</span>
-<span id="cb1-2"><span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">from</span> torch <span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">import</span> tensor</span>
-<span id="cb1-3"><span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">from</span> torch.nn <span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">import</span> CrossEntropyLoss</span></code></pre></div>
-</div>
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<p>I’ve recently been training models on the fastai <a href="https://github.com/fastai/imagenette?tab=readme-ov-file">Imagenette dataset</a> to gain some intuition on what improves downstream performance (accuracy). <a href="https://vishalbakshi.github.io/blog/posts/2025-06-18-imagenette/">My latest experiment</a> was to train three models on different batch sizes and learning rates (for a fixed 5 epochs) to understand the relationship between the two.</p>
-<p>I posted my initial musing (after I had analyzed results for batch sizes 32 to 2048) that lowering the batch size might continue to yield higher accuracy. Jeremy validated this approach:</p>
-<blockquote class="twitter-tweet blockquote">
-<p lang="en" dir="ltr">
-That’s a great question! Stable low bs training isn’t easy, but it’s a good plan :)
-</p>
-— Jeremy Howard (<span class="citation" data-cites="jeremyphoward">@jeremyphoward</span>) <a href="https://twitter.com/jeremyphoward/status/1930486029607416069?ref_src=twsrc%5Etfw">June 5, 2025</a>
-</blockquote>
-<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
-<p>I also prompted Allen AI’s <a href="https://paperfinder.allen.ai/chat/606ffc67-5539-47a9-8c8a-ec5820666ccc?profile=paper-finder-only">Paper Finder</a> with:</p>
-<blockquote class="blockquote">
-<p>strategies to make low batch size training more stable and improve accuracy for image recognition</p>
-</blockquote>
-<p>Imagenette is unlocking an entire new lane of research and experimentation for me, helping me towards my <a href="https://vishalbakshi.github.io/blog/posts/2025-04-26-TinyScale-Lab-Kickoff/">TinyScaleLab project goal</a> of training and analyzing high performant tiny language models.</p>
-<p>In this blog post, I’ll walk through the Gemini Deep Research and Ai2 Paper Finder findings. The full Deep Research report is in <a href="https://docs.google.com/document/d/1AWoW4sOQ_iR_3pxsTRzYOT0cql60ux0Sjrt4rbLilZM/edit?usp=sharing">this Google Doc</a>.</p>
-</section>
-<section id="geminis-deep-research-report" class="level2">
-<h2 class="anchored" data-anchor-id="geminis-deep-research-report">Gemini’s Deep Research Report</h2>
-<p>Here was my initial prompt:</p>
-<blockquote class="blockquote">
-<p>I recently have been training xresnet18, xresnet34 and xse_resnext50 on the Imagenette dataset by fast.ai (which is a 10k subset of ImageNet with 10 easily classified classes). I have trained on batch sizes from 1 to 2048. Generally speaking, the highest accuracy achieved increases from a batch size of 1 to a batch size of 8, 16 or 32 (depending on the model/learning rate) and then decreases as batch size increases to 2048. This makes me want to explore small batch size training for this project. Jeremy Howard tweeted that “Stable low bs training isn’t easy, but it’s a good plan”. I want you to help me answer two questions in this chat:</p>
-<ol type="1">
-<li><p>Why is stable low batch size training difficult?</p></li>
-<li><p>What techniques are there (either in literature/arxiv, blog posts or forums) to make low batch size training stable? I’m most interested in improving the accuracy of low batch size trainings.</p></li>
-</ol>
-</blockquote>
-<p>I’ll paste the entire executive summary it generated, as its a good one (emphasis mine):</p>
-<blockquote class="blockquote">
-<p>Training deep learning models with small batch sizes presents a unique set of challenges, primarily stemming from high gradient variance during optimization and the inherent limitations of standard Batch Normalization with few samples. However, this training regime also offers the potential for <mark>improved model generalization</mark>. This report investigates the difficulties associated with stable low batch size training and explores techniques to mitigate these issues, with a particular focus on enhancing model accuracy. For architectures like xresnet, overcoming the instability of Batch Normalization with small batches is a critical first step, often addressed by substituting it with alternatives like <mark>Group Normalization</mark>. Stability and accuracy can be further improved through <mark>careful management of learning rates</mark>, including the use of adaptive schedulers and awareness of optimizer-specific phenomena such as the “surge” in optimal learning rates for Adam-family optimizers. <mark>The choice of optimizer itself</mark>, typically between SGD with momentum and adaptive methods like AdamW, also plays a significant role, alongside appropriate <mark>regularization strategies tailored to the small-batch context</mark>.</p>
-</blockquote>
-<p>The report starts by outlining why small batch sizes lead to unstable training. Gradient updates using a small batch size “may not accurately reflect the gradient of the true loss function that would be computed over the entire dataset” and “is an estimate derived from a very limited subset of the training data”.</p>
-</section>
-<section id="small-batch-sizes-the-double-edged-sword" class="level2">
-<h2 class="anchored" data-anchor-id="small-batch-sizes-the-double-edged-sword">Small Batch Sizes: The Double Edged Sword</h2>
-<p>On one hand, small batch size for a fixed number epochs provide more gradient updates and thus lower the loss. In the plot below (xresnet18) the ideal batch size (16-32) performs better than larger batch sizes. On the other hand, the larger number of updates will take longer and the GPU will be less utilized.</p>
-<p><strong>xresnet18</strong></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="lr_acc_18.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="xresnet18 batch size vs accuracy for different learning rates"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-18-small-batch-report/lr_acc_18.png" class="img-fluid figure-img" alt="xresnet18 batch size vs accuracy for different learning rates"></a></p>
-<figcaption>xresnet18 batch size vs accuracy for different learning rates</figcaption>
-</figure>
-</div>
-<blockquote class="twitter-tweet blockquote" data-dnt="true" align="center" data-conversation="none">
-<p lang="en" dir="ltr">
-We covered this in some of our earlier courses - lower batch sizes provide more updates, which should give better results for a fixed # epochs.
-</p>
-— Jeremy Howard (<span class="citation" data-cites="jeremyphoward">@jeremyphoward</span>) <a href="https://twitter.com/jeremyphoward/status/1927192030335132090?ref_src=twsrc%5Etfw">May 27, 2025</a>
-</blockquote>
-<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
-<p>Additionally, as the Gemini report goes on to say:</p>
-<blockquote class="blockquote">
-<p>Small batches can lead to gradients that are “bigger and chaotic” because an incorrect prediction on a single data point within a tiny batch can result in a disproportionately large loss and, subsequently, a large gradient update compared to its effect in a larger batch…high gradient noise, stemming from the limited data used for each estimation, leads to more volatile and less precise parameter updates</p>
-</blockquote>
-<p>This was a good opportunity to do a quick refresher on cross entropy loss so I worked through <a href="https://github.com/fastai/fastbook/blob/master/05_pet_breeds.ipynb">Chapter 5 of fastbook</a> again and wrote up <a href="https://vishalbakshi.github.io/blog/posts/2025-06-11-CELoss/">a blog post</a> and <a href="https://www.youtube.com/watch?v=swHhoP53jq4">video walkthrough</a> on that.</p>
-<p>Suppose we have a batch size of two for a binary classification task:</p>
-<div id="cell-17" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="90fce2ca-d659-41a1-9e29-457566223b40" data-execution_count="2">
-<div class="sourceCode cell-code" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">acts <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> tensor([[<span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.4</span>, <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">9.5</span>], [<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">4</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">5</span>]], requires_grad<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="va" style="color: #111111;
-background-color: null;
-font-style: inherit;">True</span>)</span>
-<span id="cb2-2">acts</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="2">
-<pre><code>tensor([[0.4000, 9.5000],
-        [4.0000, 5.0000]], requires_grad=True)</code></pre>
-</div>
-</div>
-<p>With the following targets—the first batch item target is the first class (index <code>0</code>), which has a very wrong small activation.</p>
-<div id="cell-19" class="cell" data-execution_count="5">
-<div class="sourceCode cell-code" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1">targ <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> tensor([<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>])</span></code></pre></div>
-</div>
-<div id="cell-20" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="14e2581f-1023-4b2d-e27b-4abdfd25ab17" data-execution_count="6">
-<div class="sourceCode cell-code" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1">loss <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> CrossEntropyLoss()(acts, targ)</span>
-<span id="cb5-2">loss</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="6">
-<pre><code>tensor(4.7067, grad_fn=&lt;NllLossBackward0&gt;)</code></pre>
-</div>
-</div>
-<div id="cell-21" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="a9c7c33f-a43e-49d1-a45b-adb6bf7a6fca" data-execution_count="7">
-<div class="sourceCode cell-code" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1">loss.backward()</span>
-<span id="cb7-2">acts.grad</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="7">
-<pre><code>tensor([[-0.4999,  0.4999],
-        [ 0.1345, -0.1345]])</code></pre>
-</div>
-</div>
-<p>Now suppose we had the same two items but in a batch size of 8.</p>
-<div id="cell-23" class="cell" data-execution_count="8">
-<div class="sourceCode cell-code" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1">acts <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> tensor(</span>
-<span id="cb9-2">    [[ <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.4000</span>,  <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">9.5000</span>], <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># same item as before</span></span>
-<span id="cb9-3">     [ <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">4.0000</span>,  <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">5.0000</span>], <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># same item as before</span></span>
-<span id="cb9-4">     [ <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.3367</span>,  <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.1288</span>],</span>
-<span id="cb9-5">     [ <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.2345</span>,  <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.2303</span>],</span>
-<span id="cb9-6">     [<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">-</span><span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1.1229</span>, <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">-</span><span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.1863</span>],</span>
-<span id="cb9-7">     [ <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">2.2082</span>, <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">-</span><span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.6380</span>],</span>
-<span id="cb9-8">     [ <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.4617</span>,  <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.2674</span>],</span>
-<span id="cb9-9">     [ <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.5349</span>,  <span class="fl" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.8094</span>]], requires_grad<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span><span class="va" style="color: #111111;
-background-color: null;
-font-style: inherit;">True</span>)</span></code></pre></div>
-</div>
-<p>Adding 6 items to the targets.</p>
-<div id="cell-25" class="cell" data-execution_count="9">
-<div class="sourceCode cell-code" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1">targ <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> tensor([<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>, <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span>])</span></code></pre></div>
-</div>
-<div id="cell-26" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="c1f16f85-df02-4d87-f5c2-2ca579425447" data-execution_count="10">
-<div class="sourceCode cell-code" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1">loss <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> CrossEntropyLoss()(acts, targ)</span>
-<span id="cb11-2">loss</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="10">
-<pre><code>tensor(1.5563, grad_fn=&lt;NllLossBackward0&gt;)</code></pre>
-</div>
-</div>
-<p>Note that the loss is smaller.</p>
-<div id="cell-28" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="01eb068c-1918-4dad-c0f4-594b01c14ee5" data-execution_count="11">
-<div class="sourceCode cell-code" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1">loss.backward()</span>
-<span id="cb13-2">acts.grad</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="11">
-<pre><code>tensor([[-0.1250,  0.1250],
-        [ 0.0336, -0.0336],
-        [-0.0560,  0.0560],
-        [ 0.0626, -0.0626],
-        [ 0.0352, -0.0352],
-        [-0.0069,  0.0069],
-        [ 0.0686, -0.0686],
-        [ 0.0540, -0.0540]])</code></pre>
-</div>
-</div>
-<p>The loss and gradients are much smaller. The impact of the one confidently wrong prediction has decreased with larger batch size.</p>
-<p>There are also two other factors at play, as the Gemini report states:</p>
-<blockquote class="blockquote">
-<p>On one hand, the noisy gradients can cause the optimization process to oscillate significantly around an optimal solution, making it challenging for the model to settle into a good minimum and potentially slowing down overall convergence</p>
-</blockquote>
-<blockquote class="blockquote">
-<p>On the other hand, this very noise and the resultant exploratory behavior can be beneficial. The stochasticity introduced by small batches can act as a form of implicit regularization, helping the model to escape sharp, narrow local minima in the loss landscape and instead find flatter, broader minima</p>
-</blockquote>
-<p>The push and pull between the pros (faster updates, implicit regularization) and cons (longer training time, GPU underutilization, oscillating around minima, chaotic gradients/high gradient noise) makes small batch training a fascinating topic. The very characteristics that provide benefit to the training process also damage it.</p>
-</section>
-<section id="small-batch-size-and-batch-normalization" class="level2">
-<h2 class="anchored" data-anchor-id="small-batch-size-and-batch-normalization">Small Batch Size and Batch Normalization</h2>
-<p>In addition to making the gradient noisy, small batch sizes make Batch Normalization statistics noisy.</p>
-<blockquote class="blockquote">
-<p>BN standardizes the activations within a network by calculating mean and variance statistics per batch. When batch sizes are very small (e.g., 1, 2, or 4 samples), these batch-wise statistics become extremely noisy and unreliable estimators of the true population statistics across the entire dataset</p>
-</blockquote>
-<p>From the <a href="https://arxiv.org/abs/1803.08494">Group Normalization paper</a> (for which I have done a <a href="https://www.youtube.com/watch?v=ZCTcxNEGens">video walkthrough</a>):</p>
-<blockquote class="blockquote">
-<p>normalizing along the batch dimension introduces problems — BN’s error increases rapidly when the batch size becomes smaller, caused by inaccurate batch statistics estimation.</p>
-</blockquote>
-<p>The three models I’m using all have a considerable number of Batch Normalization layers.</p>
-<div id="cell-37" class="cell" data-execution_count="12">
-<div class="sourceCode cell-code" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">from</span> fastai.vision.<span class="bu" style="color: null;
-background-color: null;
-font-style: inherit;">all</span> <span class="im" style="color: #00769E;
-background-color: null;
-font-style: inherit;">import</span> <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">*</span></span></code></pre></div>
-</div>
-<div id="cell-38" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="bbe244fe-90e6-455f-fdb1-f14334b8c350" data-execution_count="13">
-<div class="sourceCode cell-code" id="cb16" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1">bn_count <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span></span>
-<span id="cb16-2"><span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">for</span> module <span class="kw" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">in</span> xresnet18().modules():</span>
-<span id="cb16-3">  <span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">if</span> <span class="bu" style="color: null;
-background-color: null;
-font-style: inherit;">isinstance</span>(module, nn.BatchNorm2d): bn_count <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+=</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span></span>
-<span id="cb16-4">bn_count</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="13">
-<pre><code>22</code></pre>
-</div>
-</div>
-<div id="cell-39" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="9b07f053-6422-4605-ea78-61677ea481f9" data-execution_count="14">
-<div class="sourceCode cell-code" id="cb18" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1">bn_count <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span></span>
-<span id="cb18-2"><span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">for</span> module <span class="kw" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">in</span> xresnet34().modules():</span>
-<span id="cb18-3">  <span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">if</span> <span class="bu" style="color: null;
-background-color: null;
-font-style: inherit;">isinstance</span>(module, nn.BatchNorm2d): bn_count <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+=</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span></span>
-<span id="cb18-4">bn_count</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="14">
-<pre><code>38</code></pre>
-</div>
-</div>
-<div id="cell-40" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;colab&quot;,&quot;value&quot;:{&quot;base_uri&quot;:&quot;https://localhost:8080/&quot;}}" data-outputid="176953d5-7ca7-4866-bd9c-695e5105e9a5" data-execution_count="15">
-<div class="sourceCode cell-code" id="cb20" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1">bn_count <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span></span>
-<span id="cb20-2"><span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">for</span> module <span class="kw" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">in</span> xse_resnext50().modules():</span>
-<span id="cb20-3">  <span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">if</span> <span class="bu" style="color: null;
-background-color: null;
-font-style: inherit;">isinstance</span>(module, nn.BatchNorm2d): bn_count <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+=</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1</span></span>
-<span id="cb20-4">bn_count</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="15">
-<pre><code>55</code></pre>
-</div>
-</div>
-</section>
-<section id="techniques-for-stable-and-accurate-low-batch-size-training" class="level2">
-<h2 class="anchored" data-anchor-id="techniques-for-stable-and-accurate-low-batch-size-training">Techniques for Stable and Accurate Low Batch Size Training</h2>
-<p>The fascinating complexity of stable small batch training is summarized in the report with the following:</p>
-<blockquote class="blockquote">
-<p>Addressing the challenges of small batch training requires a multi-pronged approach, focusing on adapting learning rate strategies, rethinking normalization layers, selecting appropriate optimizers, and employing advanced gradient management and regularization techniques.</p>
-</blockquote>
-<section id="learning-rate" class="level3">
-<h3 class="anchored" data-anchor-id="learning-rate">Learning Rate</h3>
-<blockquote class="blockquote">
-<p>for small batches, the high gradient noise often necessitates smaller learning rates to prevent divergence and ensure stability</p>
-</blockquote>
-<p>We can see that there’s evidence for that from my <a href="https://vishalbakshi.github.io/blog/posts/2025-06-18-imagenette/">Imagenette experiments</a>. For the xresnet18, xresnet34 and xse_resnext50 models (top to bottom charts, respectively), 1e-3 yields higher accuracy for lower batch sizes than 1e-2.</p>
-<p><strong>xresnet18</strong></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="lr_acc_18.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2" title="xresnet18 batch size vs accuracy for different learning rates"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-18-small-batch-report/lr_acc_18.png" class="img-fluid figure-img" alt="xresnet18 batch size vs accuracy for different learning rates"></a></p>
-<figcaption>xresnet18 batch size vs accuracy for different learning rates</figcaption>
-</figure>
-</div>
-<p><strong>xresnet34</strong></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="lr_acc_34.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3" title="xresnet34 batch size vs accuracy for different learning rates"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-18-small-batch-report/lr_acc_34.png" class="img-fluid figure-img" alt="xresnet34 batch size vs accuracy for different learning rates"></a></p>
-<figcaption>xresnet34 batch size vs accuracy for different learning rates</figcaption>
-</figure>
-</div>
-<p><strong>xse_resnext50</strong></p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="lr_acc_50.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4" title="xse_resnext50 batch size vs accuracy for different learning rates"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-18-small-batch-report/lr_acc_50.png" class="img-fluid figure-img" alt="xse_resnext50 batch size vs accuracy for different learning rates"></a></p>
-<figcaption>xse_resnext50 batch size vs accuracy for different learning rates</figcaption>
-</figure>
-</div>
-<blockquote class="blockquote">
-<p>small batch sizes (e.g., 2 to 32) can be more robust to learning rate choices</p>
-</blockquote>
-<p>I witnessed the second point during my training runs as well. For xresnet34 and a batch size of 8 or 16, the difference in accuracy between learning rates of 1e-4, 1e-3 and 1e-2 was 10%. For a batch size of 1024, the difference in accuracy was 40%. xresnet18 had a similar trend while xse_resnext50 was more robust to changes in learning rates (1e-4, 1e-3, 1e-2) as the accuracy varied about 10-20% across batch sizes of 2 to 1024. In the charts above, this is visualized by the diverging LR curves as batch size increases.</p>
-<blockquote class="blockquote">
-<p>A learning rate warm-up strategy, where training begins with a very small learning rate that is gradually increased to its target value over a few initial epochs, can significantly stabilize the early phases of training.</p>
-</blockquote>
-<p>My training runs already did this by default (using fastai’s <code>Learner</code> and <code>vision_learner</code>), though I haven’t experimented with any available parameters related to this (e.g.&nbsp;number of warmup steps).</p>
-<blockquote class="blockquote">
-<p>The optimal learning rate strategy is non-linear, optimizer-dependent, and may require empirical tuning guided by these more nuanced theoretical understandings.</p>
-</blockquote>
-</section>
-<section id="alternative-forms-of-normalization" class="level3">
-<h3 class="anchored" data-anchor-id="alternative-forms-of-normalization">Alternative Forms of Normalization</h3>
-<p>Gemini found in its research that alternative forms of normalization (other than Batch Normalization) can improve small batch size performance. Most notably, in the Group Normalization paper they found that Group Normalization resulted in a 10% lower error rate than Batch Normalization for small batch sizes. Group Normalization calculates mean and variance for a group of channels for a single image, thereby being <em>batch independent</em>, so a small batch size doesn’t make the statistics any noisier (as is the case for Batch Normalization where the mean and variance are calculated across all images in the batch). However, there’s two sides to this trade-off. As the paper states:</p>
-<blockquote class="blockquote">
-<p>BN’s mean and variance computation introduces uncertainty caused by the stochastic batch sampling, which helps regularization. This uncertainty is missing in GN (and LN/IN). But it is possible that GN combined with a suitable regularizer will improve results. This can be a future research topic.</p>
-</blockquote>
-<p>Gemini also suggests Layer Normalization (calculating mean and variance across all channels for a single image) and Instance Normalization (across a single channel for a single image) as these are both also batch independent. However, the Group Normalization paper finds that these two perform worse than Group Normalization.</p>
-</section>
-<section id="optimizers-and-regularization" class="level3">
-<h3 class="anchored" data-anchor-id="optimizers-and-regularization">Optimizers and Regularization</h3>
-<p>Finally, Gemini suggested to try out different optimizers (and tuning their hyperparameters) and regularization techniques (weight decay, data augmentation), both things I wanted to experiment with going into this project.</p>
-</section>
-</section>
-<section id="next-steps" class="level2">
-<h2 class="anchored" data-anchor-id="next-steps">Next Steps</h2>
-<p>Based on Gemini’s research and my reading of the Group Normalization paper I plan on experimenting on the following:</p>
-<ul>
-<li>Replace Batch Normalization layers with Group Normalization.</li>
-<li>Add a regularization method like weight decay.</li>
-<li>Try out different optimizers using Benjamin Warner’s <a href="https://optimi.benjaminwarner.dev/">optimi</a> library.</li>
-<li>Try out different data augmentation techniques from Benjamin Warner’s <a href="https://fastxtend.benjaminwarner.dev/vision.augment.batch.html">fastxtend</a> library.</li>
-</ul>
-<p>At each step, I use <code>lr_find</code> and sample three stable LRs, and focus on small batch sizes of {2, 4, 8, 16, 32, 64}. I’m particularly interested in seeing how these experiments affect the three models I’m using (xresnet18, xresnet34, xse_resnext50) as xse_resnext50 was more robust to larger LRs than the other two.</p>
-<p>I’ll be documenting my findings in blog posts as well as on my <a href="https://www.youtube.com/@vishal_learner">YouTube channel</a> so please subscribe to follow along!</p>
-
-
-</section>
-
- ]]></description>
-  <category>python</category>
-  <category>fastai</category>
-  <category>imagenette</category>
-  <category>TinyScaleLab</category>
-  <category>deep learning</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2025-06-18-small-batch-report/</guid>
-  <pubDate>Wed, 18 Jun 2025 07:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
