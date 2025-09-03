@@ -57,7 +57,7 @@ else:
     torch.save(centroids, f"{ROOT}/prenorm_centroids.pt") # ADDED BY VISHAL
     centroids = torch.nn.functional.normalize(centroids, dim=-1)
     torch.save(centroids, f"{ROOT}/postnorm_centroids.pt") # ADDED BY VISHAL
-    
+
 if self.use_gpu:
     centroids = centroids.half()
     torch.save(centroids, f"{ROOT}/half_centroids.pt") # ADDED BY VISHAL
@@ -100,10 +100,11 @@ torch.save(t.half(), "half_norm.pt")
 ...and compared it between torch versions:
 
 |Artifact|`torch.allclose`|
+|:-:|:-:|
 |`t.pt`|`True`|
 |`half_t.pt`|`True`|
 |`norm.pt`|`True`|
-|`half_norm.pt`|`False`|
+|<mark>`half_norm.pt`</mark>|<mark>`False`</mark>|
 
 The half precision random tensors (before normalization) are identical between torch versions but the half precision normalized tensors are not. <mark>It was not apparent from a cursory review of the [PyTorch Release 2.8.0 Release Notes](https://github.com/pytorch/pytorch/releases/tag/v2.8.0) what caused this behavior.</mark> Sonnet 4 is confident it's due to PyTorch PR [#153888](https://github.com/pytorch/pytorch/pull/153888) (upgrade cuDNN frontend submodule to 1.12) but that could just be a shot in the dark and I can't verify it.
 
