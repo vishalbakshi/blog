@@ -24,7 +24,7 @@ There are two index artifacts that are different between `colbert-ai` installs u
 
 
 |Artifact|`torch.allclose`|
-|:-:|:-:|:-:|
+|:-:|:-:|
 |`sampled_pids`|`True`
 |`num_passages`|`True`
 |`local_sample_embs`|`True`
