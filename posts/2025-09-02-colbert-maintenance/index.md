@@ -78,7 +78,7 @@ half_centroids.pt torch.allclose:       False
 half_centroids.pt MAD: 9.313225746154785e-10    False
 ```
 
-The pre-normalization and post-normalization centroids are identical across torch versions, but the half precision centroids diverge.
+The pre-normalization and post-normalization centroids are identical across torch versions, but the <mark>half precision normalized centroids</mark> diverge.
 
 ## Inspecting `.half` Behavior
 
