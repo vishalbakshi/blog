@@ -10,7 +10,292 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.7.32</generator>
-<lastBuildDate>Mon, 01 Sep 2025 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Tue, 02 Sep 2025 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>PyTorch Version Impact on ColBERT Index Artifacts: 2.7.1 –&gt; 2.8.0</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-09-02-colbert-maintenance/</link>
+  <description><![CDATA[ 
+
+
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In a <a href="https://vishalbakshi.github.io/blog/posts/2025-08-18-colbert-maintenance/">previous blog post</a> I showed how I traced index artifact differences between <code>colbert-ai</code> installs using <code>torch==1.13.1</code> (the current pinned version) and <code>torch==2.1.0</code> (the first version which produces different index artifacts) to a difference in floating point differences in the forward pass of the underlying <code>BertModel</code>.</p>
+<p>In a <a href="https://vishalbakshi.github.io/blog/posts/2025-08-26-colbert-maintenance/">subsequent blog post</a> I showed how the index artifact differences between <code>colbert-ai</code> installs using <code>torch==2.4.1</code> and <code>torch==2.5.0</code> (the next two versions with differences) was due to floating point divergence in BERT’s intermediate linear layer under mixed precision with small batch sizes.</p>
+<p>In this blog post, I’ll show how the index artifacts differencces between <code>torch==2.7.1</code> and <code>torch==2.8.0</code> is due to floating point differences between half precision normalized centroid tensors.</p>
+</section>
+<section id="index-artifact-comparison" class="level2">
+<h2 class="anchored" data-anchor-id="index-artifact-comparison">Index Artifact Comparison</h2>
+<p>There are two index artifacts that are different between <code>colbert-ai</code> installs using <code>torch==2.7.1</code> and <code>torch==2.8.0</code>: centroids.pt and the related residuals.pt (the difference between document token embeddings and centroids). This divergence does <mark>NOT</mark> result in a divergence in the critical <code>ivf.pt</code> (document token IDs) and <code>values</code> (centroid IDs) tensors. In other words, the most important mapping from document token IDs to centroid IDs does not change even though centroids floating point values change enough to fail <code>torch.allclose</code>.</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">Artifact</th>
+<th style="text-align: center;"><code>torch.allclose</code></th>
+<th style="text-align: center;"></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><code>sampled_pids</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>num_passages</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>local_sample_embs</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><mark><code>centroids</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>bucket_cutoffs</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>bucket_weights</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>avg_residual</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><mark><code>residuals</code></mark></td>
+<td style="text-align: center;"><mark><code>False</code></mark></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>sample</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>sample_heldout</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>embs</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>doclens</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>codes</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>ivf</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>values</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>tensorize_output</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>batches</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>D</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="inspecting-centroids.pt" class="level2">
+<h2 class="anchored" data-anchor-id="inspecting-centroids.pt">Inspecting <code>centroids.pt</code></h2>
+<p>I added the following <code>torch.save</code> calls inside <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/collection_indexer.py#L280"><code>CollectionIndexer._train_kmeans</code></a>:</p>
+<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> do_fork_for_faiss:</span>
+<span id="cb1-2">    ...</span>
+<span id="cb1-3"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span>:</span>
+<span id="cb1-4">    args_ <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> args_ <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> [[[sample]]]</span>
+<span id="cb1-5">    centroids <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> compute_faiss_kmeans(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span>args_)</span>
+<span id="cb1-6">torch.save(centroids, <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>ROOT<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/prenorm_centroids.pt"</span>) <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ADDED BY VISHAL</span></span>
+<span id="cb1-7">centroids <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.nn.functional.normalize(centroids, dim<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=-</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>)</span>
+<span id="cb1-8">torch.save(centroids, <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>ROOT<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/postnorm_centroids.pt"</span>) <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ADDED BY VISHAL</span></span>
+<span id="cb1-9"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.use_gpu:</span>
+<span id="cb1-10">    centroids <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> centroids.half()</span>
+<span id="cb1-11">    torch.save(centroids, <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>ROOT<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/half_centroids.pt"</span>) <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ADDED BY VISHAL</span></span>
+<span id="cb1-12"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span>:</span>
+<span id="cb1-13">    centroids <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> centroids.<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">float</span>()</span></code></pre></div>
+<p>I then compared <code>prenorm_centroids.pt</code>, <code>postnorm_centroids.pt</code> and <code>half_centroids.pt</code> between both <code>colbert-ai</code> installs using <code>torch.allclose</code>:</p>
+<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1">prenorm_centroids.pt torch.allclose:    <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">True</span></span>
+<span id="cb2-2">prenorm_centroids.pt MAD: <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.0</span>   <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">True</span></span>
+<span id="cb2-3"></span>
+<span id="cb2-4">postnorm_centroids.pt torch.allclose:   <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">True</span></span>
+<span id="cb2-5">postnorm_centroids.pt MAD: <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">7.014875902378037e-10</span>        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">False</span></span>
+<span id="cb2-6"></span>
+<span id="cb2-7">half_centroids.pt torch.allclose:       <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">False</span></span>
+<span id="cb2-8">half_centroids.pt MAD: <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">9.313225746154785e-10</span>    <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">False</span></span></code></pre></div>
+<p>The pre-normalization and post-normalization centroids are identical across torch versions, but the half precision centroids diverge.</p>
+</section>
+<section id="inspecting-.half-behavior" class="level2">
+<h2 class="anchored" data-anchor-id="inspecting-.half-behavior">Inspecting <code>.half</code> Behavior</h2>
+<p>Are all half precision tensors different across torch versions? No.&nbsp;There are a number of index artifacts that are converted to half precision during indexing and are identical between torch versions: <code>avg_residual.pt</code>, <code>D.pt</code>, <code>bucket_weights.pt</code>, and <code>embs.pt</code>.</p>
+<p>Furthermore, I created a random tensor, its half precision version, and its normalized version (full and half precision)…</p>
+<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1">torch.manual_seed(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">13</span>)</span>
+<span id="cb3-2">t <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.empty(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1024</span>, <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">96</span>).uniform_(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.4</span>, <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.4</span>)</span>
+<span id="cb3-3">torch.save(t, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"t.pt"</span>)</span>
+<span id="cb3-4">torch.save(t.half(), <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"half_t.pt"</span>)</span>
+<span id="cb3-5"></span>
+<span id="cb3-6">t <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.nn.functional.normalize(t, dim<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=-</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>)</span>
+<span id="cb3-7">torch.save(t, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"norm.pt"</span>)</span>
+<span id="cb3-8">torch.save(t.half(), <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"half_norm.pt"</span>)</span></code></pre></div>
+<p>…and compared it between torch versions:</p>
+<p>|Artifact|<code>torch.allclose</code>| |<code>t.pt</code>|<code>True</code>| |<code>half_t.pt</code>|<code>True</code>| |<code>norm.pt</code>|<code>True</code>| |<code>half_norm.pt</code>|<code>False</code>|</p>
+<p>The half precision random tensors (before normalization) are identical between torch versions but the half precision normalized tensors are not. <mark>It was not apparent from a cursory review of the <a href="https://github.com/pytorch/pytorch/releases/tag/v2.8.0">PyTorch Release 2.8.0 Release Notes</a> what caused this behavior.</mark> Sonnet 4 is confident it’s due to PyTorch PR <a href="https://github.com/pytorch/pytorch/pull/153888">#153888</a> (upgrade cuDNN frontend submodule to 1.12) but that could just be a shot in the dark and I can’t verify it.</p>
+</section>
+<section id="next-steps" class="level2">
+<h2 class="anchored" data-anchor-id="next-steps">Next Steps</h2>
+<p>I have now identified what causes index artifacts to diverge between the three pairs of PyTorch versions in question (1.13.1 –&gt; 2.1.0, 2.4.1 –&gt; 2.5.0, and 2.7.1 –&gt; 2.8.0). Next I will inspect search related artifacts and understand where there are differences and why. Once that’s complete, I’ll look into training artifacts. Finally, I’ll test index, search and training for different Python versions (3.9, 3.10, 3.11, 3.12, and 3.13). Unless something else emerges in my analysis, after Python version testing is complete, I’ll be able to push the next release of <code>colbert-ai</code> with the dependency change from <code>"torch==1.13.1"</code> to (most likely) <code>"torch&gt;=1.13.1,&lt;=2.8.0"</code>.</p>
+
+
+</section>
+
+ ]]></description>
+  <category>ColBERT</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-09-02-colbert-maintenance/</guid>
+  <pubDate>Tue, 02 Sep 2025 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>A Summary of and My Thoughts on the DocWrangler Paper</title>
   <dc:creator>Vishal Bakshi</dc:creator>
@@ -9747,140 +10032,6 @@ font-style: inherit;">=</span> _pad_input(attn_output_unpad, indices_q, batch_si
   <category>LLM-Foundry</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2025-06-30-debug-fa2-llm-foundry/</guid>
   <pubDate>Mon, 30 Jun 2025 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>Introducing portfolio-llm: A Professional Portfolio You Can Chat With</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2025-06-26-portfolio-llm/</link>
-  <description><![CDATA[ 
-
-
-
-
-<section id="background" class="level2">
-<h2 class="anchored" data-anchor-id="background">Background</h2>
-<p>For my latest project, I wanted to solve a problem I was facing: I have published a large volume of machine learning blog posts and videos, and I was not sure how to unify all of my work.</p>
-<p>I’ve also been interested in the <a href="https://llmstxt.org/">llms.txt standard created by Jeremy Howard</a>, so I had an idea: what if I wrote an llms_ctx.txt for my own professional portfolio to make it interactive and queryable?</p>
-<p>In this post, I’m going to share the result of that experiment: a professional portfolio you can chat with. I’ll walk through the entire process, from concept and design to the rigorous evaluation framework I built to test the system. I’ll also share my thoughts on how this approach changes the job search paradigm.</p>
-<iframe width="560" height="315" src="https://www.youtube.com/embed/Qhax3JerFP0?si=BNFnHmw6cNfW5SlN" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen="">
-</iframe>
-</section>
-<section id="the-goal-an-interactive-conversation" class="level2">
-<h2 class="anchored" data-anchor-id="the-goal-an-interactive-conversation">The Goal: An Interactive Conversation</h2>
-<p>You can see a demo of my llms_ctx.txt on Claude.ai in the video embedded above. Here are a couple screenshot examples:</p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="Claude.ai chat screenshot"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-26-portfolio-llm/1.png" class="img-fluid figure-img" alt="Claude.ai chat screenshot"></a></p>
-<figcaption>Claude.ai chat screenshot</figcaption>
-</figure>
-</div>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><a href="2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2" title="A not very concise response"><img src="https://vishalbakshi.github.io/blog/posts/2025-06-26-portfolio-llm/2.png" class="img-fluid figure-img" alt="A not very concise response"></a></p>
-<figcaption>A not very concise response</figcaption>
-</figure>
-</div>
-</section>
-<section id="how-it-works-the-llms_ctx.txt-file" class="level2">
-<h2 class="anchored" data-anchor-id="how-it-works-the-llms_ctx.txt-file">How It Works: The <code>llms_ctx.txt</code> File</h2>
-<p>The <code>llms_ctx.txt</code> file contains 5 sections (following the llms.txt standard):</p>
-<ul>
-<li>A header: <code># Vishal Bakshi: Building Reliable Systems</code></li>
-<li>A blockquote with a high-level summary</li>
-</ul>
-<blockquote class="blockquote">
-<p>Vishal Bakshi has a background in engineering, data analytics, and education, now focusing on Applied AI and ML research. He specializes in building reliable systems, with an emphasis on resource-constrained research, deep evaluation, and a first-principles understanding of machine learning.</p>
-</blockquote>
-<ul>
-<li>A <code>## High-Level Overview &amp; FAQ</code> section with QA pairs.</li>
-<li>A <code>## Portfolio Deep Dive Q&amp;A</code> section with QA pairs.</li>
-<li>A <code>## Out-of-Scope Questions</code> section with QA pairs.</li>
-</ul>
-<p>The creation of my <code>llms_ctx.txt</code> file was an iterative process heavily collaborated with Gemini 2.5 Pro.</p>
-<p>I first create two txt files: one containing metadata for my videos, and one containing metadata for my blog posts. I chose to keep the metadata simple: the existing title and description. A potential improvement on this could be producing an AI-generated summary of each content piece and adding that as a third field.</p>
-<p>I provided Gemini these two files and asked it to generate 5-8 themes across my body of work, and citing which blog posts and videos best represented each theme. It provided by 8 themes. I then iterated on this list manually, adding and removing content pieces and adjusting theme names as needed. You can view the full list of themes and corresponding content pieces <a href="https://github.com/vishalbakshi/portfolio-llm?tab=readme-ov-file#for-a-deeper-dive">on the GitHub repo for this project</a>.</p>
-<p>I then asked Gemini to produce three sets of questions:</p>
-<ul>
-<li>High-Level Overview &amp; FAQ</li>
-<li>Portfolio Deep Dive Q&amp;A</li>
-<li>Out-of-Scope Questions</li>
-</ul>
-<p>I then wrote a first draft set of answers for each of the 40 or so questions Gemini created across these three categories. I iterated on my answers with Gemini to make them more readable and effective.</p>
-</section>
-<section id="evaluation" class="level2">
-<h2 class="anchored" data-anchor-id="evaluation">Evaluation</h2>
-<p>I wanted to test for three users:</p>
-<ul>
-<li>First interaction (has not read my list of themes, blog posts or wactched any of my vidoes)</li>
-<li>Portfolio deep dive (has read my list of themes, and a few blog posts/videos)</li>
-<li>Out of scope (a user who asks unrelated or unspecified questions in my llms_ctx.txt)</li>
-</ul>
-<p>I wanted to test two types of questions:</p>
-<ul>
-<li>Unit Test questions (verbatim to the questions in the llms_ctx.txt, tests if the LLM can retrieve answers explicitly listed)</li>
-<li>Paraphrased/Follow-Up questions (questions that are similar in meaning but different in phrasing than the questions listed in llms_ctx.txt, or questions that cover multiple QA pairs)</li>
-</ul>
-<p>For each question, across all users and question types, I created <a href="https://github.com/vishalbakshi/portfolio-llm/blob/main/evals.csv">an evaluation spreadsheet</a> with the following columns:</p>
-<ul>
-<li>Model</li>
-<li>Prompt Type (Unit Test, Paraphrased)</li>
-<li>User</li>
-<li>Prompt (the question)</li>
-<li>Response</li>
-<li>Gold Answer (either verbatim from llms_ctx.txt or a bulleted list of content the answer should cover)</li>
-<li>Completeness (Full, Partial, None)</li>
-<li>Accuracy (Perfect, Minor Error, Major Error)</li>
-<li>Conciseness (Concise, Verbose)</li>
-<li>Hallucination (None, Speculation, Factual Fabrication)</li>
-<li>Format Adherence (Followed, Ignored)</li>
-</ul>
-<p>I generate an <a href="https://github.com/vishalbakshi/portfolio-llm/blob/main/evals.txt">XML-style version of my evals</a> with <a href="https://github.com/vishalbakshi/portfolio-llm/blob/main/Evals%20XML%20Generation.ipynb">a notebook</a> so I could feed it to an LLM for feedback.</p>
-<p>For my first round of evaluation I used only two metrics: Fidelity (High, Medium, Low) and Hallucinations (High, Medium, Low). Upon conversing with Gemini, I learned that I was conflating verbosity with Hallucinations and should decompose Fidelity into Completeness and Accuracy for more clarity in evaluation.</p>
-<p>My evaluation results were almost perfect (118/120 “Full” Completeness, 120/120 “Perfect” Accuracy and 120/120 “None” Hallucinations). I’m always wary of such high evaluation results:</p>
-<blockquote class="twitter-tweet blockquote">
-<p lang="en" dir="ltr">
-If your eval system says you are achieving 100% w/AI accuracy then your product is actually deeply broken, or you are tracking an irrelevant set of metrics
-</p>
-— Hamel Husain (<span class="citation" data-cites="HamelHusain">@HamelHusain</span>) <a href="https://twitter.com/HamelHusain/status/1843066772003733783?ref_src=twsrc%5Etfw">October 6, 2024</a>
-</blockquote>
-<script async="" src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
-<p>However, Claude Sonnet 4 (the model I used via Claude.ai) is highly capable and I provided it well-structured (question-answer pairs) context so it’s a relatively easy Q&amp;A task. I’m essentially providing it 120 few-shot examples of QA pairs which it can also use as a knowledge base.</p>
-</section>
-<section id="what-i-learned-in-the-process" class="level2">
-<h2 class="anchored" data-anchor-id="what-i-learned-in-the-process">What I Learned in the Process</h2>
-<ul>
-<li>I realized that the style of the response is also dictated by the user prompt which is not in my control. So I’m focused more on the content delivered. It’s up to the user of Claude/Gemini/ChatGPT/etc. to dictate the style (verbose, explanatory, etc.)</li>
-<li>I noticed that Claude doesn’t always include the URLs. Not sure how to improve that.</li>
-<li>Realizing the benefit of having a chat ui interface as it would allow me to better control the model’s responses by injecting additional instructions or analyzing the response before it’s sent to the reader.</li>
-<li>I realized long-term patterns in my work that I don’t see when I’m in the weeds. For example, for fastbook-benchmark, AgentFastbook, and TinyScaleLab I have focused on evals first while I develop other foundational skills.</li>
-<li>Evaluating the model responses helped me identify gaps in my answers that I iterate upon.</li>
-</ul>
-</section>
-<section id="what-this-means-for-job-seekers-and-employers" class="level2">
-<h2 class="anchored" data-anchor-id="what-this-means-for-job-seekers-and-employers">What this Means for Job Seekers and Employers</h2>
-<p>I might just be uninformed, but I think this is a novel approach to sharing a portfolio. I think this llms_ctx.txt approach could benefit both the job seeker and the employer. The job seeker benefits from the creation of the llms_ctx.txt file as they are forced to deeply think about common themes in their work and answer both broad and targeted questions about their projects and experience. The job seeker can also get a “sanity check” on what roles they are well suited for by posing as a hiring manager in a conversation with an LLM they have provided this context to. I also think that this portfolio style could benefit the hiring manager. The hiring manager can have a deep conversation with the LLM to evaluate the candidate across different desired skills/job requirements/experience requirements, especially those that are not explicitly mentioned but need to be inferred from th candidate’s body of work.</p>
-<p>There’s also an opportunity to operationalize and systematize my end-to-end process for generating the llms_ctx.txt. You could imagine a UI which guides the user across the pipeline that I followed:</p>
-<ul>
-<li>Construct metadata around their existing work (blogs, videos, repos, resume, CV)</li>
-<li>Generate and iterate on themes underpinning their work.</li>
-<li>Generate and iterate on questions and answers related to those themes.</li>
-<li>Construct the llms_txt.ctx</li>
-<li>Evaluate model responses across 3 dimensions (Completeness, Accuracy, Hallucinations).</li>
-</ul>
-<p>I believe this end-to-end process could be operationalized into a valuable app, and I’m open-sourcing the methodology in the hopes that others will build upon it.</p>
-</section>
-<section id="try-it-yourself" class="level2">
-<h2 class="anchored" data-anchor-id="try-it-yourself">Try It Yourself</h2>
-<p>I’ll end with a call to action: try this for your own work/experience and let me know how it goes! I’m happy to be a test user for your llms_ctx.txt. Just ping me <a href="https://x.com/vishal_learner">on Twitter</a>.</p>
-<p>I hope this project unlocks a new universe of opportunities in the job search space. I also hope that this approach allows folks from unconventional or non-traditional backgrounds (like myself) who rely on self-taught and boostrapped methods of experience (taking courses, writing blog posts, publishing YouTube videos) to synthesize their work in a cohesive way. I will continue to iterate on my llms_ctx.txt file, and have conversations with an LLM using it at each step of my professional journey, improving both the file and my professional development along the way.</p>
-
-
-</section>
-
- ]]></description>
-  <category>Career</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2025-06-26-portfolio-llm/</guid>
-  <pubDate>Thu, 26 Jun 2025 07:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
