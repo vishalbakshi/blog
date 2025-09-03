@@ -54,9 +54,10 @@ if do_fork_for_faiss:
 else:
     args_ = args_ + [[[sample]]]
     centroids = compute_faiss_kmeans(*args_)
-torch.save(centroids, f"{ROOT}/prenorm_centroids.pt") # ADDED BY VISHAL
-centroids = torch.nn.functional.normalize(centroids, dim=-1)
-torch.save(centroids, f"{ROOT}/postnorm_centroids.pt") # ADDED BY VISHAL
+    torch.save(centroids, f"{ROOT}/prenorm_centroids.pt") # ADDED BY VISHAL
+    centroids = torch.nn.functional.normalize(centroids, dim=-1)
+    torch.save(centroids, f"{ROOT}/postnorm_centroids.pt") # ADDED BY VISHAL
+    
 if self.use_gpu:
     centroids = centroids.half()
     torch.save(centroids, f"{ROOT}/half_centroids.pt") # ADDED BY VISHAL
