@@ -10,7 +10,7 @@ categories:
     - LLM
 ---
 
-I have recently found myself using the terms "non-deterministic" to describe LLM behavior. However, something feels off about using that term and I'm nearly convinced that not only is it (sometimes) incorrect, it is imprecise, as it leaves unexplained a critical charactericistic of LLM behavior that makes LLMs different from deterministic functions.
+I have recently found myself using the term "non-deterministic" to describe LLM behavior. However, something feels off about using that term and I'm nearly convinced that not only is it (sometimes) incorrect, it is imprecise, as it leaves unexplained a critical charactericistic of LLM behavior that makes LLMs different from deterministic functions.
 
 First, defining "deterministic algorithm" (Wikipedia):
 
@@ -43,13 +43,11 @@ for _ in range(100):
 for text in texts: assert text == "The best thing about artificial intelligence is  that it can be used to solve problems that would otherwise be impossible to solve.\n\nFor"
 ```
 
-So, LLMs can be deterministic. If temperature is not zero and other sampling approaches are used then yes, LLMs are non-deterministic.
-
 What I think people mean by saying "LLMs are non-deterministic" is something like the following from the [Steering Semantic Data Processing With DocWrangler](https://arxiv.org/abs/2504.14764) paper by Shreya Shankar, et al:
 
 > users need to understand their data to write effective pipelines, yet they need to construct pipelines to extract the data necessary for that understanding
 
-Thinking on that a bit more, what I think people mean by saying "LLMs are non-deterministic" is: what inputs to give LLMs for a desired output is ambiguous. Prompt engineering being a thing is a great example of this. I don't know enough mathematics to know if there's a term for this. "Input ambiguous"? "Non-deterministic on both ends"? The best Sonnet 4 came up with was "non-invertible" (other option was "non-transparent"). GPT-5 Thinking came up with a more sophisticated response _Prompting LLMs is an ill-posed inverse problem._
+Thinking on that a bit more, what I think people mean by saying "LLMs are non-deterministic" is: what inputs to give LLMs for a desired output is ambiguous. Prompt engineering being a thing is a great example of this. I don't know enough mathematics to know if there's a term for this. "Input ambiguous"? "Non-deterministic on both ends"? The best Sonnet 4 came up with was "non-invertible" (other option was "non-transparent"). GPT-5 Thinking came up with a more sophisticated response "Prompting LLMs is an ill-posed inverse problem."
 
 > - Inverse problem: you start from a desired output and try to find an input (prompt) that yields it.
 > - Ill-posed (Hadamard): the inverse fails one or more of
@@ -69,7 +67,7 @@ A well-posed problem (Wiki):
 
 Problems we try to solve with LLMs often fail all three properties, but again, I don't know enough about mathematics to know if this truly applies to LLMs.
 
-Most of my interactions with LLMs are through Claude Projects for coding assistance, and I make sure I understand the code (and that it works) before using it, so input ambiguity is acceptable.  As I learn to use LLMs to build pipelines, the input ambiguity problem sharpens, and quickly makes my pipeline brittle. Over the next couple weeks, I plan on learning more about DocWrangler and DSPy to better understand how to temper my pipeline. 
+Most of my interactions with LLMs are through Claude Projects for coding assistance, and I make sure I understand the code (and that it works) before using it, so input ambiguity is acceptable.  As I learn to use LLMs to build pipelines the input ambiguity problem sharpens and quickly makes my pipeline brittle. Over the next couple weeks, I plan on learning more about DocWrangler and DSPy to better understand how to temper my pipeline. 
 
 
 
