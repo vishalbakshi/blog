@@ -758,64 +758,7 @@ background-color: null;
 font-weight: bold;
 font-style: inherit;">assert</span> torch.equal(item, unique_pids_per_centroid_b[idx])</span></code></pre></div>
 </div>
-<p>And there we see it! While the order of the passage IDs is different, both <code>codes.indices</code> tensors contain the same unique passage IDs per centroid. For example, the first 1110 tokens correspond to centroid <code>0</code>, the next 36 to centroid <code>1</code> and so on.</p>
-<div id="71b29746-4aeb-4d73-a069-2ee1d3e5776d" class="cell" data-execution_count="34">
-<div class="sourceCode cell-code" id="cb55" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1">codes_values_a, codes_values_b</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="34">
-<pre><code>(tensor([1110,   36,  173,  ...,  104,   95,   25]),
- tensor([1110,   36,  173,  ...,  104,   95,   25]))</code></pre>
-</div>
-</div>
-<p>The first 1110 tokens are different across my torch versions:</p>
-<div id="7db7b7e6-fa19-443d-a755-16b0f8a4d692" class="cell" data-execution_count="37">
-<div class="sourceCode cell-code" id="cb57" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1">codes_indices_a[:<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1110</span>]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="37">
-<pre><code>tensor([ 377624,  285309,  285322,  ..., 1005140,  861059,  536224])</code></pre>
-</div>
-</div>
-<div id="ebf4a15a-d225-4122-aa8d-771051011407" class="cell" data-execution_count="38">
-<div class="sourceCode cell-code" id="cb59" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1">codes_indices_b[:<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1110</span>]</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="38">
-<pre><code>tensor([   2776,    2808,    5974,  ..., 1144294, 1144706, 1144725])</code></pre>
-</div>
-</div>
-<p>But both torch versions contain the same tokens once sorted. This is the first hint of where the problem lies!</p>
-<div id="e4d9a6b6-d294-437b-9273-e40fd5e6ef51" class="cell" data-execution_count="42">
-<div class="sourceCode cell-code" id="cb61" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb61-1">torch.equal(codes_indices_a[:<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1110</span>].sort().values, codes_indices_b[:<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1110</span>].sort().values)</span></code></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="42">
-<pre><code>True</code></pre>
-</div>
-</div>
-<p>Just to make sure, iterating through all <code>codes_values</code> lengths and asserting if both <code>codes.indices</code> contain the same token IDs after being sorted:</p>
-<div id="44d6e571-62b9-4f3f-b15b-9a1cd5f3104e" class="cell" data-execution_count="46">
-<div class="sourceCode cell-code" id="cb63" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1">offset <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0</span></span>
-<span id="cb63-2"><span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">for</span> length <span class="kw" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">in</span> codes_values_a: </span>
-<span id="cb63-3">    <span class="cf" style="color: #003B4F;
-background-color: null;
-font-weight: bold;
-font-style: inherit;">assert</span> torch.equal(codes_indices_a[offset:length].sort().values, codes_indices_b[offset:length].sort().values)</span>
-<span id="cb63-4">    offset <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">+=</span> length</span></code></pre></div>
-</div>
+<p>And there we see it! While the order of the passage IDs is different, both <code>codes.indices</code> tensors contain the same unique passage IDs per centroid. The key reason for this is that in the for-loop, we use <code>torch.unique</code> which sorts the values in ascending order. So as long as the set of <code>ivf[offset:offset_length]</code> passages IDs are identical across PyTorch versions, even if sorted differently will have the same order after being sorted by <code>torch.unique</code>.</p>
 </section>
 <section id="conclusion" class="level2">
 <h2 class="anchored" data-anchor-id="conclusion">Conclusion</h2>
@@ -829,7 +772,7 @@ font-style: inherit;">+=</span> length</span></code></pre></div>
 <h2 class="anchored" data-anchor-id="appendix">Appendix</h2>
 <p>To understand how the max cosine similarity calculation deviates between <code>torch==2.0.1</code> and <code>torch==2.1.0</code> (using <code>2.0.1</code>’s <code>local_sample_embs.pt</code>) I’ll start by comparing the <code>embs</code> that I <code>torch.save</code>-d right before they were compressed. This is more of a sanity check as these were explicitly swapped from <code>torch==2.0.1</code>.</p>
 <div id="58706b53-428f-4263-b423-2ff53868f8c0" class="cell" data-execution_count="3">
-<div class="sourceCode cell-code" id="cb64" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><span class="cf" style="color: #003B4F;
+<div class="sourceCode cell-code" id="cb55" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><span class="cf" style="color: #003B4F;
 background-color: null;
 font-weight: bold;
 font-style: inherit;">for</span> f <span class="kw" style="color: #003B4F;
@@ -842,7 +785,7 @@ background-color: null;
 font-style: inherit;">"embs_1.pt"</span>, <span class="st" style="color: #20794D;
 background-color: null;
 font-style: inherit;">"embs_2.pt"</span>]:</span>
-<span id="cb64-2">    a <span class="op" style="color: #5E5E5E;
+<span id="cb55-2">    a <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
 background-color: null;
@@ -853,7 +796,7 @@ background-color: null;
 font-style: inherit;">}</span><span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">"</span>)</span>
-<span id="cb64-3">    b <span class="op" style="color: #5E5E5E;
+<span id="cb55-3">    b <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
 background-color: null;
@@ -864,7 +807,7 @@ background-color: null;
 font-style: inherit;">}</span><span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">"</span>)</span>
-<span id="cb64-4">    <span class="cf" style="color: #003B4F;
+<span id="cb55-4">    <span class="cf" style="color: #003B4F;
 background-color: null;
 font-weight: bold;
 font-style: inherit;">assert</span> torch.allclose(a, b, atol<span class="op" style="color: #5E5E5E;
@@ -879,17 +822,17 @@ font-style: inherit;">1e-3</span>)</span></code></pre></div>
 </div>
 <p>They are all close enough! Next, I’ll compare the single batch and centroids that I saved in the <code>ResidualCodec.compress_into_codes</code> method.</p>
 <div id="e60a6aa0-787a-41c1-9332-e814223512ec" class="cell" data-execution_count="4">
-<div class="sourceCode cell-code" id="cb65" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1">batch_a <span class="op" style="color: #5E5E5E;
+<div class="sourceCode cell-code" id="cb56" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1">batch_a <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">f"20250909-0.2.22.main.torch.2.0.1-1/compress_batch.pt"</span>)</span>
-<span id="cb65-2">batch_b <span class="op" style="color: #5E5E5E;
+<span id="cb56-2">batch_b <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">f"20250909-0.2.22.main.torch.2.1.0-swap-1/compress_batch.pt"</span>)</span>
-<span id="cb65-3">torch.allclose(batch_a, batch_b, atol<span class="op" style="color: #5E5E5E;
+<span id="cb56-3">torch.allclose(batch_a, batch_b, atol<span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span><span class="fl" style="color: #AD0000;
 background-color: null;
@@ -903,17 +846,17 @@ font-style: inherit;">1e-3</span>)</span></code></pre></div>
 </div>
 </div>
 <div id="b1f55e3a-a2bb-4599-a24f-a8234495ee6f" class="cell" data-execution_count="5">
-<div class="sourceCode cell-code" id="cb67" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb67-1">centroids_a <span class="op" style="color: #5E5E5E;
+<div class="sourceCode cell-code" id="cb58" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb58-1">centroids_a <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">f"20250909-0.2.22.main.torch.2.0.1-1/compress_centroids.pt"</span>)</span>
-<span id="cb67-2">centroids_b <span class="op" style="color: #5E5E5E;
+<span id="cb58-2">centroids_b <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">f"20250909-0.2.22.main.torch.2.1.0-swap-1/compress_centroids.pt"</span>)</span>
-<span id="cb67-3">torch.allclose(centroids_a, centroids_b, atol<span class="op" style="color: #5E5E5E;
+<span id="cb58-3">torch.allclose(centroids_a, centroids_b, atol<span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span><span class="fl" style="color: #AD0000;
 background-color: null;
@@ -928,24 +871,24 @@ font-style: inherit;">1e-3</span>)</span></code></pre></div>
 </div>
 <p>Both the token embeddings and the centroids are close enough (both are float16). Next I’ll compare a batch of <code>codes</code> (<code>indices</code>) saved inside <code>compress_into_codes</code>:</p>
 <div id="c34fc6d6-9f4e-4f7d-ac38-ee6245bbc2a5" class="cell" data-execution_count="21">
-<div class="sourceCode cell-code" id="cb69" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb69-1">indices_a <span class="op" style="color: #5E5E5E;
+<div class="sourceCode cell-code" id="cb60" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb60-1">indices_a <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">f"20250909-0.2.22.main.torch.2.0.1-1/compress_indices.pt"</span>)</span>
-<span id="cb69-2">indices_b <span class="op" style="color: #5E5E5E;
+<span id="cb60-2">indices_b <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">f"20250909-0.2.22.main.torch.2.1.0-swap-1/compress_indices.pt"</span>)</span>
-<span id="cb69-3">torch.equal(indices_a, indices_b)</span></code></pre></div>
+<span id="cb60-3">torch.equal(indices_a, indices_b)</span></code></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="21">
 <pre><code>True</code></pre>
 </div>
 </div>
 <p>Interestingly, they are equal across the PyTorch versions. Next I’ll compare the <code>codes</code> for each batch of <code>embs</code> in <code>compress</code>:</p>
 <div id="37189c07-f016-48b8-b3c4-87d8559af709" class="cell" data-execution_count="22">
-<div class="sourceCode cell-code" id="cb71" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb71-1"><span class="cf" style="color: #003B4F;
+<div class="sourceCode cell-code" id="cb62" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb62-1"><span class="cf" style="color: #003B4F;
 background-color: null;
 font-weight: bold;
 font-style: inherit;">for</span> f <span class="kw" style="color: #003B4F;
@@ -958,7 +901,7 @@ background-color: null;
 font-style: inherit;">"compress_codes_1.pt"</span>, <span class="st" style="color: #20794D;
 background-color: null;
 font-style: inherit;">"compress_codes_2.pt"</span>]:</span>
-<span id="cb71-2">    a <span class="op" style="color: #5E5E5E;
+<span id="cb62-2">    a <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
 background-color: null;
@@ -969,7 +912,7 @@ background-color: null;
 font-style: inherit;">}</span><span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">"</span>)</span>
-<span id="cb71-3">    b <span class="op" style="color: #5E5E5E;
+<span id="cb62-3">    b <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
 background-color: null;
@@ -980,7 +923,7 @@ background-color: null;
 font-style: inherit;">}</span><span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">"</span>)</span>
-<span id="cb71-4">    <span class="cf" style="color: #003B4F;
+<span id="cb62-4">    <span class="cf" style="color: #003B4F;
 background-color: null;
 font-weight: bold;
 font-style: inherit;">assert</span> torch.equal(a, b)</span></code></pre></div>
@@ -989,50 +932,50 @@ font-style: inherit;">assert</span> torch.equal(a, b)</span></code></pre></div>
 <p>At this point it was clear to me that the cosine similarity calculation was not the root cause of the <code>codes.indices</code> diverging between PyTorch versions. The next place to look: the sorting of codes! I added a line in <code>CollectionIndexer._build_ivf</code> which saved the pre-sorted <code>codes</code>.</p>
 <p>Surprisingly: the <code>codes</code> <em>before being sorted</em> are identical between PyTorch versions.</p>
 <div id="f1dff886-85ae-4539-9cd2-754802ab3e5e" class="cell" data-execution_count="15">
-<div class="sourceCode cell-code" id="cb72" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb72-1">a <span class="op" style="color: #5E5E5E;
+<div class="sourceCode cell-code" id="cb63" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1">a <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">f"20250909-0.2.22.main.torch.2.0.1-1/presort_codes.pt"</span>)</span>
-<span id="cb72-2">b <span class="op" style="color: #5E5E5E;
+<span id="cb63-2">b <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">f"20250909-0.2.22.main.torch.2.1.0-swap-1/presort_codes.pt"</span>)</span></code></pre></div>
 </div>
 <div id="834bba2b-15fe-4dde-a4de-eb333ec29320" class="cell" data-execution_count="16">
-<div class="sourceCode cell-code" id="cb73" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb73-1">a</span></code></pre></div>
+<div class="sourceCode cell-code" id="cb64" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1">a</span></code></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="16">
 <pre><code>tensor([ 1269,   582, 10939,  ...,  5013,  4582,   431])</code></pre>
 </div>
 </div>
 <div id="d84268d3-d374-4e6e-954a-0a70ee7d1433" class="cell" data-execution_count="17">
-<div class="sourceCode cell-code" id="cb75" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb75-1">b</span></code></pre></div>
+<div class="sourceCode cell-code" id="cb66" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb66-1">b</span></code></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="17">
 <pre><code>tensor([ 1269,   582, 10939,  ...,  5013,  4582,   431])</code></pre>
 </div>
 </div>
 <div id="11423d8d-09d1-423f-b6c2-81aac1668ad7" class="cell" data-execution_count="18">
-<div class="sourceCode cell-code" id="cb77" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb77-1">torch.equal(a,b)</span></code></pre></div>
+<div class="sourceCode cell-code" id="cb68" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb68-1">torch.equal(a,b)</span></code></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="18">
 <pre><code>True</code></pre>
 </div>
 </div>
 <p>However, <em>after being sorted</em> the <code>codes.indices</code> diverge:</p>
 <div id="1a9b7b4d-adeb-4581-8c4f-6a7c6455e95e" class="cell" data-execution_count="7">
-<div class="sourceCode cell-code" id="cb79" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb79-1">a <span class="op" style="color: #5E5E5E;
+<div class="sourceCode cell-code" id="cb70" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb70-1">a <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">f"20250909-0.2.22.main.torch.2.0.1-1/codes.pt"</span>)</span>
-<span id="cb79-2">b <span class="op" style="color: #5E5E5E;
+<span id="cb70-2">b <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
 background-color: null;
 font-style: inherit;">f"20250909-0.2.22.main.torch.2.1.0-swap-1/codes.pt"</span>)</span></code></pre></div>
 </div>
 <div id="f862aead-56af-44e9-b6ae-57e861337323" class="cell" data-execution_count="8">
-<div class="sourceCode cell-code" id="cb80" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb80-1">a</span></code></pre></div>
+<div class="sourceCode cell-code" id="cb71" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb71-1">a</span></code></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="8">
 <pre><code>torch.return_types.sort(
 values=tensor([    0,     0,     0,  ..., 16383, 16383, 16383]),
@@ -1040,7 +983,7 @@ indices=tensor([377624, 285309, 285322,  ..., 117986, 118780, 128088]))</code></
 </div>
 </div>
 <div id="00005e6b-fa99-4c7e-ba3a-41c9fbddcb29" class="cell" data-execution_count="9">
-<div class="sourceCode cell-code" id="cb82" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb82-1">b</span></code></pre></div>
+<div class="sourceCode cell-code" id="cb73" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb73-1">b</span></code></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="9">
 <pre><code>torch.return_types.sort(
 values=tensor([    0,     0,     0,  ..., 16383, 16383, 16383]),
@@ -1048,20 +991,20 @@ indices=tensor([  2776,   2808,   5974,  ..., 309906, 579450, 884128]))</code></
 </div>
 </div>
 <div id="b59723db-6e47-4223-8938-17a231a1a71d" class="cell" data-execution_count="10">
-<div class="sourceCode cell-code" id="cb84" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb84-1">torch.equal(a.indices, b.indices)</span></code></pre></div>
+<div class="sourceCode cell-code" id="cb75" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb75-1">torch.equal(a.indices, b.indices)</span></code></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="10">
 <pre><code>False</code></pre>
 </div>
 </div>
 <p>There was the source of discrepancy! The order of indices <em>after</em> being sorted!</p>
 <p>Is this the case for all <code>sort</code> calls between these PyTorch versions? To test this, I ran the following code with each PyTorch install (<code>torch==2.0.1</code> and <code>torch==2.1.0</code>) and saved <code>t</code> before and after <code>.sort</code> was called:</p>
-<div class="sourceCode" id="cb86" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb86-1"><span class="im" style="color: #00769E;
+<div class="sourceCode" id="cb77" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb77-1"><span class="im" style="color: #00769E;
 background-color: null;
 font-style: inherit;">import</span> torch</span>
-<span id="cb86-2">torch.manual_seed(<span class="dv" style="color: #AD0000;
+<span id="cb77-2">torch.manual_seed(<span class="dv" style="color: #AD0000;
 background-color: null;
 font-style: inherit;">42</span>)</span>
-<span id="cb86-3">t <span class="op" style="color: #5E5E5E;
+<span id="cb77-3">t <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> torch.randint(low<span class="op" style="color: #5E5E5E;
 background-color: null;
@@ -1076,7 +1019,7 @@ background-color: null;
 font-style: inherit;">=</span>(<span class="dv" style="color: #AD0000;
 background-color: null;
 font-style: inherit;">1146937</span>,))</span>
-<span id="cb86-4">t <span class="op" style="color: #5E5E5E;
+<span id="cb77-4">t <span class="op" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;">=</span> t.sort()</span></code></pre></div>
 <p>For both PyTorch versions, <code>t.indices</code> was not equal (i.e.&nbsp;<code>torch.equal</code> was <code>False</code>). This is evidence that <code>sort</code>’s behavior changes from 2.0.1 to 2.1.0. After keyword searching the release notes, I couldn’t find a PR that could be the culprit.</p>
