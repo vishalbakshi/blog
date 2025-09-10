@@ -211,7 +211,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="background" class="level2">
 <h2 class="anchored" data-anchor-id="background">Background</h2>
 <p>In this notebook I’m going to explore how (and hopefully why) you can start with different <code>codes.indices</code> but end up with the same <code>ivf</code> and <code>ivf_lengths</code> when indexing a document collection using <code>colbert-ai</code>.</p>
-<p>I came across this behavior by accident. I was comparing final and intermediate <code>colbert-ai</code> index artifacts between installs using <code>torch==2.0.1</code> and <code>torch==2.1.0</code> and found that even after swapping <code>local_sample_embs.pt</code> (the document token embeddings clustered to find centroids) from 2.0.1 to 2.1.0, the intermediate <code>codes</code> (centroid ID for each document token embedding) did not pass <code>torch.allclose</code> <mark>but the final <code>ivf.pid.pt</code> tensors did</mark>. How could that be possible? How can you start with different intermediate centroid-to-document token mappings and end up with the same final centroid-to-document token mappings?</p>
+<p>I came across this behavior by accident. I was comparing final and intermediate <code>colbert-ai</code> index artifacts between installs using <code>torch==2.0.1</code> and <code>torch==2.1.0</code> and found that even after swapping <code>local_sample_embs.pt</code> (the document token embeddings clustered to find centroids) and <code>embs_{chunk_idx}.pt</code> (the full set of document token embeddings) from 2.0.1 to 2.1.0, the intermediate <code>codes.indices</code> (centroid ID for each document token embedding) did not pass <code>torch.equal</code> <mark>but the final <code>ivf.pid.pt</code> tensors did</mark>. How could that be possible? How can you start with different intermediate centroid-to-document token mappings and end up with the same final centroid-to-document token mappings? Furthermore, how can you end up with different <code>codes.indices</code> when your processing the same <code>embs</code>?</p>
 <p>First a bit of review of where <code>codes</code> comes from. The highest-level abstraction we start with is the <code>Indexer</code>:</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> Run().context(RunConfig(nranks<span class="op">=</span>nranks)):</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    config <span class="op">=</span> ColBERTConfig(...)</span>
@@ -221,7 +221,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> encode(config, collection, shared_lists, shared_queues, verbose: <span class="bu">int</span> <span class="op">=</span> <span class="dv">3</span>):</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    encoder <span class="op">=</span> CollectionIndexer(config<span class="op">=</span>config, collection<span class="op">=</span>collection, verbose<span class="op">=</span>verbose)</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    encoder.run(shared_lists)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Inside <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/collection_indexer.py#L346"><code>CollectionIndexer.index</code></a> the following line saves (i.e.&nbsp;compresses and stores the residual of) document token embeddings:</p>
+<p>Inside <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/collection_indexer.py#L346"><code>CollectionIndexer.index</code></a> the following line saves (i.e.&nbsp;compresses and stores the residuals of) document token embeddings (the input <code>embs</code> are manually forced to be identical b/w PyTorch version <code>colbert-ai</code> installs):</p>
 <div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="va">self</span>.saver.save_chunk(chunk_idx, offset, embs, doclens) <span class="co"># offset = first passage index in chunk</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Once saved, the embeddings are deleted, which is why <code>colbert-ai</code> is so memory efficient! It’s also why indexing and embedding are tied together with the same model.</p>
 <p><a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/index_saver.py#L70"><code>IndexSaver.save_chunk</code></a> is defined as:</p>
@@ -244,16 +244,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>        codes.append(indices)</span>
 <span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> torch.cat(codes)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>So, <code>codes</code> are the indices (i.e “IDs”) of the centroids with the maximum cosine similarity with the document token embeddings. Let’s say our <code>centroids</code> have shape <code>(1024, 96)</code> and the <code>batch</code> contains thirty-two 96-dimensional embeddings (shape <code>(32, 96)</code>), each corresponding to a different document token embedding. The transpose of <code>batch</code> has shape <code>(96, 32)</code> and the matrix multiplication <code>centroids @ batch.T</code> has shape <code>(1024, 32)</code> where the rows represent centroid indices and the columns represent token indices. Taking <code>.max(dim=0).indices</code> returns the row indices corresponding to the maximum value in each of the 32 columns. In other words, the 32 centroid IDs that are closest to the document token embeddings. Note that since <code>centroids</code> <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/collection_indexer.py#L306">are normalized</a> as are <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/modeling/colbert.py#L104">document token embeddings</a>, the matrix multiplication <em>is</em> the cosine similarity between the two sets of vectors.</p>
-<p>Which goes back to my shock: how can different <code>codes</code> yield the same final <code>ivf</code> and <code>ivf_lengths</code>? To set the stage, let’s look at how <code>ivf</code> and <code>ivf_lengths</code> are created, starting with <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/collection_indexer.py#L438"><code>CollectionIndexer._build_ivf</code></a>, the trimmed down version which is:</p>
+<p>So, <code>codes</code> are the indices (i.e “IDs”) of the centroids with the maximum cosine similarity with the document token embeddings.</p>
+<p>Let’s say our <code>centroids</code> have shape <code>(1024, 96)</code> and the <code>batch</code> contains thirty-two 96-dimensional embeddings (shape <code>(32, 96)</code>), each corresponding to a different document token embedding. The transpose of <code>batch</code> has shape <code>(96, 32)</code> and the matrix multiplication <code>centroids @ batch.T</code> has shape <code>(1024, 32)</code> where the rows represent centroid indices and the columns represent token indices. Taking <code>.max(dim=0).indices</code> returns the row indices corresponding to the maximum value in each of the 32 columns. In other words, the 32 centroid IDs that are closest to the document token embeddings. Note that since <code>centroids</code> <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/collection_indexer.py#L306">are normalized</a> as are <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/modeling/colbert.py#L104">document token embeddings</a>, the matrix multiplication <em>is</em> the cosine similarity between the two sets of vectors.</p>
+<p>Which goes back to my question: how can different <code>codes</code> yield the same final <code>ivf</code> and <code>ivf_lengths</code>? And why are <code>codes</code> different to begin with?</p>
+<p>To set the stage, let’s look at how <code>ivf</code> and <code>ivf_lengths</code> are created, starting with <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/collection_indexer.py#L438"><code>CollectionIndexer._build_ivf</code></a>, the trimmed down version which is:</p>
 <div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _build_ivf(<span class="va">self</span>):</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    codes <span class="op">=</span> codes.sort()</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    ivf, values <span class="op">=</span> codes.indices, codes.values</span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    ivf_lengths <span class="op">=</span> torch.bincount(values, minlength<span class="op">=</span><span class="va">self</span>.num_partitions)</span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    _, _ <span class="op">=</span> optimize_ivf(ivf, ivf_lengths, <span class="va">self</span>.config.index_path_)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>The <code>codes</code> are sorted. The sort indices (the document token IDs) become <code>ivf</code> and the values (the centroid IDs) after being <code>bincount</code>-ed (i.e.&nbsp;the frequency of each centroid ID—the number of tokens associated with each centroid ID) become <code>ivf_lengths</code>. These are the first iteration of <code>ivf</code> and <code>ivf_lengths</code> and will change later on in <code>optimize_ivf</code>, the trimmed down version of which is:</p>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    ivf_lengths <span class="op">=</span> torch.bincount(values, minlength<span class="op">=</span><span class="va">self</span>.num_partitions)</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    _, _ <span class="op">=</span> optimize_ivf(ivf, ivf_lengths, <span class="va">self</span>.config.index_path_)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The <code>codes</code> are first sorted. The sorted indices (the document token IDs) are assigned as <code>ivf</code> and the values (the centroid IDs) after being <code>bincount</code>-ed (i.e.&nbsp;the frequency of each centroid ID—the number of tokens associated with each centroid ID) are assigned as <code>ivf_lengths</code>. These are the first iteration of <code>ivf</code> and <code>ivf_lengths</code> and will change later on in <code>optimize_ivf</code>, the trimmed down version of which is:</p>
 <div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> optimize_ivf(orig_ivf, orig_ivf_lengths, index_path, verbose:<span class="bu">int</span><span class="op">=</span><span class="dv">3</span>):</span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    all_doclens <span class="op">=</span> load_doclens(index_path, flatten<span class="op">=</span><span class="va">False</span>)</span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    all_doclens <span class="op">=</span> flatten(all_doclens)</span>
@@ -287,7 +288,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>We’ll actually start from the bottom:</p>
 <div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>ivf <span class="op">=</span> torch.cat(unique_pids_per_centroid)</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>ivf_lengths <span class="op">=</span> torch.tensor(ivf_lengths)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p><code>ivf</code> is a flattened tensor of pids (passage IDs). Looking at the loop right above this:</p>
+<p><code>ivf</code> is a flattened tensor of pids (unique passage IDs per centroid). Looking at the loop right above this:</p>
 <div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>offset <span class="op">=</span> <span class="dv">0</span></span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> length <span class="kw">in</span> tqdm.tqdm(orig_ivf_lengths.tolist()):</span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    pids <span class="op">=</span> torch.unique(ivf[offset:offset<span class="op">+</span>length])</span>
@@ -304,7 +305,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="inspecting-codes" class="level2">
 <h2 class="anchored" data-anchor-id="inspecting-codes">Inspecting <code>codes</code></h2>
-<p>First, I’ll show that <code>codes.indices</code> (document token IDs) are not equal between my <code>torch==2.0.1</code> install and the <code>torch==2.1.0</code> install where I <em>swapped</em> its <code>local_sample_embs.pt</code> with 2.0.1’s tensor. In other words, I “forced” the <code>2.1.0</code> install to cluster the same sample of document token embeddings when calculating centroids.</p>
+<p>First, I’ll show that <code>codes.indices</code> (document token IDs) are not equal between my <code>torch==2.0.1</code> install and the <code>torch==2.1.0</code> install where I <em>swapped</em> its <code>local_sample_embs.pt</code> and <code>embs_{chunk_idx}.pt</code> with 2.0.1’s tensors. In other words, I “forced” the <code>2.1.0</code> install to cluster the same sample of document token embeddings when calculating centroids and then forced it to use the same document token embeddings to compress as residuals and centroid IDs.</p>
 <div id="e6c32453-b312-4bcd-aa85-d856041f6223" class="cell" data-execution_count="2">
 <div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> colbert.indexing.loaders <span class="im">import</span> load_doclens</span>
@@ -341,7 +342,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <pre><code>(True, True)</code></pre>
 </div>
 </div>
-<p>Furthermore, the unique passage IDs for each centroid (<code>ivf</code>) and the number of passage IDs per centroid ID (<code>ivf_lengths</code>) are equal across versions. What this tells me (re: Sonnet’s hypothesis) is that the document token IDs, while dissimilar across versions, come from the same passages!</p>
+<p>Furthermore, the final unique passage IDs for each centroid (<code>ivf</code>) and the number of passage IDs per centroid ID (<code>ivf_lengths</code>) are equal across versions. What this tells me (re: Sonnet’s hypothesis) is that the document token IDs, while dissimilar across versions, come from the same passages!</p>
 </section>
 <section id="recreating-optimize_ivf" class="level2">
 <h2 class="anchored" data-anchor-id="recreating-optimize_ivf">Recreating <code>optimize_ivf</code></h2>
@@ -448,7 +449,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Looking at the resulting passage IDs: the first two tokens of <code>pids_a</code> (<code>torch==2.0.1</code>) come from passages <code>23120</code> and <code>17145</code>, respectively. The first two tokens of <code>pids_b</code> (<code>torch==2.0.1</code> <em>swapped</em>) come from passage <code>170</code>.</p>
-<p>If we count the number of times each passage ID occurs in each tensor (<code>pids_a</code> or <code>pids_b</code>) they are identical!</p>
+<p>If we count the number of times each passage ID occurs in each tensor (<code>pids_a</code> or <code>pids_b</code>) they are identical! This is the first hint of Sonnet’s hypothesis.</p>
 <div id="af8ab632-932c-4a0f-8a6e-1d967b8b3f17" class="cell" data-execution_count="21">
 <div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>torch.equal(torch.bincount(pids_a), torch.bincount(pids_b))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="21">
@@ -473,35 +474,28 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>I did:</p>
 <div class="sourceCode" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a>pids_a <span class="op">=</span> emb2pid_a[codes_indices_a]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>I’ll move onto the for loop:</p>
-<div id="99db36cf-56e0-4c1a-94e4-48658ee737f3" class="cell" data-execution_count="22">
-<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a>unique_pids_per_centroid_a <span class="op">=</span> []</span>
-<span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a>_ivf_lengths_a <span class="op">=</span> []</span>
-<span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb52-4"><a href="#cb52-4" aria-hidden="true" tabindex="-1"></a>unique_pids_per_centroid_b <span class="op">=</span> []</span>
-<span id="cb52-5"><a href="#cb52-5" aria-hidden="true" tabindex="-1"></a>_ivf_lengths_b <span class="op">=</span> []</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
 <div id="79136fe2-c17f-4d3f-9d82-5726af13387f" class="cell" data-execution_count="25">
-<div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _loop(orig_ivf_lengths, ivf):</span>
-<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>    unique_pids_per_centroid <span class="op">=</span> []</span>
-<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a>    ivf_lengths <span class="op">=</span> []</span>
-<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a>    offset <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb53-5"><a href="#cb53-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> length <span class="kw">in</span> orig_ivf_lengths.tolist():</span>
-<span id="cb53-6"><a href="#cb53-6" aria-hidden="true" tabindex="-1"></a>        pids <span class="op">=</span> torch.unique(ivf[offset:offset<span class="op">+</span>length])</span>
-<span id="cb53-7"><a href="#cb53-7" aria-hidden="true" tabindex="-1"></a>        unique_pids_per_centroid.append(pids)</span>
-<span id="cb53-8"><a href="#cb53-8" aria-hidden="true" tabindex="-1"></a>        ivf_lengths.append(pids.shape[<span class="dv">0</span>])</span>
-<span id="cb53-9"><a href="#cb53-9" aria-hidden="true" tabindex="-1"></a>        offset <span class="op">+=</span> length</span>
-<span id="cb53-10"><a href="#cb53-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> unique_pids_per_centroid, ivf_lengths</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _loop(orig_ivf_lengths, ivf):</span>
+<span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a>    unique_pids_per_centroid <span class="op">=</span> []</span>
+<span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a>    ivf_lengths <span class="op">=</span> []</span>
+<span id="cb52-4"><a href="#cb52-4" aria-hidden="true" tabindex="-1"></a>    offset <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb52-5"><a href="#cb52-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> length <span class="kw">in</span> orig_ivf_lengths.tolist():</span>
+<span id="cb52-6"><a href="#cb52-6" aria-hidden="true" tabindex="-1"></a>        pids <span class="op">=</span> torch.unique(ivf[offset:offset<span class="op">+</span>length])</span>
+<span id="cb52-7"><a href="#cb52-7" aria-hidden="true" tabindex="-1"></a>        unique_pids_per_centroid.append(pids)</span>
+<span id="cb52-8"><a href="#cb52-8" aria-hidden="true" tabindex="-1"></a>        ivf_lengths.append(pids.shape[<span class="dv">0</span>])</span>
+<span id="cb52-9"><a href="#cb52-9" aria-hidden="true" tabindex="-1"></a>        offset <span class="op">+=</span> length</span>
+<span id="cb52-10"><a href="#cb52-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> unique_pids_per_centroid, ivf_lengths</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="cd34f1d4-35f5-4d57-8c84-4691a9499fa7" class="cell" data-execution_count="27">
-<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a>unique_pids_per_centroid_a, _ivf_lengths_a <span class="op">=</span> _loop(orig_ivf_lengths<span class="op">=</span>codes_values_a, ivf<span class="op">=</span>codes_indices_a)</span>
-<span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a>unique_pids_per_centroid_b, _ivf_lengths_b <span class="op">=</span> _loop(orig_ivf_lengths<span class="op">=</span>codes_values_b, ivf<span class="op">=</span>codes_indices_b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a>unique_pids_per_centroid_a, _ivf_lengths_a <span class="op">=</span> _loop(orig_ivf_lengths<span class="op">=</span>codes_values_a, ivf<span class="op">=</span>codes_indices_a)</span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>unique_pids_per_centroid_b, _ivf_lengths_b <span class="op">=</span> _loop(orig_ivf_lengths<span class="op">=</span>codes_values_b, ivf<span class="op">=</span>codes_indices_b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="f0205892-4e54-45f3-b292-10a0a1ac89ec" class="cell" data-execution_count="31">
-<div class="sourceCode cell-code" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> idx, item <span class="kw">in</span> <span class="bu">enumerate</span>(unique_pids_per_centroid_a): <span class="cf">assert</span> torch.equal(item, unique_pids_per_centroid_b[idx])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> idx, item <span class="kw">in</span> <span class="bu">enumerate</span>(unique_pids_per_centroid_a): <span class="cf">assert</span> torch.equal(item, unique_pids_per_centroid_b[idx])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<p>And there we see it! While the order of the passage IDs is different, both <code>codes.indices</code> contain the same unique passage IDs per centroid. For example, the first 1110 tokens correspond to centroid <code>0</code>, the next 36 to centroid <code>1</code> and so on.</p>
+<p>And there we see it! While the order of the passage IDs is different, both <code>codes.indices</code> tensors contain the same unique passage IDs per centroid. For example, the first 1110 tokens correspond to centroid <code>0</code>, the next 36 to centroid <code>1</code> and so on.</p>
 <div id="71b29746-4aeb-4d73-a069-2ee1d3e5776d" class="cell" data-execution_count="34">
-<div class="sourceCode cell-code" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a>codes_values_a, codes_values_b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a>codes_values_a, codes_values_b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="34">
 <pre><code>(tensor([1110,   36,  173,  ...,  104,   95,   25]),
  tensor([1110,   36,  173,  ...,  104,   95,   25]))</code></pre>
@@ -509,30 +503,30 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 <p>The first 1110 tokens are different across my torch versions:</p>
 <div id="7db7b7e6-fa19-443d-a755-16b0f8a4d692" class="cell" data-execution_count="37">
-<div class="sourceCode cell-code" id="cb58"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb58-1"><a href="#cb58-1" aria-hidden="true" tabindex="-1"></a>codes_indices_a[:<span class="dv">1110</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb57"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb57-1"><a href="#cb57-1" aria-hidden="true" tabindex="-1"></a>codes_indices_a[:<span class="dv">1110</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="37">
 <pre><code>tensor([ 377624,  285309,  285322,  ..., 1005140,  861059,  536224])</code></pre>
 </div>
 </div>
 <div id="ebf4a15a-d225-4122-aa8d-771051011407" class="cell" data-execution_count="38">
-<div class="sourceCode cell-code" id="cb60"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb60-1"><a href="#cb60-1" aria-hidden="true" tabindex="-1"></a>codes_indices_b[:<span class="dv">1110</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb59"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1"><a href="#cb59-1" aria-hidden="true" tabindex="-1"></a>codes_indices_b[:<span class="dv">1110</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="38">
 <pre><code>tensor([   2776,    2808,    5974,  ..., 1144294, 1144706, 1144725])</code></pre>
 </div>
 </div>
-<p>But both torch versions contain the same tokens once sorted.</p>
+<p>But both torch versions contain the same tokens once sorted. This is the first hint of where the problem lies!</p>
 <div id="e4d9a6b6-d294-437b-9273-e40fd5e6ef51" class="cell" data-execution_count="42">
-<div class="sourceCode cell-code" id="cb62"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1" aria-hidden="true" tabindex="-1"></a>torch.equal(codes_indices_a[:<span class="dv">1110</span>].sort().values, codes_indices_b[:<span class="dv">1110</span>].sort().values)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb61"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb61-1"><a href="#cb61-1" aria-hidden="true" tabindex="-1"></a>torch.equal(codes_indices_a[:<span class="dv">1110</span>].sort().values, codes_indices_b[:<span class="dv">1110</span>].sort().values)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="42">
 <pre><code>True</code></pre>
 </div>
 </div>
 <p>Just to make sure, iterating through all <code>codes_values</code> lengths and asserting if both <code>codes.indices</code> contain the same token IDs after being sorted:</p>
 <div id="44d6e571-62b9-4f3f-b15b-9a1cd5f3104e" class="cell" data-execution_count="46">
-<div class="sourceCode cell-code" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a>offset <span class="op">=</span> <span class="dv">0</span></span>
-<span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> length <span class="kw">in</span> codes_values_a: </span>
-<span id="cb64-3"><a href="#cb64-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> torch.equal(codes_indices_a[offset:length].sort().values, codes_indices_b[offset:length].sort().values)</span>
-<span id="cb64-4"><a href="#cb64-4" aria-hidden="true" tabindex="-1"></a>    offset <span class="op">+=</span> length</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb63"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb63-1"><a href="#cb63-1" aria-hidden="true" tabindex="-1"></a>offset <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb63-2"><a href="#cb63-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> length <span class="kw">in</span> codes_values_a: </span>
+<span id="cb63-3"><a href="#cb63-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> torch.equal(codes_indices_a[offset:length].sort().values, codes_indices_b[offset:length].sort().values)</span>
+<span id="cb63-4"><a href="#cb63-4" aria-hidden="true" tabindex="-1"></a>    offset <span class="op">+=</span> length</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="conclusion" class="level2">
@@ -547,76 +541,76 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="appendix">Appendix</h2>
 <p>To understand how the max cosine similarity calculation deviates between <code>torch==2.0.1</code> and <code>torch==2.1.0</code> (using <code>2.0.1</code>’s <code>local_sample_embs.pt</code>) I’ll start by comparing the <code>embs</code> that I <code>torch.save</code>-d right before they were compressed. This is more of a sanity check as these were explicitly swapped from <code>torch==2.0.1</code>.</p>
 <div id="58706b53-428f-4263-b423-2ff53868f8c0" class="cell" data-execution_count="3">
-<div class="sourceCode cell-code" id="cb65"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> f <span class="kw">in</span> [<span class="st">"embs_0.pt"</span>, <span class="st">"embs_1.pt"</span>, <span class="st">"embs_2.pt"</span>]:</span>
-<span id="cb65-2"><a href="#cb65-2" aria-hidden="true" tabindex="-1"></a>    a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/</span><span class="sc">{</span>f<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb65-3"><a href="#cb65-3" aria-hidden="true" tabindex="-1"></a>    b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/</span><span class="sc">{</span>f<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb65-4"><a href="#cb65-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> torch.allclose(a, b, atol<span class="op">=</span><span class="fl">1e-4</span>, rtol<span class="op">=</span><span class="fl">1e-3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> f <span class="kw">in</span> [<span class="st">"embs_0.pt"</span>, <span class="st">"embs_1.pt"</span>, <span class="st">"embs_2.pt"</span>]:</span>
+<span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a>    a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/</span><span class="sc">{</span>f<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb64-3"><a href="#cb64-3" aria-hidden="true" tabindex="-1"></a>    b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/</span><span class="sc">{</span>f<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb64-4"><a href="#cb64-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> torch.allclose(a, b, atol<span class="op">=</span><span class="fl">1e-4</span>, rtol<span class="op">=</span><span class="fl">1e-3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>They are all close enough! Next, I’ll compare the single batch and centroids that I saved in the <code>ResidualCodec.compress_into_codes</code> method.</p>
 <div id="e60a6aa0-787a-41c1-9332-e814223512ec" class="cell" data-execution_count="4">
-<div class="sourceCode cell-code" id="cb66"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb66-1"><a href="#cb66-1" aria-hidden="true" tabindex="-1"></a>batch_a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/compress_batch.pt"</span>)</span>
-<span id="cb66-2"><a href="#cb66-2" aria-hidden="true" tabindex="-1"></a>batch_b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/compress_batch.pt"</span>)</span>
-<span id="cb66-3"><a href="#cb66-3" aria-hidden="true" tabindex="-1"></a>torch.allclose(batch_a, batch_b, atol<span class="op">=</span><span class="fl">1e-4</span>, rtol<span class="op">=</span><span class="fl">1e-3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb65"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a>batch_a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/compress_batch.pt"</span>)</span>
+<span id="cb65-2"><a href="#cb65-2" aria-hidden="true" tabindex="-1"></a>batch_b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/compress_batch.pt"</span>)</span>
+<span id="cb65-3"><a href="#cb65-3" aria-hidden="true" tabindex="-1"></a>torch.allclose(batch_a, batch_b, atol<span class="op">=</span><span class="fl">1e-4</span>, rtol<span class="op">=</span><span class="fl">1e-3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
 <pre><code>True</code></pre>
 </div>
 </div>
 <div id="b1f55e3a-a2bb-4599-a24f-a8234495ee6f" class="cell" data-execution_count="5">
-<div class="sourceCode cell-code" id="cb68"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb68-1"><a href="#cb68-1" aria-hidden="true" tabindex="-1"></a>centroids_a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/compress_centroids.pt"</span>)</span>
-<span id="cb68-2"><a href="#cb68-2" aria-hidden="true" tabindex="-1"></a>centroids_b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/compress_centroids.pt"</span>)</span>
-<span id="cb68-3"><a href="#cb68-3" aria-hidden="true" tabindex="-1"></a>torch.allclose(centroids_a, centroids_b, atol<span class="op">=</span><span class="fl">1e-4</span>, rtol<span class="op">=</span><span class="fl">1e-3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb67"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb67-1"><a href="#cb67-1" aria-hidden="true" tabindex="-1"></a>centroids_a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/compress_centroids.pt"</span>)</span>
+<span id="cb67-2"><a href="#cb67-2" aria-hidden="true" tabindex="-1"></a>centroids_b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/compress_centroids.pt"</span>)</span>
+<span id="cb67-3"><a href="#cb67-3" aria-hidden="true" tabindex="-1"></a>torch.allclose(centroids_a, centroids_b, atol<span class="op">=</span><span class="fl">1e-4</span>, rtol<span class="op">=</span><span class="fl">1e-3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
 <pre><code>True</code></pre>
 </div>
 </div>
 <p>Both the token embeddings and the centroids are close enough (both are float16). Next I’ll compare a batch of <code>codes</code> (<code>indices</code>) saved inside <code>compress_into_codes</code>:</p>
 <div id="c34fc6d6-9f4e-4f7d-ac38-ee6245bbc2a5" class="cell" data-execution_count="21">
-<div class="sourceCode cell-code" id="cb70"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb70-1"><a href="#cb70-1" aria-hidden="true" tabindex="-1"></a>indices_a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/compress_indices.pt"</span>)</span>
-<span id="cb70-2"><a href="#cb70-2" aria-hidden="true" tabindex="-1"></a>indices_b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/compress_indices.pt"</span>)</span>
-<span id="cb70-3"><a href="#cb70-3" aria-hidden="true" tabindex="-1"></a>torch.equal(indices_a, indices_b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb69"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb69-1"><a href="#cb69-1" aria-hidden="true" tabindex="-1"></a>indices_a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/compress_indices.pt"</span>)</span>
+<span id="cb69-2"><a href="#cb69-2" aria-hidden="true" tabindex="-1"></a>indices_b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/compress_indices.pt"</span>)</span>
+<span id="cb69-3"><a href="#cb69-3" aria-hidden="true" tabindex="-1"></a>torch.equal(indices_a, indices_b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="21">
 <pre><code>True</code></pre>
 </div>
 </div>
 <p>Interestingly, they are equal across the PyTorch versions. Next I’ll compare the <code>codes</code> for each batch of <code>embs</code> in <code>compress</code>:</p>
 <div id="37189c07-f016-48b8-b3c4-87d8559af709" class="cell" data-execution_count="22">
-<div class="sourceCode cell-code" id="cb72"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb72-1"><a href="#cb72-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> f <span class="kw">in</span> [<span class="st">"compress_codes_0.pt"</span>, <span class="st">"compress_codes_1.pt"</span>, <span class="st">"compress_codes_2.pt"</span>]:</span>
-<span id="cb72-2"><a href="#cb72-2" aria-hidden="true" tabindex="-1"></a>    a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/</span><span class="sc">{</span>f<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb72-3"><a href="#cb72-3" aria-hidden="true" tabindex="-1"></a>    b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/</span><span class="sc">{</span>f<span class="sc">}</span><span class="ss">"</span>)</span>
-<span id="cb72-4"><a href="#cb72-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> torch.equal(a, b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb71"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb71-1"><a href="#cb71-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> f <span class="kw">in</span> [<span class="st">"compress_codes_0.pt"</span>, <span class="st">"compress_codes_1.pt"</span>, <span class="st">"compress_codes_2.pt"</span>]:</span>
+<span id="cb71-2"><a href="#cb71-2" aria-hidden="true" tabindex="-1"></a>    a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/</span><span class="sc">{</span>f<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb71-3"><a href="#cb71-3" aria-hidden="true" tabindex="-1"></a>    b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/</span><span class="sc">{</span>f<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb71-4"><a href="#cb71-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> torch.equal(a, b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <p>They are all equal as well!</p>
-<p>At this point it was clear (as mud) to me that the cosine similarity calculation was not the root cause of the <code>codes.indices</code> diverging between PyTorch versions. I added a line in <code>CollectionIndexer._build_ivf</code> which saved the pre-sorted <code>codes</code>.</p>
+<p>At this point it was clear to me that the cosine similarity calculation was not the root cause of the <code>codes.indices</code> diverging between PyTorch versions. The next place to look: the sorting of codes! I added a line in <code>CollectionIndexer._build_ivf</code> which saved the pre-sorted <code>codes</code>.</p>
 <p>Surprisingly: the <code>codes</code> <em>before being sorted</em> are identical between PyTorch versions.</p>
 <div id="f1dff886-85ae-4539-9cd2-754802ab3e5e" class="cell" data-execution_count="15">
-<div class="sourceCode cell-code" id="cb73"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb73-1"><a href="#cb73-1" aria-hidden="true" tabindex="-1"></a>a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/presort_codes.pt"</span>)</span>
-<span id="cb73-2"><a href="#cb73-2" aria-hidden="true" tabindex="-1"></a>b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/presort_codes.pt"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb72"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb72-1"><a href="#cb72-1" aria-hidden="true" tabindex="-1"></a>a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/presort_codes.pt"</span>)</span>
+<span id="cb72-2"><a href="#cb72-2" aria-hidden="true" tabindex="-1"></a>b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/presort_codes.pt"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="834bba2b-15fe-4dde-a4de-eb333ec29320" class="cell" data-execution_count="16">
-<div class="sourceCode cell-code" id="cb74"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb74-1"><a href="#cb74-1" aria-hidden="true" tabindex="-1"></a>a</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb73"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb73-1"><a href="#cb73-1" aria-hidden="true" tabindex="-1"></a>a</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="16">
 <pre><code>tensor([ 1269,   582, 10939,  ...,  5013,  4582,   431])</code></pre>
 </div>
 </div>
 <div id="d84268d3-d374-4e6e-954a-0a70ee7d1433" class="cell" data-execution_count="17">
-<div class="sourceCode cell-code" id="cb76"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb76-1"><a href="#cb76-1" aria-hidden="true" tabindex="-1"></a>b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb75"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb75-1"><a href="#cb75-1" aria-hidden="true" tabindex="-1"></a>b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="17">
 <pre><code>tensor([ 1269,   582, 10939,  ...,  5013,  4582,   431])</code></pre>
 </div>
 </div>
 <div id="11423d8d-09d1-423f-b6c2-81aac1668ad7" class="cell" data-execution_count="18">
-<div class="sourceCode cell-code" id="cb78"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb78-1"><a href="#cb78-1" aria-hidden="true" tabindex="-1"></a>torch.equal(a,b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb77"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb77-1"><a href="#cb77-1" aria-hidden="true" tabindex="-1"></a>torch.equal(a,b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="18">
 <pre><code>True</code></pre>
 </div>
 </div>
 <p>However, <em>after being sorted</em> the <code>codes.indices</code> diverge:</p>
 <div id="1a9b7b4d-adeb-4581-8c4f-6a7c6455e95e" class="cell" data-execution_count="7">
-<div class="sourceCode cell-code" id="cb80"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb80-1"><a href="#cb80-1" aria-hidden="true" tabindex="-1"></a>a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/codes.pt"</span>)</span>
-<span id="cb80-2"><a href="#cb80-2" aria-hidden="true" tabindex="-1"></a>b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/codes.pt"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb79"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb79-1"><a href="#cb79-1" aria-hidden="true" tabindex="-1"></a>a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/codes.pt"</span>)</span>
+<span id="cb79-2"><a href="#cb79-2" aria-hidden="true" tabindex="-1"></a>b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/codes.pt"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 <div id="f862aead-56af-44e9-b6ae-57e861337323" class="cell" data-execution_count="8">
-<div class="sourceCode cell-code" id="cb81"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb81-1"><a href="#cb81-1" aria-hidden="true" tabindex="-1"></a>a</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb80"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb80-1"><a href="#cb80-1" aria-hidden="true" tabindex="-1"></a>a</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="8">
 <pre><code>torch.return_types.sort(
 values=tensor([    0,     0,     0,  ..., 16383, 16383, 16383]),
@@ -624,7 +618,7 @@ indices=tensor([377624, 285309, 285322,  ..., 117986, 118780, 128088]))</code></
 </div>
 </div>
 <div id="00005e6b-fa99-4c7e-ba3a-41c9fbddcb29" class="cell" data-execution_count="9">
-<div class="sourceCode cell-code" id="cb83"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb83-1"><a href="#cb83-1" aria-hidden="true" tabindex="-1"></a>b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb82"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb82-1"><a href="#cb82-1" aria-hidden="true" tabindex="-1"></a>b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="9">
 <pre><code>torch.return_types.sort(
 values=tensor([    0,     0,     0,  ..., 16383, 16383, 16383]),
@@ -632,17 +626,17 @@ indices=tensor([  2776,   2808,   5974,  ..., 309906, 579450, 884128]))</code></
 </div>
 </div>
 <div id="b59723db-6e47-4223-8938-17a231a1a71d" class="cell" data-execution_count="10">
-<div class="sourceCode cell-code" id="cb85"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb85-1"><a href="#cb85-1" aria-hidden="true" tabindex="-1"></a>torch.equal(a.indices, b.indices)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb84"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb84-1"><a href="#cb84-1" aria-hidden="true" tabindex="-1"></a>torch.equal(a.indices, b.indices)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-display" data-execution_count="10">
 <pre><code>False</code></pre>
 </div>
 </div>
 <p>There was the source of discrepancy! The order of indices <em>after</em> being sorted!</p>
 <p>Is this the case for all <code>sort</code> calls between these PyTorch versions? To test this, I ran the following code with each PyTorch install (<code>torch==2.0.1</code> and <code>torch==2.1.0</code>) and saved <code>t</code> before and after <code>.sort</code> was called:</p>
-<div class="sourceCode" id="cb87"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb87-1"><a href="#cb87-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
-<span id="cb87-2"><a href="#cb87-2" aria-hidden="true" tabindex="-1"></a>torch.manual_seed(<span class="dv">42</span>)</span>
-<span id="cb87-3"><a href="#cb87-3" aria-hidden="true" tabindex="-1"></a>t <span class="op">=</span> torch.randint(low<span class="op">=</span><span class="dv">0</span>, high<span class="op">=</span><span class="dv">16383</span>, size<span class="op">=</span>(<span class="dv">1146937</span>,))</span>
-<span id="cb87-4"><a href="#cb87-4" aria-hidden="true" tabindex="-1"></a>t <span class="op">=</span> t.sort()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb86"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb86-1"><a href="#cb86-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
+<span id="cb86-2"><a href="#cb86-2" aria-hidden="true" tabindex="-1"></a>torch.manual_seed(<span class="dv">42</span>)</span>
+<span id="cb86-3"><a href="#cb86-3" aria-hidden="true" tabindex="-1"></a>t <span class="op">=</span> torch.randint(low<span class="op">=</span><span class="dv">0</span>, high<span class="op">=</span><span class="dv">16383</span>, size<span class="op">=</span>(<span class="dv">1146937</span>,))</span>
+<span id="cb86-4"><a href="#cb86-4" aria-hidden="true" tabindex="-1"></a>t <span class="op">=</span> t.sort()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>For both PyTorch versions, <code>t.indices</code> was not equal (i.e.&nbsp;<code>torch.equal</code> was <code>False</code>). This is evidence that <code>sort</code>’s behavior changes from 2.0.1 to 2.1.0. After keyword searching the release notes, I couldn’t find a PR that could be the culprit.</p>
 <p>Thankfully, <code>colbert-ai</code> is robust to such changes! Since we only care about the unique passage IDs (and number of passage IDs) for <code>ivf</code> and <code>ivf_lengths</code>, respectively, and <em>not</em> the order of token IDs, this PyTorch change does not break the indexing pipeline.</p>
 
