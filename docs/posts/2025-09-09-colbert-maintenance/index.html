@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.7.32">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2025-09-09">
+<meta name="description" content="While comparing colbert-ai index artifacts (for two installs using different PyTorch versions) I come across an unexpected finding–.sort indices are ordered differently in torch==2.1.0 than in torch==2.0.1 and thus change an intermediate artifact even with all else equal. Thankfully, this doesn’t break ColBERT’s indexing functionality and final index artifacts.">
+
+<title>PyTorch .sort Behavior Changes from Version 2.0.1 to 2.1.0 – Vishal Bakshi's Blog</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-37eea08aefeeee20ff55810ff984fec1.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap-9c1ae87ad5063dce4f793ccd314a7566.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Vishal Bakshi’s Blog</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html"> 
+<span class="menu-text">About</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"> <i class="bi bi-rss" role="img">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#background" id="toc-background" class="nav-link active" data-scroll-target="#background">Background</a></li>
+  <li><a href="#inspecting-codes" id="toc-inspecting-codes" class="nav-link" data-scroll-target="#inspecting-codes">Inspecting <code>codes</code></a></li>
+  <li><a href="#recreating-optimize_ivf" id="toc-recreating-optimize_ivf" class="nav-link" data-scroll-target="#recreating-optimize_ivf">Recreating <code>optimize_ivf</code></a></li>
+  <li><a href="#conclusion" id="toc-conclusion" class="nav-link" data-scroll-target="#conclusion">Conclusion</a></li>
+  <li><a href="#appendix" id="toc-appendix" class="nav-link" data-scroll-target="#appendix">Appendix</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">PyTorch <code>.sort</code> Behavior Changes from Version <code>2.0.1</code> to <code>2.1.0</code></h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">ColBERT</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    While comparing <code>colbert-ai</code> index artifacts (for two installs using different PyTorch versions) I come across an unexpected finding–<code>.sort</code> indices are ordered differently in <code>torch==2.1.0</code> than in <code>torch==2.0.1</code> and thus change an intermediate artifact even with all else equal. Thankfully, this doesn’t break ColBERT’s indexing functionality and final index artifacts.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">September 9, 2025</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>In this notebook I’m going to explore how (and hopefully why) you can start with different <code>codes.indices</code> but end up with the same <code>ivf</code> and <code>ivf_lengths</code> when indexing a document collection using <code>colbert-ai</code>.</p>
+<p>I came across this behavior by accident. I was comparing final and intermediate <code>colbert-ai</code> index artifacts between installs using <code>torch==2.0.1</code> and <code>torch==2.1.0</code> and found that even after swapping <code>local_sample_embs.pt</code> (the document token embeddings clustered to find centroids) from 2.0.1 to 2.1.0, the intermediate <code>codes</code> (centroid ID for each document token embedding) did not pass <code>torch.allclose</code> <mark>but the final <code>ivf.pid.pt</code> tensors did</mark>. How could that be possible? How can you start with different intermediate centroid-to-document token mappings and end up with the same final centroid-to-document token mappings?</p>
+<p>First a bit of review of where <code>codes</code> comes from. The highest-level abstraction we start with is the <code>Indexer</code>:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> Run().context(RunConfig(nranks<span class="op">=</span>nranks)):</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    config <span class="op">=</span> ColBERTConfig(...)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    indexer <span class="op">=</span> Indexer(checkpoint<span class="op">=</span><span class="st">"answerdotai/answerai-colbert-small-v1"</span>, config<span class="op">=</span>config)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    _ <span class="op">=</span> indexer.index(name<span class="op">=</span><span class="st">"..."</span>, collection<span class="op">=</span>collection)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Inside <code>Indexer</code>, <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexer.py#L80"><code>encode</code> is called</a> within which <code>CollectionIndexer</code> is instantiated:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> encode(config, collection, shared_lists, shared_queues, verbose: <span class="bu">int</span> <span class="op">=</span> <span class="dv">3</span>):</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    encoder <span class="op">=</span> CollectionIndexer(config<span class="op">=</span>config, collection<span class="op">=</span>collection, verbose<span class="op">=</span>verbose)</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    encoder.run(shared_lists)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Inside <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/collection_indexer.py#L346"><code>CollectionIndexer.index</code></a> the following line saves (i.e.&nbsp;compresses and stores the residual of) document token embeddings:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="va">self</span>.saver.save_chunk(chunk_idx, offset, embs, doclens) <span class="co"># offset = first passage index in chunk</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Once saved, the embeddings are deleted, which is why <code>colbert-ai</code> is so memory efficient! It’s also why indexing and embedding are tied together with the same model.</p>
+<p><a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/index_saver.py#L70"><code>IndexSaver.save_chunk</code></a> is defined as:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> save_chunk(<span class="va">self</span>, chunk_idx, offset, embs, doclens):</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    compressed_embs <span class="op">=</span> <span class="va">self</span>.codec.compress(embs)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>.saver_queue.put((chunk_idx, offset, compressed_embs, doclens))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The <code>codec</code> is a <code>ResidualCodec</code> object and <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/codecs/residual.py#L167">its <code>compress</code> method</a> contains the following line:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>codes_ <span class="op">=</span> <span class="va">self</span>.compress_into_codes(batch, out_device<span class="op">=</span>batch.device)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>We’re almost there! <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/codecs/residual.py#L204"><code>compress_into_codes</code></a> is defined as:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> compress_into_codes(<span class="va">self</span>, embs, out_device):</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    codes <span class="op">=</span> []</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    bsize <span class="op">=</span> (<span class="dv">1</span> <span class="op">&lt;&lt;</span> <span class="dv">29</span>) <span class="op">//</span> <span class="va">self</span>.centroids.size(<span class="dv">0</span>)</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> batch <span class="kw">in</span> embs.split(bsize):</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="va">self</span>.use_gpu:</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>            indices <span class="op">=</span> (<span class="va">self</span>.centroids <span class="op">@</span> batch.T.cuda().half()).<span class="bu">max</span>(dim<span class="op">=</span><span class="dv">0</span>).indices.to(device<span class="op">=</span>out_device)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>            indices <span class="op">=</span> (<span class="va">self</span>.centroids <span class="op">@</span> batch.T.cpu().<span class="bu">float</span>()).<span class="bu">max</span>(dim<span class="op">=</span><span class="dv">0</span>).indices.to(device<span class="op">=</span>out_device)</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>        codes.append(indices)</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> torch.cat(codes)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>So, <code>codes</code> are the indices (i.e “IDs”) of the centroids with the maximum cosine similarity with the document token embeddings. Let’s say our <code>centroids</code> have shape <code>(1024, 96)</code> and the <code>batch</code> contains thirty-two 96-dimensional embeddings (shape <code>(32, 96)</code>), each corresponding to a different document token embedding. The transpose of <code>batch</code> has shape <code>(96, 32)</code> and the matrix multiplication <code>centroids @ batch.T</code> has shape <code>(1024, 32)</code> where the rows represent centroid indices and the columns represent token indices. Taking <code>.max(dim=0).indices</code> returns the row indices corresponding to the maximum value in each of the 32 columns. In other words, the 32 centroid IDs that are closest to the document token embeddings. Note that since <code>centroids</code> <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/collection_indexer.py#L306">are normalized</a> as are <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/modeling/colbert.py#L104">document token embeddings</a>, the matrix multiplication <em>is</em> the cosine similarity between the two sets of vectors.</p>
+<p>Which goes back to my shock: how can different <code>codes</code> yield the same final <code>ivf</code> and <code>ivf_lengths</code>? To set the stage, let’s look at how <code>ivf</code> and <code>ivf_lengths</code> are created, starting with <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/collection_indexer.py#L438"><code>CollectionIndexer._build_ivf</code></a>, the trimmed down version which is:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _build_ivf(<span class="va">self</span>):</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    codes <span class="op">=</span> codes.sort()</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    ivf, values <span class="op">=</span> codes.indices, codes.values</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    ivf_lengths <span class="op">=</span> torch.bincount(values, minlength<span class="op">=</span><span class="va">self</span>.num_partitions)</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    _, _ <span class="op">=</span> optimize_ivf(ivf, ivf_lengths, <span class="va">self</span>.config.index_path_)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The <code>codes</code> are sorted. The sort indices (the document token IDs) become <code>ivf</code> and the values (the centroid IDs) after being <code>bincount</code>-ed (i.e.&nbsp;the frequency of each centroid ID—the number of tokens associated with each centroid ID) become <code>ivf_lengths</code>. These are the first iteration of <code>ivf</code> and <code>ivf_lengths</code> and will change later on in <code>optimize_ivf</code>, the trimmed down version of which is:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> optimize_ivf(orig_ivf, orig_ivf_lengths, index_path, verbose:<span class="bu">int</span><span class="op">=</span><span class="dv">3</span>):</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    all_doclens <span class="op">=</span> load_doclens(index_path, flatten<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    all_doclens <span class="op">=</span> flatten(all_doclens)</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    total_num_embeddings <span class="op">=</span> <span class="bu">sum</span>(all_doclens)</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    emb2pid <span class="op">=</span> torch.zeros(total_num_embeddings, dtype<span class="op">=</span>torch.<span class="bu">int</span>)</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    offset_doclens <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> pid, dlength <span class="kw">in</span> <span class="bu">enumerate</span>(all_doclens):</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>        emb2pid[offset_doclens: offset_doclens <span class="op">+</span> dlength] <span class="op">=</span> pid</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>        offset_doclens <span class="op">+=</span> dlength</span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>    ivf <span class="op">=</span> emb2pid[orig_ivf]</span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>    unique_pids_per_centroid <span class="op">=</span> []</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>    ivf_lengths <span class="op">=</span> []</span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>    offset <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> length <span class="kw">in</span> tqdm.tqdm(orig_ivf_lengths.tolist()):</span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a>        pids <span class="op">=</span> torch.unique(ivf[offset:offset<span class="op">+</span>length])</span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a>        unique_pids_per_centroid.append(pids)</span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a>        ivf_lengths.append(pids.shape[<span class="dv">0</span>])</span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a>        offset <span class="op">+=</span> length</span>
+<span id="cb8-23"><a href="#cb8-23" aria-hidden="true" tabindex="-1"></a>    ivf <span class="op">=</span> torch.cat(unique_pids_per_centroid)</span>
+<span id="cb8-24"><a href="#cb8-24" aria-hidden="true" tabindex="-1"></a>    ivf_lengths <span class="op">=</span> torch.tensor(ivf_lengths)</span>
+<span id="cb8-25"><a href="#cb8-25" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb8-26"><a href="#cb8-26" aria-hidden="true" tabindex="-1"></a>    original_ivf_path <span class="op">=</span> os.path.join(index_path, <span class="st">'ivf.pt'</span>)</span>
+<span id="cb8-27"><a href="#cb8-27" aria-hidden="true" tabindex="-1"></a>    optimized_ivf_path <span class="op">=</span> os.path.join(index_path, <span class="st">'ivf.pid.pt'</span>)</span>
+<span id="cb8-28"><a href="#cb8-28" aria-hidden="true" tabindex="-1"></a>    torch.save((ivf, ivf_lengths), optimized_ivf_path)</span>
+<span id="cb8-29"><a href="#cb8-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-30"><a href="#cb8-30" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> ivf, ivf_lengths</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>We’ll actually start from the bottom:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>ivf <span class="op">=</span> torch.cat(unique_pids_per_centroid)</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>ivf_lengths <span class="op">=</span> torch.tensor(ivf_lengths)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><code>ivf</code> is a flattened tensor of pids (passage IDs). Looking at the loop right above this:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>offset <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> length <span class="kw">in</span> tqdm.tqdm(orig_ivf_lengths.tolist()):</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    pids <span class="op">=</span> torch.unique(ivf[offset:offset<span class="op">+</span>length])</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    unique_pids_per_centroid.append(pids)</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    ivf_lengths.append(pids.shape[<span class="dv">0</span>])</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    offset <span class="op">+=</span> length</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><code>ivf_lengths</code> is the flattened tensor of the <em>number</em> of pids per centroid.</p>
+<p>So again: how can we start with different <code>codes</code> (a list of centroid IDs, where the indices are the document token embedding IDs) and end up with the same <code>ivf</code> (unique pids corresponding to centroids) and <code>ivf_lengths</code> (number of pids per centroid)?</p>
+<p>I fed this background section to Sonnet 4 (with the stanford-futuredata/ColBERT repo attached as Project Knowledge) to fact check me and it said:</p>
+<blockquote class="blockquote">
+<p>The key insight is that the final IVF only cares about which passages are associated with each centroid, not which specific token embeddings within those passages. If the different codes still result in the same set of passages being associated with each centroid (even if individual token assignments differ), the final ivf and ivf_lengths would be identical</p>
+</blockquote>
+<p>TBD if that’s correct, certainly seems plausible!</p>
+</section>
+<section id="inspecting-codes" class="level2">
+<h2 class="anchored" data-anchor-id="inspecting-codes">Inspecting <code>codes</code></h2>
+<p>First, I’ll show that <code>codes.indices</code> (document token IDs) are not equal between my <code>torch==2.0.1</code> install and the <code>torch==2.1.0</code> install where I <em>swapped</em> its <code>local_sample_embs.pt</code> with 2.0.1’s tensor. In other words, I “forced” the <code>2.1.0</code> install to cluster the same sample of document token embeddings when calculating centroids.</p>
+<div id="e6c32453-b312-4bcd-aa85-d856041f6223" class="cell" data-execution_count="2">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> colbert.indexing.loaders <span class="im">import</span> load_doclens</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> colbert.utils.utils <span class="im">import</span> print_message, flatten</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="b16b8160-9d0d-4797-907b-e20d3816cd4e" class="cell" data-execution_count="2">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>codes_indices_a <span class="op">=</span> torch.load(<span class="st">"20250909-0.2.22.main.torch.2.0.1-1/ivf.pt"</span>)</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>codes_indices_b <span class="op">=</span> torch.load(<span class="st">"20250909-0.2.22.main.torch.2.1.0-swap-1/ivf.pt"</span>)</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>codes_values_a <span class="op">=</span> torch.load(<span class="st">"20250909-0.2.22.main.torch.2.0.1-1/values.pt"</span>)</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>codes_values_b <span class="op">=</span> torch.load(<span class="st">"20250909-0.2.22.main.torch.2.1.0-swap-1/values.pt"</span>)</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>torch.equal(codes_indices_a, codes_indices_b), torch.equal(codes_values_a, codes_values_b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<pre><code>(False, True)</code></pre>
+</div>
+</div>
+<div id="457ebf9c-d62f-4794-a952-a99fa693a42b" class="cell" data-execution_count="3">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>codes_values_a</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>tensor([    0,     0,     0,  ..., 16383, 16383, 16383])</code></pre>
+</div>
+</div>
+<div id="6ca62459-2e06-481c-a5c4-3e06630fb1fb" class="cell" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>codes_values_b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<pre><code>tensor([    0,     0,     0,  ..., 16383, 16383, 16383])</code></pre>
+</div>
+</div>
+<p>Note that <code>codes.values</code> (the centroid IDs) are identical. So <em>which</em> centroid IDs are closest to the document token embeddings stays consistent across versions, but which document token IDs they correspond to does not.</p>
+<div id="3bebf034-54ad-470a-8ad9-7b24d3a85866" class="cell" data-execution_count="5">
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>ivf_a, ivf_lengths_a <span class="op">=</span> torch.load(<span class="st">"20250909-0.2.22.main.torch.2.0.1-1/indexing/ConditionalQA/ivf.pid.pt"</span>)</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>ivf_b, ivf_lengths_b <span class="op">=</span> torch.load(<span class="st">"20250909-0.2.22.main.torch.2.1.0-swap-1/indexing/ConditionalQA/ivf.pid.pt"</span>)</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>torch.equal(ivf_a, ivf_b), torch.equal(ivf_lengths_a, ivf_lengths_b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<pre><code>(True, True)</code></pre>
+</div>
+</div>
+<p>Furthermore, the unique passage IDs for each centroid (<code>ivf</code>) and the number of passage IDs per centroid ID (<code>ivf_lengths</code>) are equal across versions. What this tells me (re: Sonnet’s hypothesis) is that the document token IDs, while dissimilar across versions, come from the same passages!</p>
+</section>
+<section id="recreating-optimize_ivf" class="level2">
+<h2 class="anchored" data-anchor-id="recreating-optimize_ivf">Recreating <code>optimize_ivf</code></h2>
+<p>To explore the relationship between document token IDs and passage IDs, I’ll use the code in <code>optimize_ivf</code>, where initially, <code>ivf</code> means <code>codes.indices</code> and <code>ivf_lengths</code> mean <code>torch.bincount(codes.values)</code>.</p>
+<div id="5129ecad-90a2-47dc-b90d-8bf7d6ed590e" class="cell" data-execution_count="6">
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>codes_values_a <span class="op">=</span> torch.bincount(codes_values_a, minlength<span class="op">=</span><span class="dv">16384</span>)</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>codes_values_b <span class="op">=</span> torch.bincount(codes_values_b, minlength<span class="op">=</span><span class="dv">16384</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="fc5fe7b6-ceb4-4b47-9310-e1efebdb0ac2" class="cell" data-execution_count="33">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>codes_values_a, codes_values_b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="33">
+<pre><code>(tensor([1110,   36,  173,  ...,  104,   95,   25]),
+ tensor([1110,   36,  173,  ...,  104,   95,   25]))</code></pre>
+</div>
+</div>
+<p>I’ll start by loading the mapping between passages and tokens: <code>doclens</code>.</p>
+<div id="b5b24e79-31bf-417e-a4ec-c51a073244c0" class="cell" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>all_doclens_a <span class="op">=</span> load_doclens(<span class="st">"20250909-0.2.22.main.torch.2.0.1-1/indexing/ConditionalQA/"</span>, flatten<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>all_doclens_a <span class="op">=</span> flatten(all_doclens_a)</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>total_num_embeddings_a <span class="op">=</span> <span class="bu">sum</span>(all_doclens_a)</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>all_doclens_b <span class="op">=</span> load_doclens(<span class="st">"20250909-0.2.22.main.torch.2.1.0-swap-1/indexing/ConditionalQA"</span>, flatten<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>all_doclens_b <span class="op">=</span> flatten(all_doclens_b)</span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>total_num_embeddings_b <span class="op">=</span> <span class="bu">sum</span>(all_doclens_b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="cb42376a-e264-4c03-abfd-822843cd070d" class="cell" data-execution_count="8">
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>all_doclens_a <span class="op">==</span> all_doclens_b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<pre><code>True</code></pre>
+</div>
+</div>
+<div id="6ca17167-53cb-462c-a5d9-405eb319e16b" class="cell" data-execution_count="9">
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>total_num_embeddings_a <span class="op">==</span> total_num_embeddings_b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="9">
+<pre><code>True</code></pre>
+</div>
+</div>
+<div id="8ca9301c-bc51-4c99-a087-45c8c990078a" class="cell" data-execution_count="10">
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>total_num_embeddings_b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<pre><code>1146937</code></pre>
+</div>
+</div>
+<p>Next we create <code>emb2pid</code> which is a tensor that has 1146937 indices (one for each token across the collection) and values (passage IDs).</p>
+<div id="11a4ccd5-c96d-4c3e-a72c-6490aec768cf" class="cell" data-execution_count="11">
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _emb2pid(total_num_embeddings, all_doclens):</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>    emb2pid <span class="op">=</span> torch.zeros(total_num_embeddings, dtype<span class="op">=</span>torch.<span class="bu">int</span>)</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    offset_doclens <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> pid, dlength <span class="kw">in</span> <span class="bu">enumerate</span>(all_doclens):</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>        emb2pid[offset_doclens: offset_doclens <span class="op">+</span> dlength] <span class="op">=</span> pid</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>        offset_doclens <span class="op">+=</span> dlength</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> emb2pid</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="5757b1c8-3a06-4981-af67-92cfe3dd049f" class="cell" data-execution_count="12">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>emb2pid_a <span class="op">=</span> _emb2pid(total_num_embeddings_a, all_doclens_a)</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>emb2pid_b <span class="op">=</span> _emb2pid(total_num_embeddings_b, all_doclens_b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="4111b48e-e67f-4246-80ed-a8b57eb80337" class="cell" data-execution_count="13">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>emb2pid_a</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<pre><code>tensor([    0,     0,     0,  ..., 69198, 69198, 69198], dtype=torch.int32)</code></pre>
+</div>
+</div>
+<div id="b4412d37-1159-4438-80b7-ce79ffd7e1c7" class="cell" data-execution_count="14">
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>emb2pid_b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<pre><code>tensor([    0,     0,     0,  ..., 69198, 69198, 69198], dtype=torch.int32)</code></pre>
+</div>
+</div>
+<div id="90e5a257-3567-4259-b530-cdcf266b6e8b" class="cell" data-execution_count="15">
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>torch.equal(emb2pid_a, emb2pid_b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<pre><code>True</code></pre>
+</div>
+</div>
+<p>The first three tokens we see correspond to passage ID <code>0</code>, and the last three tokens to passage ID <code>69198</code>.</p>
+<p>Let’s now see if the tokens in the two <code>codes_indices</code> come from the same passages.</p>
+<div id="e6e78240-66c7-4cbf-a025-b118e70e4ca2" class="cell" data-execution_count="16">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>codes_indices_a</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="16">
+<pre><code>tensor([377624, 285309, 285322,  ..., 117986, 118780, 128088])</code></pre>
+</div>
+</div>
+<div id="14eacdad-a983-45f9-9c2a-e2e9445277eb" class="cell" data-execution_count="17">
+<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>codes_indices_b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="17">
+<pre><code>tensor([  2776,   2808,   5974,  ..., 309906, 579450, 884128])</code></pre>
+</div>
+</div>
+<div id="be00bed9-6268-424d-a64c-424191dfd8e6" class="cell" data-execution_count="18">
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>pids_a <span class="op">=</span> emb2pid_a[codes_indices_a]</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>pids_b <span class="op">=</span> emb2pid_b[codes_indices_b]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="0ba56de0-58d2-4d93-961a-f9e589d5f0ea" class="cell" data-execution_count="19">
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a>pids_a</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="19">
+<pre><code>tensor([23120, 17145, 17145,  ...,  7128,  7172,  7691], dtype=torch.int32)</code></pre>
+</div>
+</div>
+<div id="27f3a838-3ba3-4cf1-9838-f59d92e21d3c" class="cell" data-execution_count="20">
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>pids_b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="20">
+<pre><code>tensor([  170,   170,   377,  ..., 18739, 35561, 53527], dtype=torch.int32)</code></pre>
+</div>
+</div>
+<p>Looking at the resulting passage IDs: the first two tokens of <code>pids_a</code> (<code>torch==2.0.1</code>) come from passages <code>23120</code> and <code>17145</code>, respectively. The first two tokens of <code>pids_b</code> (<code>torch==2.0.1</code> <em>swapped</em>) come from passage <code>170</code>.</p>
+<p>If we count the number of times each passage ID occurs in each tensor (<code>pids_a</code> or <code>pids_b</code>) they are identical!</p>
+<div id="af8ab632-932c-4a0f-8a6e-1d967b8b3f17" class="cell" data-execution_count="21">
+<div class="sourceCode cell-code" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>torch.equal(torch.bincount(pids_a), torch.bincount(pids_b))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="21">
+<pre><code>True</code></pre>
+</div>
+</div>
+<p>Let’s keep moving along in recreating <code>optimize_ivf</code>:</p>
+<div class="sourceCode" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>ivf <span class="op">=</span> emb2pid[orig_ivf]</span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>unique_pids_per_centroid <span class="op">=</span> []</span>
+<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a>ivf_lengths <span class="op">=</span> []</span>
+<span id="cb49-4"><a href="#cb49-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb49-5"><a href="#cb49-5" aria-hidden="true" tabindex="-1"></a>offset <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb49-6"><a href="#cb49-6" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> length <span class="kw">in</span> tqdm.tqdm(orig_ivf_lengths.tolist()):</span>
+<span id="cb49-7"><a href="#cb49-7" aria-hidden="true" tabindex="-1"></a>    pids <span class="op">=</span> torch.unique(ivf[offset:offset<span class="op">+</span>length])</span>
+<span id="cb49-8"><a href="#cb49-8" aria-hidden="true" tabindex="-1"></a>    unique_pids_per_centroid.append(pids)</span>
+<span id="cb49-9"><a href="#cb49-9" aria-hidden="true" tabindex="-1"></a>    ivf_lengths.append(pids.shape[<span class="dv">0</span>])</span>
+<span id="cb49-10"><a href="#cb49-10" aria-hidden="true" tabindex="-1"></a>    offset <span class="op">+=</span> length</span>
+<span id="cb49-11"><a href="#cb49-11" aria-hidden="true" tabindex="-1"></a>ivf <span class="op">=</span> torch.cat(unique_pids_per_centroid)</span>
+<span id="cb49-12"><a href="#cb49-12" aria-hidden="true" tabindex="-1"></a>ivf_lengths <span class="op">=</span> torch.tensor(ivf_lengths)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Instead of:</p>
+<div class="sourceCode" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a>ivf <span class="op">=</span> emb2pid[orig_ivf]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>I did:</p>
+<div class="sourceCode" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a>pids_a <span class="op">=</span> emb2pid_a[codes_indices_a]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>I’ll move onto the for loop:</p>
+<div id="99db36cf-56e0-4c1a-94e4-48658ee737f3" class="cell" data-execution_count="22">
+<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a>unique_pids_per_centroid_a <span class="op">=</span> []</span>
+<span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a>_ivf_lengths_a <span class="op">=</span> []</span>
+<span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb52-4"><a href="#cb52-4" aria-hidden="true" tabindex="-1"></a>unique_pids_per_centroid_b <span class="op">=</span> []</span>
+<span id="cb52-5"><a href="#cb52-5" aria-hidden="true" tabindex="-1"></a>_ivf_lengths_b <span class="op">=</span> []</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="79136fe2-c17f-4d3f-9d82-5726af13387f" class="cell" data-execution_count="25">
+<div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _loop(orig_ivf_lengths, ivf):</span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>    unique_pids_per_centroid <span class="op">=</span> []</span>
+<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a>    ivf_lengths <span class="op">=</span> []</span>
+<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a>    offset <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb53-5"><a href="#cb53-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> length <span class="kw">in</span> orig_ivf_lengths.tolist():</span>
+<span id="cb53-6"><a href="#cb53-6" aria-hidden="true" tabindex="-1"></a>        pids <span class="op">=</span> torch.unique(ivf[offset:offset<span class="op">+</span>length])</span>
+<span id="cb53-7"><a href="#cb53-7" aria-hidden="true" tabindex="-1"></a>        unique_pids_per_centroid.append(pids)</span>
+<span id="cb53-8"><a href="#cb53-8" aria-hidden="true" tabindex="-1"></a>        ivf_lengths.append(pids.shape[<span class="dv">0</span>])</span>
+<span id="cb53-9"><a href="#cb53-9" aria-hidden="true" tabindex="-1"></a>        offset <span class="op">+=</span> length</span>
+<span id="cb53-10"><a href="#cb53-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> unique_pids_per_centroid, ivf_lengths</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="cd34f1d4-35f5-4d57-8c84-4691a9499fa7" class="cell" data-execution_count="27">
+<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a>unique_pids_per_centroid_a, _ivf_lengths_a <span class="op">=</span> _loop(orig_ivf_lengths<span class="op">=</span>codes_values_a, ivf<span class="op">=</span>codes_indices_a)</span>
+<span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a>unique_pids_per_centroid_b, _ivf_lengths_b <span class="op">=</span> _loop(orig_ivf_lengths<span class="op">=</span>codes_values_b, ivf<span class="op">=</span>codes_indices_b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="f0205892-4e54-45f3-b292-10a0a1ac89ec" class="cell" data-execution_count="31">
+<div class="sourceCode cell-code" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> idx, item <span class="kw">in</span> <span class="bu">enumerate</span>(unique_pids_per_centroid_a): <span class="cf">assert</span> torch.equal(item, unique_pids_per_centroid_b[idx])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>And there we see it! While the order of the passage IDs is different, both <code>codes.indices</code> contain the same unique passage IDs per centroid. For example, the first 1110 tokens correspond to centroid <code>0</code>, the next 36 to centroid <code>1</code> and so on.</p>
+<div id="71b29746-4aeb-4d73-a069-2ee1d3e5776d" class="cell" data-execution_count="34">
+<div class="sourceCode cell-code" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a>codes_values_a, codes_values_b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="34">
+<pre><code>(tensor([1110,   36,  173,  ...,  104,   95,   25]),
+ tensor([1110,   36,  173,  ...,  104,   95,   25]))</code></pre>
+</div>
+</div>
+<p>The first 1110 tokens are different across my torch versions:</p>
+<div id="7db7b7e6-fa19-443d-a755-16b0f8a4d692" class="cell" data-execution_count="37">
+<div class="sourceCode cell-code" id="cb58"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb58-1"><a href="#cb58-1" aria-hidden="true" tabindex="-1"></a>codes_indices_a[:<span class="dv">1110</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="37">
+<pre><code>tensor([ 377624,  285309,  285322,  ..., 1005140,  861059,  536224])</code></pre>
+</div>
+</div>
+<div id="ebf4a15a-d225-4122-aa8d-771051011407" class="cell" data-execution_count="38">
+<div class="sourceCode cell-code" id="cb60"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb60-1"><a href="#cb60-1" aria-hidden="true" tabindex="-1"></a>codes_indices_b[:<span class="dv">1110</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="38">
+<pre><code>tensor([   2776,    2808,    5974,  ..., 1144294, 1144706, 1144725])</code></pre>
+</div>
+</div>
+<p>But both torch versions contain the same tokens once sorted.</p>
+<div id="e4d9a6b6-d294-437b-9273-e40fd5e6ef51" class="cell" data-execution_count="42">
+<div class="sourceCode cell-code" id="cb62"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb62-1"><a href="#cb62-1" aria-hidden="true" tabindex="-1"></a>torch.equal(codes_indices_a[:<span class="dv">1110</span>].sort().values, codes_indices_b[:<span class="dv">1110</span>].sort().values)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="42">
+<pre><code>True</code></pre>
+</div>
+</div>
+<p>Just to make sure, iterating through all <code>codes_values</code> lengths and asserting if both <code>codes.indices</code> contain the same token IDs after being sorted:</p>
+<div id="44d6e571-62b9-4f3f-b15b-9a1cd5f3104e" class="cell" data-execution_count="46">
+<div class="sourceCode cell-code" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a>offset <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> length <span class="kw">in</span> codes_values_a: </span>
+<span id="cb64-3"><a href="#cb64-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> torch.equal(codes_indices_a[offset:length].sort().values, codes_indices_b[offset:length].sort().values)</span>
+<span id="cb64-4"><a href="#cb64-4" aria-hidden="true" tabindex="-1"></a>    offset <span class="op">+=</span> length</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="conclusion" class="level2">
+<h2 class="anchored" data-anchor-id="conclusion">Conclusion</h2>
+<p>Let’s revisit Sonnet 4’s hypothesis:</p>
+<blockquote class="blockquote">
+<p>The key insight is that the final IVF only cares about which passages are associated with each centroid, not which specific token embeddings within those passages</p>
+</blockquote>
+<p>While true, the reality was a bit different—the specific token IDs are identical across torch versions, it’s just that they are sorted differently! However, this begs the question: why are the token IDs sorted differently across torch versions? I’ll explore that in the Appendix section below.</p>
+</section>
+<section id="appendix" class="level2">
+<h2 class="anchored" data-anchor-id="appendix">Appendix</h2>
+<p>To understand how the max cosine similarity calculation deviates between <code>torch==2.0.1</code> and <code>torch==2.1.0</code> (using <code>2.0.1</code>’s <code>local_sample_embs.pt</code>) I’ll start by comparing the <code>embs</code> that I <code>torch.save</code>-d right before they were compressed. This is more of a sanity check as these were explicitly swapped from <code>torch==2.0.1</code>.</p>
+<div id="58706b53-428f-4263-b423-2ff53868f8c0" class="cell" data-execution_count="3">
+<div class="sourceCode cell-code" id="cb65"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> f <span class="kw">in</span> [<span class="st">"embs_0.pt"</span>, <span class="st">"embs_1.pt"</span>, <span class="st">"embs_2.pt"</span>]:</span>
+<span id="cb65-2"><a href="#cb65-2" aria-hidden="true" tabindex="-1"></a>    a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/</span><span class="sc">{</span>f<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb65-3"><a href="#cb65-3" aria-hidden="true" tabindex="-1"></a>    b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/</span><span class="sc">{</span>f<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb65-4"><a href="#cb65-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> torch.allclose(a, b, atol<span class="op">=</span><span class="fl">1e-4</span>, rtol<span class="op">=</span><span class="fl">1e-3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>They are all close enough! Next, I’ll compare the single batch and centroids that I saved in the <code>ResidualCodec.compress_into_codes</code> method.</p>
+<div id="e60a6aa0-787a-41c1-9332-e814223512ec" class="cell" data-execution_count="4">
+<div class="sourceCode cell-code" id="cb66"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb66-1"><a href="#cb66-1" aria-hidden="true" tabindex="-1"></a>batch_a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/compress_batch.pt"</span>)</span>
+<span id="cb66-2"><a href="#cb66-2" aria-hidden="true" tabindex="-1"></a>batch_b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/compress_batch.pt"</span>)</span>
+<span id="cb66-3"><a href="#cb66-3" aria-hidden="true" tabindex="-1"></a>torch.allclose(batch_a, batch_b, atol<span class="op">=</span><span class="fl">1e-4</span>, rtol<span class="op">=</span><span class="fl">1e-3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<pre><code>True</code></pre>
+</div>
+</div>
+<div id="b1f55e3a-a2bb-4599-a24f-a8234495ee6f" class="cell" data-execution_count="5">
+<div class="sourceCode cell-code" id="cb68"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb68-1"><a href="#cb68-1" aria-hidden="true" tabindex="-1"></a>centroids_a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/compress_centroids.pt"</span>)</span>
+<span id="cb68-2"><a href="#cb68-2" aria-hidden="true" tabindex="-1"></a>centroids_b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/compress_centroids.pt"</span>)</span>
+<span id="cb68-3"><a href="#cb68-3" aria-hidden="true" tabindex="-1"></a>torch.allclose(centroids_a, centroids_b, atol<span class="op">=</span><span class="fl">1e-4</span>, rtol<span class="op">=</span><span class="fl">1e-3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<pre><code>True</code></pre>
+</div>
+</div>
+<p>Both the token embeddings and the centroids are close enough (both are float16). Next I’ll compare a batch of <code>codes</code> (<code>indices</code>) saved inside <code>compress_into_codes</code>:</p>
+<div id="c34fc6d6-9f4e-4f7d-ac38-ee6245bbc2a5" class="cell" data-execution_count="21">
+<div class="sourceCode cell-code" id="cb70"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb70-1"><a href="#cb70-1" aria-hidden="true" tabindex="-1"></a>indices_a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/compress_indices.pt"</span>)</span>
+<span id="cb70-2"><a href="#cb70-2" aria-hidden="true" tabindex="-1"></a>indices_b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/compress_indices.pt"</span>)</span>
+<span id="cb70-3"><a href="#cb70-3" aria-hidden="true" tabindex="-1"></a>torch.equal(indices_a, indices_b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="21">
+<pre><code>True</code></pre>
+</div>
+</div>
+<p>Interestingly, they are equal across the PyTorch versions. Next I’ll compare the <code>codes</code> for each batch of <code>embs</code> in <code>compress</code>:</p>
+<div id="37189c07-f016-48b8-b3c4-87d8559af709" class="cell" data-execution_count="22">
+<div class="sourceCode cell-code" id="cb72"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb72-1"><a href="#cb72-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> f <span class="kw">in</span> [<span class="st">"compress_codes_0.pt"</span>, <span class="st">"compress_codes_1.pt"</span>, <span class="st">"compress_codes_2.pt"</span>]:</span>
+<span id="cb72-2"><a href="#cb72-2" aria-hidden="true" tabindex="-1"></a>    a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/</span><span class="sc">{</span>f<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb72-3"><a href="#cb72-3" aria-hidden="true" tabindex="-1"></a>    b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/</span><span class="sc">{</span>f<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb72-4"><a href="#cb72-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> torch.equal(a, b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>They are all equal as well!</p>
+<p>At this point it was clear (as mud) to me that the cosine similarity calculation was not the root cause of the <code>codes.indices</code> diverging between PyTorch versions. I added a line in <code>CollectionIndexer._build_ivf</code> which saved the pre-sorted <code>codes</code>.</p>
+<p>Surprisingly: the <code>codes</code> <em>before being sorted</em> are identical between PyTorch versions.</p>
+<div id="f1dff886-85ae-4539-9cd2-754802ab3e5e" class="cell" data-execution_count="15">
+<div class="sourceCode cell-code" id="cb73"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb73-1"><a href="#cb73-1" aria-hidden="true" tabindex="-1"></a>a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/presort_codes.pt"</span>)</span>
+<span id="cb73-2"><a href="#cb73-2" aria-hidden="true" tabindex="-1"></a>b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/presort_codes.pt"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="834bba2b-15fe-4dde-a4de-eb333ec29320" class="cell" data-execution_count="16">
+<div class="sourceCode cell-code" id="cb74"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb74-1"><a href="#cb74-1" aria-hidden="true" tabindex="-1"></a>a</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="16">
+<pre><code>tensor([ 1269,   582, 10939,  ...,  5013,  4582,   431])</code></pre>
+</div>
+</div>
+<div id="d84268d3-d374-4e6e-954a-0a70ee7d1433" class="cell" data-execution_count="17">
+<div class="sourceCode cell-code" id="cb76"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb76-1"><a href="#cb76-1" aria-hidden="true" tabindex="-1"></a>b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="17">
+<pre><code>tensor([ 1269,   582, 10939,  ...,  5013,  4582,   431])</code></pre>
+</div>
+</div>
+<div id="11423d8d-09d1-423f-b6c2-81aac1668ad7" class="cell" data-execution_count="18">
+<div class="sourceCode cell-code" id="cb78"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb78-1"><a href="#cb78-1" aria-hidden="true" tabindex="-1"></a>torch.equal(a,b)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="18">
+<pre><code>True</code></pre>
+</div>
+</div>
+<p>However, <em>after being sorted</em> the <code>codes.indices</code> diverge:</p>
+<div id="1a9b7b4d-adeb-4581-8c4f-6a7c6455e95e" class="cell" data-execution_count="7">
+<div class="sourceCode cell-code" id="cb80"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb80-1"><a href="#cb80-1" aria-hidden="true" tabindex="-1"></a>a <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.0.1-1/codes.pt"</span>)</span>
+<span id="cb80-2"><a href="#cb80-2" aria-hidden="true" tabindex="-1"></a>b <span class="op">=</span> torch.load(<span class="ss">f"20250909-0.2.22.main.torch.2.1.0-swap-1/codes.pt"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div id="f862aead-56af-44e9-b6ae-57e861337323" class="cell" data-execution_count="8">
+<div class="sourceCode cell-code" id="cb81"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb81-1"><a href="#cb81-1" aria-hidden="true" tabindex="-1"></a>a</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<pre><code>torch.return_types.sort(
+values=tensor([    0,     0,     0,  ..., 16383, 16383, 16383]),
+indices=tensor([377624, 285309, 285322,  ..., 117986, 118780, 128088]))</code></pre>
+</div>
+</div>
+<div id="00005e6b-fa99-4c7e-ba3a-41c9fbddcb29" class="cell" data-execution_count="9">
+<div class="sourceCode cell-code" id="cb83"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb83-1"><a href="#cb83-1" aria-hidden="true" tabindex="-1"></a>b</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="9">
+<pre><code>torch.return_types.sort(
+values=tensor([    0,     0,     0,  ..., 16383, 16383, 16383]),
+indices=tensor([  2776,   2808,   5974,  ..., 309906, 579450, 884128]))</code></pre>
+</div>
+</div>
+<div id="b59723db-6e47-4223-8938-17a231a1a71d" class="cell" data-execution_count="10">
+<div class="sourceCode cell-code" id="cb85"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb85-1"><a href="#cb85-1" aria-hidden="true" tabindex="-1"></a>torch.equal(a.indices, b.indices)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<pre><code>False</code></pre>
+</div>
+</div>
+<p>There was the source of discrepancy! The order of indices <em>after</em> being sorted!</p>
+<p>Is this the case for all <code>sort</code> calls between these PyTorch versions? To test this, I ran the following code with each PyTorch install (<code>torch==2.0.1</code> and <code>torch==2.1.0</code>) and saved <code>t</code> before and after <code>.sort</code> was called:</p>
+<div class="sourceCode" id="cb87"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb87-1"><a href="#cb87-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
+<span id="cb87-2"><a href="#cb87-2" aria-hidden="true" tabindex="-1"></a>torch.manual_seed(<span class="dv">42</span>)</span>
+<span id="cb87-3"><a href="#cb87-3" aria-hidden="true" tabindex="-1"></a>t <span class="op">=</span> torch.randint(low<span class="op">=</span><span class="dv">0</span>, high<span class="op">=</span><span class="dv">16383</span>, size<span class="op">=</span>(<span class="dv">1146937</span>,))</span>
+<span id="cb87-4"><a href="#cb87-4" aria-hidden="true" tabindex="-1"></a>t <span class="op">=</span> t.sort()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>For both PyTorch versions, <code>t.indices</code> was not equal (i.e.&nbsp;<code>torch.equal</code> was <code>False</code>). This is evidence that <code>sort</code>’s behavior changes from 2.0.1 to 2.1.0. After keyword searching the release notes, I couldn’t find a PR that could be the culprit.</p>
+<p>Thankfully, <code>colbert-ai</code> is robust to such changes! Since we only care about the unique passage IDs (and number of passage IDs) for <code>ivf</code> and <code>ivf_lengths</code>, respectively, and <em>not</em> the order of token IDs, this PyTorch change does not break the indexing pipeline.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+        const codeEl = trigger.previousElementSibling.cloneNode(true);
+        for (const childEl of codeEl.children) {
+          if (isCodeAnnotation(childEl)) {
+            childEl.remove();
+          }
+        }
+        return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vishalbakshi\.github\.io\/blog");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>
