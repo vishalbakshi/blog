@@ -133,6 +133,27 @@ for idx in range(29):
         assert _close(a_, b_)
 ```
 
+Where `_close` is defined as:
+
+```python
+def _close(a, b, default=False):
+    gtype = a.dtype
+    if gtype in [torch.uint8, torch.int32, torch.int64]:
+        if a.shape == b.shape: return torch.equal(a,b)
+        return False
+
+    if not default:
+        if gtype == torch.float32:
+            atol, rtol = 1e-6, 1e-5
+        elif gtype == torch.bfloat16:
+            atol, rtol = 1e-3, 1e-2
+        else:
+            atol, rtol = 1e-4, 1e-3
+    else:
+        atol, rtol = 1e-8, 1e-5
+    return torch.allclose(a, b, rtol=rtol, atol=atol)
+```
+
 All model layer outputs match between PyTorch versions! Just to be sure, I tried `batch_idx` of `61`, `64` and `68`, and all model layer outputs match.
 
 ## Closing Thoughts
