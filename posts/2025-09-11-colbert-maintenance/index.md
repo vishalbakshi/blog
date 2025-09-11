@@ -1,5 +1,5 @@
 ---
-title: Batch Size Causes `BertModel` Forward Pass Divergence Between `torch==2.0.1` and `torch==2.1.0` for `colbert-ai`.
+title: Batch Size Causes `BertModel` Forward Pass Divergence Between `torch==2.4.1` and `torch==2.5.0` for `colbert-ai`.
 date: "2025-09-11"
 author: Vishal Bakshi
 description: In this blog post I document as far as I could get in determining what caused a `BertModel` forward pass divergence between PyTorch versions `2.0.1` and `2.1.0`. Certain batch sizes yield different model layer outputs between PyTorch version, while other batch sizes don't.
