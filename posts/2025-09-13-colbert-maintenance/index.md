@@ -1,6 +1,6 @@
 ---
 title: Comparing `colbert-ai` Artifacts Between PyTorch Versions 2.0.1 and 2.1.0
-date: "2025-09-14"
+date: "2025-09-13"
 author: Vishal Bakshi
 description: The `BertModel` forward pass diverges between these two PyTorch versions, resulting in different document token embeddings and eventually, different final index artifacts. Swapping `local_sample_embs` from 2.0.1 to 2.1.0 yields identical index artifacts (except the sort order of centroid IDs).
 filters:
