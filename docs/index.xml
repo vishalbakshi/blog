@@ -12,6 +12,1298 @@
 <generator>quarto-1.7.32</generator>
 <lastBuildDate>Sun, 14 Sep 2025 07:00:00 GMT</lastBuildDate>
 <item>
+  <title>Re-evaluating colbert-ai Index Artifacts Between PyTorch Versions with Precision-Based torch.allclose Tolerances</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-09-14-colbert-maintenance-2/</link>
+  <description><![CDATA[ 
+
+
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>I recently learned that it’s best practice to use different <code>torch.allclose</code> tolerances based on the precision of the floating point value. As a reminder, <code>torch.allclose</code> uses absolute and relative tolerances as follows:</p>
+<p><code>∣input_i − other_i∣ ≤ atol + rtol × ∣other_i∣</code></p>
+<p><a href="https://github.com/bitsandbytes-foundation/bitsandbytes/blob/39dd8471c1c0677001d0d20ba2218b14bf18fd00/tests/test_optim.py#L189">bitsandbytes</a> uses the following heuristic:</p>
+<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> dtype <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> torch.float32:</span>
+<span id="cb1-2">    atol, rtol <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e-6</span>, <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e-5</span></span>
+<span id="cb1-3"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">elif</span> dtype <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> torch.bfloat16:</span>
+<span id="cb1-4">    atol, rtol <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e-3</span>, <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e-2</span></span>
+<span id="cb1-5"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span>: <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># float16</span></span>
+<span id="cb1-6">    atol, rtol <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e-4</span>, <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e-3</span></span></code></pre></div>
+<p>Full-precision (<code>float32</code>) has the lowest tolerance, followed by half-precision (<code>float16</code>) and then <code>bfloat16</code>. I’ve been using default tolerances in all my <code>torch.allclose</code> calls, regardless of precision (<code>atol</code> = <code>1e-08</code>, <code>rtol</code> = <code>1e-05</code>). Comparing these with bitsandbytes’ tolerances, these default tolerances are:</p>
+<ul>
+<li>float32: 100x smaller for <code>atol</code> and the same for <code>rtol</code></li>
+<li>float16: 10_000x smaller for <code>atol</code> and 100x smaller for <code>rtol</code></li>
+<li>bfloat16: 100_000x smaller for <code>atol</code> and 1000x smaller for <code>rtol</code></li>
+</ul>
+<p>As you can see, the bitsandbytes tolerances are much more forgiving for lower precision, which intuitively makes sense.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Two Goals of this Blog Post
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>The first question I’ll explore in this post: how does changing my <code>torch.allclose</code> tolerances affect index artifact comparison? In other words, are there tensors between PyTorch versions whose difference is larger than <code>atol + rtol × ∣other_i∣</code> when using bitsandbytes’ more forgiving tolerances?</p>
+<p>The second question I’ll answer: when <code>torch.allclose</code> fails, what is the root cause?</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Important
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>I use the full (69_199 documents) <a href="https://huggingface.co/datasets/UKPLab/dapr">UKPLab/DAPR/ConditionalQA</a> dataset in this exercise. In previous blog posts I used a 1000-document subset.</p>
+</div>
+</div>
+</section>
+<section id="comparing-all-consecutive-versions" class="level2">
+<h2 class="anchored" data-anchor-id="comparing-all-consecutive-versions">Comparing All Consecutive Versions</h2>
+<p>In this section I’ll document tensor shape mismatches and <code>torch.allclose</code> values (with default tolerances in the “Default” column and bitsandbytes tolerances in the “bnb” column) for tensor index artifacts between consecutive PyTorch versions from 1.13.1 (the version pinned in the latest <code>colbert-ai</code> release) to 2.8.0 (the latest PyTorch version available as of 9/14/2025).</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th style="text-align: center;">PyTorch Version A</th>
+<th style="text-align: center;">PyTorch Version B</th>
+<th style="text-align: center;">All Shapes Match</th>
+<th style="text-align: center;">Default</th>
+<th style="text-align: center;">bnb</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">1.13.1</td>
+<td style="text-align: center;">2.0.0</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.0.0</td>
+<td style="text-align: center;">2.0.1</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">2.0.1</td>
+<td style="text-align: center;">2.1.0</td>
+<td style="text-align: center;">No (11/12 Match)</td>
+<td style="text-align: center;"><code>False</code> (0/12 Match)</td>
+<td style="text-align: center;"><code>False</code> (2/12 Match)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.1.0</td>
+<td style="text-align: center;">2.1.1</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">2.1.1</td>
+<td style="text-align: center;">2.1.2</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.1.2</td>
+<td style="text-align: center;">2.2.0</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">2.2.0</td>
+<td style="text-align: center;">2.2.1</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.2.1</td>
+<td style="text-align: center;">2.2.2</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">2.2.2</td>
+<td style="text-align: center;">2.3.0</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.3.0</td>
+<td style="text-align: center;">2.3.1</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">2.3.1</td>
+<td style="text-align: center;">2.4.0</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.4.0</td>
+<td style="text-align: center;">2.4.1</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">2.4.1</td>
+<td style="text-align: center;">2.5.0</td>
+<td style="text-align: center;">No (11/12 Match)</td>
+<td style="text-align: center;"><code>False</code> (0/12 Match)</td>
+<td style="text-align: center;"><code>False</code> (2/12 Match)</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.5.0</td>
+<td style="text-align: center;">2.5.1</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">2.5.1</td>
+<td style="text-align: center;">2.6.0</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.6.0</td>
+<td style="text-align: center;">2.7.0</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;">2.7.0</td>
+<td style="text-align: center;">2.7.1</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;">2.7.1</td>
+<td style="text-align: center;">2.8.0</td>
+<td style="text-align: center;">Yes</td>
+<td style="text-align: center;"><code>False</code> (8/12 Match)</td>
+<td style="text-align: center;"><code>False</code> (9/12 Match)</td>
+</tr>
+</tbody>
+</table>
+<p>In the three version comparisons where <code>torch.allclose</code> failed using default <code>atol</code> and <code>rtol</code> values, using bitsandbytes values yielded the same overall result (not all tensors match) but with two more matches for 2.0.1 –&gt; 2.1.0 and 2.4.1 –&gt; 2.5.0, and one more match for 2.7.1 –&gt; 2.8.0.</p>
+<p>Here’s my <code>_close</code> function to handle comparisons between tensors <code>a</code> and <code>b</code>:</p>
+<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">def</span> _close(a, b, default<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">False</span>):</span>
+<span id="cb2-2">    gtype <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> a.dtype</span>
+<span id="cb2-3">    </span>
+<span id="cb2-4">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> gtype <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">in</span> [torch.uint8, torch.int32, torch.int64]:</span>
+<span id="cb2-5">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> a.shape <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> b.shape: <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> torch.equal(a,b)</span>
+<span id="cb2-6">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">False</span></span>
+<span id="cb2-7"></span>
+<span id="cb2-8">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">not</span> default:</span>
+<span id="cb2-9">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> gtype <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> torch.float32:</span>
+<span id="cb2-10">            atol, rtol <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e-6</span>, <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e-5</span></span>
+<span id="cb2-11">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">elif</span> gtype <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> torch.bfloat16:</span>
+<span id="cb2-12">            atol, rtol <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e-3</span>, <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e-2</span></span>
+<span id="cb2-13">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span>:</span>
+<span id="cb2-14">            atol, rtol <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e-4</span>, <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e-3</span></span>
+<span id="cb2-15">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">else</span>:</span>
+<span id="cb2-16">        atol, rtol <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e-8</span>, <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e-5</span></span>
+<span id="cb2-17">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">return</span> torch.allclose(a, b, rtol<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>rtol, atol<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>atol)</span></code></pre></div>
+</section>
+<section id="root-cause-for-index-artifact-difference-between-consecutive-pytorch-versions" class="level2">
+<h2 class="anchored" data-anchor-id="root-cause-for-index-artifact-difference-between-consecutive-pytorch-versions">Root Cause For Index Artifact Difference Between Consecutive PyTorch Versions</h2>
+<p>There were three consecutive PyTorch versions which broke index artifact reproducibility in <code>colbert-ai</code>. Listed below are the tensors that failed <code>torch.equal</code> (for integers) or <code>torch.allclose</code> (with bitsandbytes’ tolerances):</p>
+<ul>
+<li>2.0.1 –&gt; 2.1.0
+<ul>
+<li><code>ivf.pid.pt</code> (<code>ivf</code>: unique passage IDs (pids) per centroid ID, <code>ivf_lengths</code>: number of pids per centroid id)</li>
+<li><code>codes.pt</code> (centroid ID mapped to doc token IDs)</li>
+<li><code>residuals.pt</code> (distance between centroids and doc token embeddings)</li>
+<li><code>centroids.pt</code> (centroids of clustered sample doc token embeddings <code>local_sample_embs</code>)</li>
+<li><code>bucket_cutoffs</code> (the quantization bins)</li>
+</ul></li>
+<li>2.4.1 –&gt; 2.5.0
+<ul>
+<li><code>ivf.pid.pt</code> (<code>ivf</code> and <code>ivf_lengths</code>)</li>
+<li><code>codes.pt</code></li>
+<li><code>residuals.pt</code></li>
+<li><code>centroids.pt</code></li>
+<li><code>bucket_cutoffs</code></li>
+</ul></li>
+<li>2.7.1 –&gt; 2.8.0
+<ul>
+<li><code>residuals.pt</code></li>
+</ul></li>
+</ul>
+<p>In the following sections I’ll detail the root cause for index artifact divergence.</p>
+<section id="bertmodel-forward-pass-for-any-input_ids" class="level3">
+<h3 class="anchored" data-anchor-id="bertmodel-forward-pass-for-any-input_ids">2.0.1 –&gt; 2.1.0: <code>BertModel</code> Forward Pass for Any <code>input_ids</code></h3>
+<p>The first critical intermediate indexing tensor created is <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/collection_indexer.py#L137"><code>local_sample_embs</code></a>. This is a sample of document token embeddings used to calculate centroids. The sample passages are passed to <code>Checkpoint.docFromText</code>, which calls <code>Checkpoint.doc</code>, which ultimately calls <code>Checkpoint.bert</code>.</p>
+<p><code>sample_pids</code>, the sample of passage IDs selected for encoding, were identical between 2.0.1 and 2.1.0, but <code>local_sample_embs</code> did not pass <code>torch.allclose</code> (with bnb tolerances). This was the smell that led me to compare the <code>Checkpoint.bert</code> model layer outputs between PyTorch versions using <code>register_forward_hook</code>. I tried a variety of input tokens (different batches of passages, random text, single letter strings) and in all cases, model layer outputs between PyTorch versions failed <code>torch.allclose</code>. I thus concluded that something in PyTorch changed between 2.0.1 and 2.1.0 to cause this. You can read more details of this exploration in <a href="https://vishalbakshi.github.io/blog/posts/2025-09-13-colbert-maintenance/">another blog post</a>.</p>
+<p>To confirm that the <code>local_sample_embs</code> divergence caused the divergence in downstream index artifacts, I replaced the <code>local_sample_embs</code> in the <code>torch==2.1.0</code> install with <code>local_sample_embs</code> from the <code>torch==2.0.1</code> install and the final index artifacts passed <code>torch.allclose</code>. Interestingly, even though all final index artifacts were similar, the intermediate <code>codes.pt</code> (centroid ID mapped to doc token IDs) was not. I did a deep dive in <a href="https://vishalbakshi.github.io/blog/posts/2025-09-09-colbert-maintenance/">a separate blog post</a> where I discovered that using <code>Tensor.sort</code> results in different sort indices in <code>torch==2.0.1</code> and <code>torch==2.1.0</code>.</p>
+</section>
+<section id="bertmodel-forward-pass-for-some-batch-sizes" class="level3">
+<h3 class="anchored" data-anchor-id="bertmodel-forward-pass-for-some-batch-sizes">2.4.1 –&gt; 2.5.0: <code>BertModel</code> Forward Pass for Some Batch Sizes</h3>
+<p>I saw a similar result when changing the <code>colbert-ai</code> PyTorch version from 2.4.1 to 2.5.0: identical <code>sample_pids</code>, diverging <code>local_sample_embs</code>. In this case, however, not all <code>input_ids</code> caused a divergence between PyTorch versions. Specifically, inputs of the following batch sizes resulted in model layer outputs passing <code>torch.allclose</code>: 71, 72, 70, 73, 68, 66, 115, 64, 63, 62, 61, 67, 69. And the following batches <em>failed</em> <code>torch.allclose</code>: 79, 78, 77, 194, 82, 80, 90, 86, and 83. I concluded that something in PyTorch changed between 2.4.1 and 2.5.0 which made the <code>BertModel</code> forward pass have <em>batch variance</em>. Interestingly, it was at this time that I read the excellent Thinking Machines’ <a href="https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/#:~:text=As%20it%20turns%20out%2C%20our%20request%E2%80%99s%20output%20does%20depend%20on%20the%20parallel%20user%20requests.%20Not%20because%20we%E2%80%99re%20somehow%20leaking%20information%20across%20batches%20%E2%80%94%20instead%2C%20it%E2%80%99s%20because%20our%20forward%20pass%20lacks%20%E2%80%9Cbatch%20invariance%E2%80%9D%2C%20causing%20our%20request%E2%80%99s%20output%20to%20depend%20on%20the%20batch%20size%20of%20our%20forward%20pass">blog post about LLM non-determinism</a>.</p>
+</section>
+<section id="difference-in-torch.nn.functional.normalize-output" class="level3">
+<h3 class="anchored" data-anchor-id="difference-in-torch.nn.functional.normalize-output">2.7.1 –&gt; 2.8.0: Difference in <code>torch.nn.functional.normalize</code> Output</h3>
+<p>When comparing the 2.7.1 and 2.8.0 index artifacts, all artifacts but <code>residuals.pt</code> passed <code>torch.allclose</code> with bnb tolerances. <code>residuals.pt</code> are the difference between the document token embeddings and the centroids](https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/codecs/residual.py#L176):</p>
+<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1">residuals_ <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> batch <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span> centroids_</span></code></pre></div>
+<p><code>batch</code> not only passes <code>torch.allclose</code> between PyTorch versions, but also passes <code>torch.equal</code>. Whereas <code>centroids_</code> only passes <code>torch.allclose</code>. Looking deeper at how <code>centroids_</code> are calculated, they are <a href="https://github.com/stanford-futuredata/ColBERT/blob/501c29d9e0b7f7b393e36c4177ec2b141a253114/colbert/indexing/collection_indexer.py#L306-L308">normalized and then stored in half precision</a>. The pre-norm centroids pass <code>torch.equal</code> between PyTorch versions but the post-norm centroids do not. Additionally, testing this on random values, the pre-norm tensors are equal between PyTorch versions but the post-norm tensors are not. You can read more details on this in <a href="https://vishalbakshi.github.io/blog/posts/2025-09-14-colbert-maintenance/">another blog post</a>.</p>
+</section>
+</section>
+<section id="conclusion" class="level2">
+<h2 class="anchored" data-anchor-id="conclusion">Conclusion</h2>
+<p>In all three cases, when changing PyTorch versions, <code>colbert-ai</code> indexing functionality does not break, but reproducibility does. To recap the root causes:</p>
+<ul>
+<li><code>torch==2.0.1</code> –&gt; <code>torch==2.1.0</code>: <code>BertModel</code> forward pass outputs diverge <strong>for any inputs</strong> + <code>Tensor.sort</code> indices order changes.</li>
+<li><code>torch==2.4.1</code> –&gt; <code>torch==2.5.0</code>: <code>BertModel</code> forward pass outputs diverge <strong>depending on batch size</strong>.</li>
+<li><code>torch==2.7.1</code> –&gt; <code>torch==2.8.0</code>: <code>torch.nn.functional.normalize</code> outputs diverge.</li>
+</ul>
+<p>I don’t think these root causes can be addressed in the <code>colbert-ai</code> codebase as they seem to be purely PyTorch changes. However, I’m documenting them here (and will link this blog post in the next <code>colbert-ai</code> release notes) as users will experience index artifact changes when using different PyTorch versions.</p>
+<p>Next up: comparing and documenting search and training artifacts across PyTorch versions.</p>
+</section>
+<section id="appendix" class="level2">
+<h2 class="anchored" data-anchor-id="appendix">Appendix</h2>
+<p>In this section I’ll detail final and intermediate index tensor artifact comparisons between PyTorch versions where <code>torch.allclose</code> was <code>False</code> using default tolerances. I’ll also document integer tensor artifacts separately with <code>torch.equal</code> for tensors (which I was embarrassingly until now comparing with <code>torch.allclose</code>, 🤦) and <code>==</code> for non-tensors.</p>
+<section id="torch2.0.1-vs-torch2.1.0" class="level3">
+<h3 class="anchored" data-anchor-id="torch2.0.1-vs-torch2.1.0"><code>torch==2.0.1</code> vs <code>torch==2.1.0</code></h3>
+<section id="final-index-artifacts" class="level4">
+<h4 class="anchored" data-anchor-id="final-index-artifacts">Final Index Artifacts</h4>
+<p>Using the more lenient bitsandbytes tolerances, <mark><code>avg_residual.pt</code> and <code>bucket_weights.pt</code> pass <code>torch.allclose</code></mark> while <code>bucket_cutoffs</code> and <code>centroids</code> do not.</p>
+<section id="integer-tensors" class="level6">
+<h6 class="anchored" data-anchor-id="integer-tensors">Integer Tensors</h6>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Artifact</th>
+<th style="text-align: center;">Description</th>
+<th style="text-align: center;">dtype</th>
+<th style="text-align: center;"><code>torch.equal</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><code>codes.pt</code></td>
+<td style="text-align: center;">centroid id mapped to doc token embeddings</td>
+<td style="text-align: center;"><code>torch.int32</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>residuals.pt</code></td>
+<td style="text-align: center;">difference between centroid and doc token embeddings</td>
+<td style="text-align: center;"><code>torch.uint8</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>ivf.pid.pt</code> (ivf)</td>
+<td style="text-align: center;">unique pids per centroid id</td>
+<td style="text-align: center;"><code>torch.int32</code></td>
+<td style="text-align: center;"><mark>shape mismatch</mark></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>ivf.pid.pt</code> (ivf_lengths)</td>
+<td style="text-align: center;">number of pids per centroid id</td>
+<td style="text-align: center;"><code>torch.int64</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="float-tensors" class="level5">
+<h5 class="anchored" data-anchor-id="float-tensors">Float Tensors</h5>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Artifact</th>
+<th style="text-align: center;">Description</th>
+<th style="text-align: center;">dtype</th>
+<th style="text-align: center;">Default</th>
+<th style="text-align: center;">bnb</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><code>avg_residual.pt</code></td>
+<td style="text-align: center;">Average difference between centroids and doc token embeddings</td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>buckets.pt</code> (<code>bucket_cutoffs</code>)</td>
+<td style="text-align: center;">The quantization bins</td>
+<td style="text-align: center;"><code>torch.float32</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>buckets.pt</code> (<code>bucket_weights</code>)</td>
+<td style="text-align: center;">The quantization values for each bin</td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>centroids.pt</code></td>
+<td style="text-align: center;">Centroids of clustered sample doc token embeddings</td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="intermediate-index-artifacts" class="level4">
+<h4 class="anchored" data-anchor-id="intermediate-index-artifacts">Intermediate Index Artifacts</h4>
+<p>“Intermediate” artifacts are tensors saved in the middle of the indexing pipeline by adding <code>torch.save</code> calls in <code>/colbert/indexing/collection_indexer.py</code> or <code>/colbert/modeling/checkpoint.py</code>.</p>
+<section id="integer-tensors-1" class="level5">
+<h5 class="anchored" data-anchor-id="integer-tensors-1">Integer Tensors</h5>
+<p>Some of the intermediate artifacts are not tensors so the equality column I’m titling “Equal” instead of <code>torch.equal</code>.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Artifact</th>
+<th style="text-align: center;">Description</th>
+<th style="text-align: center;">dtype</th>
+<th style="text-align: center;">Equal</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><code>sample_pids.pt</code></td>
+<td style="text-align: center;">A sample of passage ids used to calculate centroids</td>
+<td style="text-align: center;"><code>int</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>num_passages.pt</code></td>
+<td style="text-align: center;">Number of sampled passages</td>
+<td style="text-align: center;"><code>int</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>doclens.pt</code></td>
+<td style="text-align: center;">List of number of tokens per document</td>
+<td style="text-align: center;"><code>int</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="float-tensors-1" class="level5">
+<h5 class="anchored" data-anchor-id="float-tensors-1">Float Tensors</h5>
+<p>Using the more lenient bitsandbytes tolerances, none of the <code>torch.allclose</code> calls pass.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Artifact</th>
+<th style="text-align: center;">Description</th>
+<th style="text-align: center;">dtype</th>
+<th style="text-align: center;">Default</th>
+<th style="text-align: center;">bnb</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><code>local_sample_embs.pt</code></td>
+<td style="text-align: center;">Embeddings of sample document passages used to calculate centroids</td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>sample.pt</code></td>
+<td style="text-align: center;">95% of the values from <code>local_sample_embs.half()</code></td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>sample_heldout.pt</code></td>
+<td style="text-align: center;">5% of the values from <code>local_sample_embs.half()</code></td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>batches.pt</code></td>
+<td style="text-align: center;">1 batch of encoded passages</td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>D.pt</code></td>
+<td style="text-align: center;">sorted and reshaped <code>batches</code></td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+</section>
+</section>
+<section id="core-difference-bertmodel-forward-pass" class="level2">
+<h2 class="anchored" data-anchor-id="core-difference-bertmodel-forward-pass">Core Difference: <code>BertModel</code> Forward Pass</h2>
+<p>Swapping the <code>local_sample_embs.pt</code> and <code>embs_{chunk_idx}.pt</code> tensors in the <code>torch==2.1.0</code> ColBERT install with the ones generated in the <code>torch==2.0.1</code> install resolves all final index artifacts discrepancies, even when using default tolerances. This led me to uncover that the core difference between 2.0.1 and 2.1.0 is the <code>BertModel</code> forward pass. The intermediate and final <code>BertModel</code> layer outputs all fail <code>torch.allclose</code> (for both sets of tolerances), no matter what the input tokens are (I tried different batch sizes and also a single letter <code>"a"</code>).</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+What does “Swapping” Mean?
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>“Swapping” means loading the tensor right before it’s saved:</p>
+<div class="sourceCode" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> SWAP <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'True'</span>: local_sample_embs <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>SWAP_ROOT<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/local_sample_embs.pt"</span>) <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ADDED BY VISHAL</span></span>
+<span id="cb4-2">torch.save(local_sample_embs, <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>ROOT<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/local_sample_embs.pt"</span>) <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ADDED BY VISHAL</span></span>
+<span id="cb4-3">torch.save(local_sample_embs.half(), os.path.join(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.config.index_path_, <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f'sample.</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>rank<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">.pt'</span>))</span></code></pre></div>
+<div class="sourceCode" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> SWAP <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'True'</span>: embs <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>SWAP_ROOT<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/embs_</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>chunk_idx<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">.pt"</span>) <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ADDED BY VISHAL</span></span>
+<span id="cb5-2">torch.save(embs, <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>ROOT<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/embs_</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>chunk_idx<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">.pt"</span>) <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ADDED BY VISHAL</span></span>
+<span id="cb5-3">torch.save(doclens, <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>ROOT<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/doclens.pt"</span>) <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ADDED BY VISHAL</span></span>
+<span id="cb5-4"><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.saver.save_chunk(chunk_idx, offset, embs, doclens) <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># offset = first passage index in chunk</span></span></code></pre></div>
+</div>
+</div>
+</section>
+<section id="peculiar-finding-different-intermediate-codes-artifact-yields-identical-final-ivf.pid.pt-artifact" class="level2">
+<h2 class="anchored" data-anchor-id="peculiar-finding-different-intermediate-codes-artifact-yields-identical-final-ivf.pid.pt-artifact">Peculiar Finding: Different Intermediate <code>codes</code> Artifact Yields Identical Final <code>ivf.pid.pt</code> Artifact</h2>
+<p>Even after swapping <code>local_sample_embs.pt</code> and <code>embs</code>, the intermediate <code>codes</code> (not shown in table above) between PyTorch versions did not pass <code>torch.allclose</code> (even with the more lenient bitsandbytes tolerances).</p>
+</section>
+<section id="torch2.4.1-vs-torch2.5.0" class="level2">
+<h2 class="anchored" data-anchor-id="torch2.4.1-vs-torch2.5.0"><code>torch==2.4.1</code> vs <code>torch==2.5.0</code></h2>
+<section id="final-index-artifacts-1" class="level3">
+<h3 class="anchored" data-anchor-id="final-index-artifacts-1">Final Index Artifacts</h3>
+<section id="integer-tensors-2" class="level4">
+<h4 class="anchored" data-anchor-id="integer-tensors-2">Integer Tensors</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Artifact</th>
+<th style="text-align: center;">Description</th>
+<th style="text-align: center;">dtype</th>
+<th style="text-align: center;"><code>torch.equal</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><code>codes.pt</code></td>
+<td style="text-align: center;">centroid id mapped to doc token embeddings</td>
+<td style="text-align: center;"><code>torch.int32</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>residuals.pt</code></td>
+<td style="text-align: center;">difference between centroid and doc token embeddings</td>
+<td style="text-align: center;"><code>torch.uint8</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>ivf.pid.pt</code> (ivf)</td>
+<td style="text-align: center;">unique pids per centroid id</td>
+<td style="text-align: center;"><code>torch.int32</code></td>
+<td style="text-align: center;"><mark>shapes mismatch</mark></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>ivf.pid.pt</code> (ivf_lengths)</td>
+<td style="text-align: center;">number of pids per centroid id</td>
+<td style="text-align: center;"><code>torch.int64</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="float-tensors-2" class="level4">
+<h4 class="anchored" data-anchor-id="float-tensors-2">Float Tensors</h4>
+<p>With bnb tolerances, <code>avg_residual.pt</code> and <code>bucket_weights</code> pass <code>torch.allclose</code> between PyTorch versions.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Artifact</th>
+<th style="text-align: center;">Description</th>
+<th style="text-align: center;">dtype</th>
+<th style="text-align: center;">Default</th>
+<th style="text-align: center;">bnb</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><code>avg_residual.pt</code></td>
+<td style="text-align: center;">Average difference between centroids and doc token embeddings</td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>buckets.pt</code> (<code>bucket_cutoffs</code>)</td>
+<td style="text-align: center;">The quantization bins</td>
+<td style="text-align: center;"><code>torch.float32</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>buckets.pt</code> (<code>bucket_weights</code>)</td>
+<td style="text-align: center;">The quantization values for each bin</td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>centroids.pt</code></td>
+<td style="text-align: center;">Centroids of clustered sample doc token embeddings</td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="intermediate-index-artifacts-1" class="level3">
+<h3 class="anchored" data-anchor-id="intermediate-index-artifacts-1">Intermediate Index Artifacts</h3>
+<section id="integer-tensors-3" class="level4">
+<h4 class="anchored" data-anchor-id="integer-tensors-3">Integer Tensors</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Artifact</th>
+<th style="text-align: center;">Description</th>
+<th style="text-align: center;">dtype</th>
+<th style="text-align: center;">Equal</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><code>sample_pids.pt</code></td>
+<td style="text-align: center;">A sample of passage ids used to calculate centroids</td>
+<td style="text-align: center;"><code>int</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>num_passages.pt</code></td>
+<td style="text-align: center;">Number of sampled passages</td>
+<td style="text-align: center;"><code>int</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>doclens.pt</code></td>
+<td style="text-align: center;">List of number of tokens per document</td>
+<td style="text-align: center;"><code>int</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="float-tensors-3" class="level4">
+<h4 class="anchored" data-anchor-id="float-tensors-3">Float Tensors</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Artifact</th>
+<th style="text-align: center;">Description</th>
+<th style="text-align: center;">dtype</th>
+<th style="text-align: center;">Default</th>
+<th style="text-align: center;">bnb</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><code>local_sample_embs.pt</code></td>
+<td style="text-align: center;">Embeddings of sample document passages used to calculate centroids</td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>sample.pt</code></td>
+<td style="text-align: center;">95% of the values from <code>local_sample_embs.half()</code></td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>sample_heldout.pt</code></td>
+<td style="text-align: center;">5% of the values from <code>local_sample_embs.half()</code></td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>batches.pt</code></td>
+<td style="text-align: center;">1 batch of encoded passages</td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>D.pt</code></td>
+<td style="text-align: center;">sorted and reshaped <code>batches</code></td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+</tbody>
+</table>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Important
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><code>batches.pt</code> did not pass <code>torch.allclose</code> for a 1000-document subset as the final batch item had 8 items and .</p>
+</div>
+</div>
+</section>
+</section>
+</section>
+<section id="core-difference-something-in-bertmodel" class="level2">
+<h2 class="anchored" data-anchor-id="core-difference-something-in-bertmodel">Core Difference: Something in <code>BertModel</code></h2>
+<p>Swapping the <code>local_sample_embs.pt</code> and <code>embs_{chunk_idx}.pt</code> tensors in the <code>torch==2.5.0</code> ColBERT install with the ones generated in the <code>torch==2.4.1</code> install resolves all final <em>and intermediate</em> index artifacts discrepancies, even when using the smaller default tolerances. However, it’s unclear what is causing the divergence in the <code>BertModel</code>.</p>
+<p>When sampling and embedding just the first 1000 passages (with <code>checkpoint.bert</code>), <a href="https://vishalbakshi.github.io/blog/posts/2025-08-26-colbert-maintenance/#:~:text=Mixed%20precision%20(,between%20PyTorch%20versions.">the <code>BertModel</code> intermediate dense layer outputs different tensors between PyTorch versions 2.4.1 and 2.5.0 when using mixed precision (for small batch sizes)</a> <mark>this divergence also seems to be related to the number of tokens</mark>. When embedding the full dataset (69_199 passages), the third batch of 1600 passages caused a divergence in <code>BertModel</code> layer outputs.</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-5-contents" aria-controls="callout-5" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+What does “Swapping” Mean?
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-5" class="callout-5-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>“Swapping” means loading the tensor right before it’s saved:</p>
+<div class="sourceCode" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> SWAP <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'True'</span>: local_sample_embs <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>SWAP_ROOT<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/local_sample_embs.pt"</span>) <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ADDED BY VISHAL</span></span>
+<span id="cb6-2">torch.save(local_sample_embs, <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>ROOT<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/local_sample_embs.pt"</span>) <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ADDED BY VISHAL</span></span>
+<span id="cb6-3">torch.save(local_sample_embs.half(), os.path.join(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.config.index_path_, <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f'sample.</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>rank<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">.pt'</span>))</span></code></pre></div>
+<div class="sourceCode" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-weight: bold;
+font-style: inherit;">if</span> SWAP <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'True'</span>: embs <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> torch.load(<span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>SWAP_ROOT<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/embs_</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>chunk_idx<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">.pt"</span>) <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ADDED BY VISHAL</span></span>
+<span id="cb7-2">torch.save(embs, <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>ROOT<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/embs_</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>chunk_idx<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">.pt"</span>) <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ADDED BY VISHAL</span></span>
+<span id="cb7-3">torch.save(doclens, <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>ROOT<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">/doclens.pt"</span>) <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ADDED BY VISHAL</span></span>
+<span id="cb7-4"><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>.saver.save_chunk(chunk_idx, offset, embs, doclens) <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># offset = first passage index in chunk</span></span></code></pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="torch2.7.1-vs-torch2.8.0" class="level2">
+<h2 class="anchored" data-anchor-id="torch2.7.1-vs-torch2.8.0"><code>torch==2.7.1</code> vs <code>torch==2.8.0</code></h2>
+<p>Using the more lenient bitsandbytes tolerances, ALL <code>torch.allclose</code> calls pass. <mark>It’s interesting to note that while <code>centroids.pt</code> (floats) passes <code>torch.allclose</code>, <code>residuals.pt</code> (integers) is not equal across PyTorch versions.</mark></p>
+<section id="final-index-artifacts-2" class="level3">
+<h3 class="anchored" data-anchor-id="final-index-artifacts-2">Final Index Artifacts</h3>
+<section id="integer-tensors-4" class="level4">
+<h4 class="anchored" data-anchor-id="integer-tensors-4">Integer Tensors</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Artifact</th>
+<th style="text-align: center;">Description</th>
+<th style="text-align: center;">dtype</th>
+<th style="text-align: center;"><code>torch.equal</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><code>codes.pt</code></td>
+<td style="text-align: center;">centroid id mapped to doc token embeddings</td>
+<td style="text-align: center;"><code>torch.int32</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>residuals.pt</code></td>
+<td style="text-align: center;">difference between centroid and doc token embeddings</td>
+<td style="text-align: center;"><code>torch.uint8</code></td>
+<td style="text-align: center;"><code>False</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>ivf.pid.pt</code> (ivf)</td>
+<td style="text-align: center;">unique pids per centroid id</td>
+<td style="text-align: center;"><code>torch.int32</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>ivf.pid.pt</code> (ivf_lengths)</td>
+<td style="text-align: center;">number of pids per centroid id</td>
+<td style="text-align: center;"><code>torch.int64</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="float-tensors-4" class="level4">
+<h4 class="anchored" data-anchor-id="float-tensors-4">Float Tensors</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Artifact</th>
+<th style="text-align: center;">Description</th>
+<th style="text-align: center;">dtype</th>
+<th style="text-align: center;">Default</th>
+<th style="text-align: center;">bnb</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><code>avg_residual.pt</code></td>
+<td style="text-align: center;">Average difference between centroids and doc token embeddings</td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>buckets.pt</code> (<code>bucket_cutoffs</code>)</td>
+<td style="text-align: center;">The quantization bins</td>
+<td style="text-align: center;"><code>torch.float32</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>buckets.pt</code> (<code>bucket_weights</code>)</td>
+<td style="text-align: center;">The quantization values for each bin</td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>centroids.pt</code></td>
+<td style="text-align: center;">Centroids of clustered sample doc token embeddings</td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>False</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+</tbody>
+</table>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Important
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>When using default tolerances, <a href="https://vishalbakshi.github.io/blog/posts/2025-09-02-colbert-maintenance/#inspecting-.half-behavior:~:text=The%20half%20precision%20random%20tensors%20(before%20normalization)%20are%20identical%20between%20torch%20versions%20but%20the%20half%20precision%20normalized%20tensors%20are%20not.">the normalized half-precision centroids cause the floating-point error</a>.</p>
+</div>
+</div>
+</section>
+</section>
+<section id="intermediate-index-artifacts-2" class="level3">
+<h3 class="anchored" data-anchor-id="intermediate-index-artifacts-2">Intermediate Index Artifacts</h3>
+<p>All of my intermediate index artifacts pass <code>torch.allclose</code> regardless of which tolerances are used.</p>
+<section id="integer-tensors-5" class="level4">
+<h4 class="anchored" data-anchor-id="integer-tensors-5">Integer Tensors</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Artifact</th>
+<th style="text-align: center;">Description</th>
+<th style="text-align: center;">dtype</th>
+<th style="text-align: center;">Equal</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><code>sample_pids.pt</code></td>
+<td style="text-align: center;">A sample of passage ids used to calculate centroids</td>
+<td style="text-align: center;"><code>int</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>num_passages.pt</code></td>
+<td style="text-align: center;">Number of sampled passages</td>
+<td style="text-align: center;"><code>int</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>doclens.pt</code></td>
+<td style="text-align: center;">List of number of tokens per document</td>
+<td style="text-align: center;"><code>int</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="float-tensors-5" class="level4">
+<h4 class="anchored" data-anchor-id="float-tensors-5">Float Tensors</h4>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Artifact</th>
+<th style="text-align: center;">Description</th>
+<th style="text-align: center;">dtype</th>
+<th style="text-align: center;">Default</th>
+<th style="text-align: center;">bnb</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;"><code>local_sample_embs.pt</code></td>
+<td style="text-align: center;">Embeddings of sample document passages used to calculate centroids</td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>sample.pt</code></td>
+<td style="text-align: center;">95% of the values from <code>local_sample_embs.half()</code></td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>sample_heldout.pt</code></td>
+<td style="text-align: center;">5% of the values from <code>local_sample_embs.half()</code></td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><code>batches.pt</code></td>
+<td style="text-align: center;">1 batch of encoded passages</td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><code>D.pt</code></td>
+<td style="text-align: center;">sorted and reshaped <code>batches</code></td>
+<td style="text-align: center;"><code>torch.float16</code></td>
+<td style="text-align: center;"><code>True</code></td>
+<td style="text-align: center;"><code>True</code></td>
+</tr>
+</tbody>
+</table>
+
+
+</section>
+</section>
+</section>
+
+ ]]></description>
+  <category>ColBERT</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-09-14-colbert-maintenance-2/</guid>
+  <pubDate>Sun, 14 Sep 2025 07:00:00 GMT</pubDate>
+</item>
+<item>
   <title>Debugging ColBERT Index Differences Between PyTorch 2.7.1 and 2.8.0</title>
   <dc:creator>Vishal Bakshi</dc:creator>
   <link>https://vishalbakshi.github.io/blog/posts/2025-09-14-colbert-maintenance/</link>
@@ -8521,33 +9813,6 @@ batch = self.tokenizer.pad(
   <category>AI Evals</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2025-07-31-ai-evals/</guid>
   <pubDate>Thu, 31 Jul 2025 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>Standout Ideas from Lesson 2 of the AI Evals Course</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2025-07-28-ai-evals/</link>
-  <description><![CDATA[ 
-
-
-
-
-<section id="lesson-2-error-analysis" class="level2">
-<h2 class="anchored" data-anchor-id="lesson-2-error-analysis">Lesson 2: Error Analysis</h2>
-<p><strong>Idea 1: Error analysis is how we close the gulf of comprehension.</strong> The gulf of comprehension is the gap between the information the data contains and your understanding of it. While it’s either impossible or unreasonable to look at every single piece of data collected from your users, Hamel and Shreya recommend looking at at least 100 traces.</p>
-<p><strong>Idea 2: You need ~100 diverse traces to get a good representation of failure modes.</strong> A trace is a full record of the pipeline’s interaction (initil user query, all LLM inputs/outs, intermediate reasoning or tool calls, and final user-facing result). The number 100 is not a hard and fast rule, but signifies that 10-15 traces is not going to be enough. You want to look at enough traces such that you reach a theoretical saturation of failure modes. What that means is you’ve seen enough traces that are diverse enough that looking at any more traces will not introduce any new failure modes that you haven’t seen yet.</p>
-<p><strong>Idea 3: Open coding is Hamel’s favorite subject in evals.</strong> Open codes are brief, descriptive notes about any observed problems, surprising actions or where behavior feels wrong or unexpected in the trace. As you write open codes, categories of errors will emerge.</p>
-<p><strong>Idea 4: During open coding, don’t find the root cause, just observe and note.</strong> As you come across failed traces, it’s tempting to make note of why you think this failure occurred. For example, if you see that the LLM tool call return value did not contain the correct information, it’s tempting to step back and think about why that took place. Maybe the input to the tool was incorrect because your voice agent converted speech to text incorrectly. Maybe there’s something wrong in the database which resulted in leading to missed matches. As you can see, this type of pontification can potentially be endless and is not fruitful for the focused process of identifying failure modes. Just note the failure and move on to the next trace. We’ll think about root causes later.</p>
-<p><strong>Idea 5: Pull the main failure mode from each trace. don’t get embroiled in the details.</strong> Relatedly, it’s tempting to zoom in as deep as you can, putting each word of the trace under a microscope. For folks who like analyzing data, this is satisfying. But it introduces noise in identifying high-priority failure modes. These open codes are later going to be clustered by theme (Axial Coding) and higher-level themes will be extracted; too granular of an analysis is a waste of time.</p>
-<p><strong>Idea 6: The quality of open coding is going to hinge on your product sense.</strong> Successful open coding depends on your ability to skillfully look at data. This involves two broad skills: 1) you have to know what to look for, 2) you have to be detail-oriented enough to find the failure by looking at a sequence of messages. Knowing what to look for requires a deep understanding of your product from the user’s perspective.</p>
-<p><strong>Idea 7: Start with a simple approach to get value fast.</strong> Fatigue from cognitive load is a real thing, especially when you’re looking at a hundred traces, many of which can involve multiple messages between the user and the assistant and multiple tool calls. The success of error analysis is going to depend on how fresh your mind is during the process. To achieve this, keep your open coding and axial coding heuristics simple. You can always do a second, third, and fourth pass through future traces after you fix the most pressing failure modes.</p>
-
-
-</section>
-
- ]]></description>
-  <category>AI Evals</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2025-07-28-ai-evals/</guid>
-  <pubDate>Mon, 28 Jul 2025 07:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
