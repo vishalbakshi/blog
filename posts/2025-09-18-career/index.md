@@ -39,7 +39,7 @@ I practice my values of resilience, consistency, thoughtfulness, and building pu
 
 **Consistency doesn't mean constancy.** How I show up to my ML work and communities changes as situations in life change. What doesn't change is showing up.
 
-## What I’m Looking For in My Next ML Role
+## What I’m Looking For in My Next Role
 
 I want work that’s exciting and keeps me learning. The right role gives me space to grow and the stability to go deep on real problems.
 
@@ -50,6 +50,8 @@ Teaching is core to how I work. I’ve taught STEM in high school and engineerin
 The means and the end are the same. Solving the problem itself is the goal. And I’d rather do it with others than alone.
 
 You have to let me look at data. That's the single greatest skill I've developed as a data analyst.
+
+Open source matters to you. I want to work with people who value my open source work — study groups, research, ColBERT maintenance — and see it as something to support and invest in.
 
 I’ve been remote for eight years, and I plan to stay that way. I do my best with autonomy — following paths that might not look obvious at first. At the same time, I’m coachable. If someone I trust gives me advice, I take it seriously and put it into practice.
 
