@@ -47,7 +47,7 @@ I care about efficiency. I don’t believe in throwing money at problems. I like
 
 Teaching is core to how I work. I’ve taught STEM in high school and engineering at community college. For me, writing and explaining are how I learn. That’s why I blog, record videos, and work on open source.
 
-The means and the end are the same. Solving the problem itself is the goal. And I’d rather do it with others than alone.
+The means and the end are the same. Solving the problem is itself the goal. And I’d rather do it with others than alone.
 
 You have to let me look at data. That's the single greatest skill I've developed as a data analyst.
 
