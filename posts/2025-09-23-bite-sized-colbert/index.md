@@ -15,7 +15,7 @@ categories:
 I recently published a blog post on how I'm [excited to start my professional ML career](https://vishalbakshi.github.io/blog/posts/2025-09-18-career/) after 8 years of being a data analyst, educator, fast.ai student and community member, and now stanford-futuredata/ColBERT maintainer. In response, I have received messages from folks in the industry wanting to talk about career/project opportunities. As I was preparing for these conversations, I realized that I don't have bite-size explanations of my `colbert-ai` maintenance work mental model. This blog post attempts to articulate a first draft of that mental model. My goal is that each section in this post has a reading time of 2 minutes or less, with a full reading time of 15 minutes or less. While I have more verbose, exploratory, detailed-focused blog posts on the [search pipeline](https://vishalbakshi.github.io/blog/posts/2024-12-24-PLAID-ColBERTv2-scoring-pipeline/) or the [indexing pipeline](https://vishalbakshi.github.io/blog/posts/2025-03-12-RAGatouille-ColBERT-Indexing-Deep-Dive/), it's hard to apply those writings to short, introductory conversations, which are what these "inbound" calls are.
 
 ::: {.callout-note}
-Looking to Chat
+## Looking to Chat
 If you’re working on something exciting in ML and think I could contribute as an employee or consultant, I’d love to chat: vdbakshi at gmail dot com.
 :::
 
