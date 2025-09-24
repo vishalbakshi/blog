@@ -10,7 +10,92 @@
 <atom:link href="https://vishalbakshi.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Machine Learning blog by Vishal Bakshi</description>
 <generator>quarto-1.7.32</generator>
-<lastBuildDate>Thu, 18 Sep 2025 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Tue, 23 Sep 2025 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>Bite-Sized colbert-ai : Building A Maintainer’s Mental Model</title>
+  <dc:creator>Vishal Bakshi</dc:creator>
+  <link>https://vishalbakshi.github.io/blog/posts/2025-09-23-bite-sized-colbert/</link>
+  <description><![CDATA[ 
+
+
+
+
+<section id="background" class="level2">
+<h2 class="anchored" data-anchor-id="background">Background</h2>
+<p>I recently published a blog post on how I’m <a href="https://vishalbakshi.github.io/blog/posts/2025-09-18-career/">excited to start my professional ML career</a> after 8 years of being a data analyst, educator, fast.ai student and community member, and now stanford-futuredata/ColBERT maintainer. In response, I have received messages from folks in the industry wanting to talk about career/project opportunities. As I was preparing for these conversations, I realized that I don’t have bite-size explanations of my <code>colbert-ai</code> maintenance work mental model. This blog post attempts to articulate a first draft of that mental model. My goal is that each section in this post has a reading time of 2 minutes or less, with a full reading time of 15 minutes or less. While I have more verbose, exploratory, detailed-focused blog posts on the <a href="https://vishalbakshi.github.io/blog/posts/2024-12-24-PLAID-ColBERTv2-scoring-pipeline/">search pipeline</a> or the <a href="https://vishalbakshi.github.io/blog/posts/2025-03-12-RAGatouille-ColBERT-Indexing-Deep-Dive/">indexing pipeline</a>, it’s hard to apply those writings to short, introductory conversations, which are what these “inbound” calls are.</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Looking to Chat If you’re working on something exciting in ML and think I could contribute as an employee or consultant, I’d love to chat: vdbakshi at gmail dot com.</p>
+</div>
+</div>
+</section>
+<section id="colbert-ai-as-a-product" class="level2">
+<h2 class="anchored" data-anchor-id="colbert-ai-as-a-product"><code>colbert-ai</code> As a Product</h2>
+<p>I quickly realized that maintaining <code>colbert-ai</code> is like maintaining a product. The end users are ML engineers and researchers, and the fundamental user experience is reproducibility. When PyTorch version changes break reproducibility, I have to systematically figure out why and whether it can be fixed. If it can’t be fix, I have to document what I found so users have at least a starting point to their troubleshooting.</p>
+</section>
+<section id="my-approach-to-maintaining-colbert-ai" class="level2">
+<h2 class="anchored" data-anchor-id="my-approach-to-maintaining-colbert-ai">My Approach to Maintaining <code>colbert-ai</code></h2>
+<ol type="1">
+<li><p><strong>Understand the indexing, searching and training pipelines.</strong> I need to know where artifacts are generated and what they mean, so I can correctly interpret any reproducibility changes. This foundational work took weeks back in January/February.</p></li>
+<li><p><strong>Handle different data types properly</strong>. Integer tensors are straightforward to compare. But floating-point tensors require <code>torch.allclose</code> with tolerance settings.</p></li>
+<li><p><strong>Execute systematic comparisons.</strong> I add <code>torch.save</code> calls throughout the pipeline and use separate Docker images for each PyTorch version. After running the pipeline, I load each artifact pair and apply my tolerance heuristics to identify where reproducibility breaks.</p></li>
+<li><p><strong>Isolate the root cause.</strong> I dive into the specific code generating non-reproducible artifacts and isolate the PyTorch calls. To confirm my analysis, I swap the diverging artifact between PyTorchversions—if that fixes reproducibility, I know I found the root cause.</p></li>
+</ol>
+<p>I document everything in blog posts to practice communicating my approach for the eventual release notes.</p>
+</section>
+<section id="colbert-ai-the-three-headed-monster" class="level2">
+<h2 class="anchored" data-anchor-id="colbert-ai-the-three-headed-monster"><code>colbert-ai</code>: The Three-Headed Monster</h2>
+<p>Any change to <code>colbert-ai</code> has the potential break reproducibility in three broad pipelines of functionality: indexing, search and training. I think of indexing as the “primary” pipeline so I always test it first, and search as the “secondary” pipeline (as search results depend on the index). I think of training separately from the index-search duo and I test it last. <mark>This might just be a reflection of my familiarity with index/search</mark>.</p>
+</section>
+<section id="the-colbert-ai-indexing-pipeline" class="level2">
+<h2 class="anchored" data-anchor-id="the-colbert-ai-indexing-pipeline">The <code>colbert-ai</code> Indexing Pipeline</h2>
+<p>The end goal is to map centroid IDs to passage IDs so that we can lookup passage IDs close to (i.e.&nbsp;near the same centroids as) the query tokens. Centroids of what? The whole document collection’s token embeddings? No, just a sample of token embeddings. This is why the first critical index artifact created (imo) is <code>local_sample_embs</code>, which are the BERT-encoded token embeddings of a sample of passages. Once centroids are calculated, we can process the whole document collection by finding the <em>difference</em> between each token embeddings and its closest centroid (i.e.&nbsp;the <em>residuals</em>) and then storing a quantized version of the residual.</p>
+</section>
+<section id="the-colbert-ai-search-pipeline" class="level2">
+<h2 class="anchored" data-anchor-id="the-colbert-ai-search-pipeline">The <code>colbert-ai</code> Search Pipeline</h2>
+<p>The end goal is to find those passages whose token embeddings are close to the query tokens. This happens in four stages, starting with a computationally inexpensive but large scale “rough draft” and ending with a more refined final pass on fewer documents:</p>
+<ul>
+<li>Stage 1: Given <code>q</code> query tokens and <code>n</code> number of nearest (i.e.&nbsp;largest cosine similarity) centroids per query, lookup all <strong>passage IDs</strong> close to those <code>q</code> x <code>n</code> centroids (this is why our final index folder needs a mapping from centroid ID to passage ID, <code>ivf.pid.pt</code>).</li>
+<li>Stage 2: Given the passage IDs from Stage 1, lookup the centroid IDs corresponding to the tokens in those passages (this is why our final index needs a mapping from centroid ID to token embedding ID, <code>codes.pt</code>). Filter out centroid IDs whose cosine similarity with any query token is less than some threshold. Add up cosine similarities of the remaining centroid ID across the query tokens to get one score per passage. Pick the top <code>ndocs</code> passages.</li>
+<li>Stage 3: Given the <code>ndocs</code> passage IDs from Stage 2, consider all centroid IDs, regardless of whether they passed the threshold, to recalculate the per-passage score. Pick the top <code>ndocs//4</code> passages.</li>
+<li>Stage 4: Only now do we decompress all token embeddings for the <code>ndocs//4</code> passages from Stage 3. Calculate the cosine similarity between each passage token and each query token and max-reduce to get one score per passage. Pick the top-<code>k</code> passages. These are your final results!</li>
+</ul>
+</section>
+<section id="the-colbert-ai-training-pipeline" class="level2">
+<h2 class="anchored" data-anchor-id="the-colbert-ai-training-pipeline">The <code>colbert-ai</code> Training Pipeline</h2>
+<p>The goal is to train a model that scores relevant passages higher than irrelevant passages. <code>colbert-ai</code> does so by iterating over a batch of data that contains query, positive document, and negative document(s). The queries and passages are passed to the forward pass of the <code>ColBERT</code> model which generates scores (one per document). Using standard cross-entropy loss where the relevant document is positioned first in each group of candidate documents for a given query, the loss is calculated, and an optimizer step is performed. <code>colbert-ai</code> allows you to use in-batch negatives (i.e.&nbsp;using documents from other queries in the batch as negatives) and provide your own <code>target_scores</code> (i.e.&nbsp;distill scores from a teacher model using KL Divergence).</p>
+</section>
+<section id="compressing-document-token-embeddings" class="level2">
+<h2 class="anchored" data-anchor-id="compressing-document-token-embeddings">Compressing Document Token Embeddings</h2>
+<p>The goal of compressing embeddings is two-fold: 1) enable the centroid-based search pipeline and 2) reduce storage space by using lower precision than 32-bit float32 or 16-bit float16. The compression (assuming 4-bit) involves:</p>
+<ul>
+<li>subtracting the (normalized) document token embeddings from the nearest (normalized) centroids to get your <em>residuals</em>.</li>
+<li>splitting the range of float values in <em>residuals</em> into <code>2**n</code> (16) equal buckets (where <code>n=4</code> is the number of bits per value).</li>
+<li>create a mapping from bucket ID (for 4-bit there are 16 buckets from ID <code>0</code> to <code>15</code>) to original float values. This is where the lossiness of quantization comes into play.</li>
+<li>expanding that mapping tensor by adding a dimension of size <code>nbit</code> (4). So <code>[8,7, ...]</code> becomes <code>[[8, 8, 8, 8], [7, 7, 7, 7], ...]</code>.</li>
+<li>right-shifting those values by <code>torch.arange(nbits)</code>, so <code>[8,8,8,8]</code> becomes <code>[8,4,2,1]</code> (8 &gt;&gt; 0 = 8, 8 &gt;&gt; 1 = 4, 8 &gt;&gt; 2 = 2, 8 &gt;&gt; 3 = 1).</li>
+<li>perform a bitwise <em>and</em> <code>&amp;</code> between <code>1</code> and the right-shifted values, so <code>[8,4,2,1]</code> becomes <code>[0,0,0,1]</code>.</li>
+<li>combining the binarized bucket IDs into sequences of 8-bit integers (bucket ID <code>8</code> is <code>0001</code>, bucket ID <code>7</code> is <code>1110</code> and the combined value <code>00011110</code>, the 8-bit integer <code>32</code>).</li>
+<li>save the tensor of integers (combined 8-bit bucket IDs) as <code>residuals.pt</code>.</li>
+</ul>
+<p>In the case of a 96-dimensional float32 residual embedding, you end up storing to disk a 48-dimensional int8 tensor. Note that to decompress you also need the integer centroid ID it was closest to.</p>
+
+
+</section>
+
+ ]]></description>
+  <category>ColBERT</category>
+  <guid>https://vishalbakshi.github.io/blog/posts/2025-09-23-bite-sized-colbert/</guid>
+  <pubDate>Tue, 23 Sep 2025 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>Exploring My Next Chapter in Machine Learning</title>
   <dc:creator>Vishal Bakshi</dc:creator>
@@ -9648,193 +9733,6 @@ post_attention_layernorm: 1.8715858459472656e-05</code></pre>
   <category>AI Evals</category>
   <guid>https://vishalbakshi.github.io/blog/posts/2025-08-03-ai-evals/</guid>
   <pubDate>Sun, 03 Aug 2025 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>TIL: How LLM-Foundry Ignores Prompt Tokens in labels for Instruction Finetuning.</title>
-  <dc:creator>Vishal Bakshi</dc:creator>
-  <link>https://vishalbakshi.github.io/blog/posts/2025-07-31-llm-foundry/</link>
-  <description><![CDATA[ 
-
-
-
-
-<p>I recently realized (after a conversation with a colleague) that I didn’t know how LLM-Foundry replaces prompt tokens with <code>-100</code> to exclude them from the loss calculation. I fed Claude project knowledge the LLM-Foundry GitHub repo and asked it to walk me through this process line-by-line. Since “Chat using integrations can’t be shared” I’m pasting Claude’s walkthrough here (with a couple of my notes). All the referenced functions are inside <a href="https://github.com/mosaicml/llm-foundry/blob/main/llmfoundry/data/finetuning/collator.py"><code>llmfoundry/data/finetuning/collator.py</code></a></p>
-<section id="setup-input-example" class="level2">
-<h2 class="anchored" data-anchor-id="setup-input-example">Setup: Input Example</h2>
-<p>Let’s say we have this raw training example:</p>
-<pre><code>{
-    'prompt': 'What is photosynthesis?',
-    'response': 'Photosynthesis is the process by which plants convert sunlight into energy.'
-}</code></pre>
-<p>After tokenization, this becomes:</p>
-<pre><code>example = {
-    'turns': [
-        {
-            'input_ids': [1127, 318, 2825, 43943, 30],      # "What is photosynthesis?"
-            'labels': [21197, 43943, 318, 262, 1429, 416, 543, 6134, 10385, 4252, 1657, 656, 2568, 13]  # "Photosynthesis is the process..."
-        }
-    ]
-}</code></pre>
-</section>
-<section id="line-by-line-processing" class="level2">
-<h2 class="anchored" data-anchor-id="line-by-line-processing">Line-by-Line Processing</h2>
-<section id="collator-entry-point-seq2seqfinetuningcollator.__call__" class="level3">
-<h3 class="anchored" data-anchor-id="collator-entry-point-seq2seqfinetuningcollator.__call__">Collator Entry Point (<code>Seq2SeqFinetuningCollator.__call__</code>)</h3>
-<pre><code>def __call__(self, examples: list[TokenizedExample]) -&gt; dict[str, torch.Tensor]:
-    # examples is a list of TokenizedExample objects (batch)
-    
-    if self.decoder_only_format:
-        batch = self._process_and_batch_decoder_only(examples)  # Most common path</code></pre>
-</section>
-<section id="batch-processing-_process_and_batch_decoder_only" class="level3">
-<h3 class="anchored" data-anchor-id="batch-processing-_process_and_batch_decoder_only">Batch Processing (<code>_process_and_batch_decoder_only</code>)</h3>
-<pre><code>def _process_and_batch_decoder_only(self, examples: list[TokenizedExample]):
-    processed_examples = []
-    
-    # Step 1: Process each example in the batch through stitch_turns_decoder_only
-    input_ids_and_labels = [
-        stitch_turns_decoder_only(
-            example_turns=example['turns'],           # The prompt/response turns
-            target_prompts=self.target_prompts,      # 'none' 
-            target_responses=self.target_responses,   # 'last'
-            eos_token_id=self.tokenizer.eos_token_id,
-        ) for example in examples
-    ]</code></pre>
-</section>
-<section id="core-processing-stitch_turns_decoder_only" class="level3">
-<h3 class="anchored" data-anchor-id="core-processing-stitch_turns_decoder_only">Core Processing (<code>stitch_turns_decoder_only</code>)</h3>
-<p>This is where the magic happens:</p>
-<pre><code>def stitch_turns_decoder_only(example_turns, target_prompts, target_responses, eos_token_id):
-    target_prompts = target_prompts.lower()  # 'none'
-    target_responses = target_responses.lower()  # 'last'
-    
-    # Line 1: Look up the target policy functions
-    prompt_to_target = _TARGET_POLICY_LOOKUP[target_prompts]  # Gets _sequence_to_labels_none
-    response_to_target = _TARGET_POLICY_LOOKUP[target_responses]  # Gets _sequence_to_labels_last
-    
-    # Line 2: Initialize output sequences
-    input_ids = []
-    labels = []
-    
-    # Line 3: Process each turn in the conversation
-    for idx, turn in enumerate(example_turns):
-        is_last_turn = idx + 1 == len(example_turns)  # True for our single-turn example
-        
-        # Line 4: Extract the prompt and response token sequences
-        context = ensure_list(turn['input_ids'])   # [1127, 318, 2825, 43943, 30] - "What is photosynthesis?"  
-        target = ensure_list(turn['labels'])       # [21197, 43943, 318, ...] - "Photosynthesis is..."
-        
-        # Line 5: Add EOS token to final response if needed
-        if is_last_turn and eos_token_id is not None:
-            if target[-1] != eos_token_id:
-                target = target + [eos_token_id]   # Append &lt;|endoftext|&gt; token
-        
-        # Line 6: Build the concatenated input_ids sequence
-        input_ids += context  # Add prompt tokens: [1127, 318, 2825, 43943, 30]
-        input_ids += target   # Add response tokens: [1127, 318, 2825, 43943, 30, 21197, 43943, 318, ...]
-        
-        # Line 7: Build the labels sequence using target policies
-        labels += prompt_to_target(context, is_last_turn, prompt_cutoff)  # Calls _sequence_to_labels_none
-        labels += response_to_target(target, is_last_turn)                # Calls _sequence_to_labels_last</code></pre>
-<blockquote class="blockquote">
-<p>Vishal note: in Line 7, <code>labels</code> starts out as an empty list <code>[]</code> so the prompt is added first (via <code>+= prompt_to_target(...)</code>), after which the response is added (via <code>+= response_to_target</code>).</p>
-</blockquote>
-</section>
-<section id="target-policy-functions" class="level3">
-<h3 class="anchored" data-anchor-id="target-policy-functions">Target Policy Functions</h3>
-<pre><code>def _sequence_to_labels_none(sequence, is_last_turn, cutoff):
-    # Line 1: Convert ALL prompt tokens to -100 (ignore during loss)
-    return [CROSS_ENTROPY_IGNORE_INDEX] * len(sequence)  # [-100, -100, -100, -100, -100]
-
-def _sequence_to_labels_last(sequence, is_last_turn, cutoff):  
-    # Line 1: Check if this is the final turn
-    if is_last_turn:  # True in our case
-        return sequence  # Keep actual token IDs: [21197, 43943, 318, ...]
-    else:
-        return [CROSS_ENTROPY_IGNORE_INDEX] * len(sequence)  # Would be [-100, -100, ...] for non-final turns</code></pre>
-</section>
-<section id="result-after-stitch_turns_decoder_only" class="level3">
-<h3 class="anchored" data-anchor-id="result-after-stitch_turns_decoder_only">Result After <code>stitch_turns_decoder_only</code></h3>
-<pre><code># Returned values:
-input_ids = [1127, 318, 2825, 43943, 30, 21197, 43943, 318, 262, 1429, 416, 543, 6134, 10385, 4252, 1657, 656, 2568, 13, 50256]
-#            |----------prompt----------|  |-------------------response---------------------------|  |EOS|
-
-labels =    [-100, -100, -100, -100, -100, 21197, 43943, 318, 262, 1429, 416, 543, 6134, 10385, 4252, 1657, 656, 2568, 13, 50256]
-#            |------ignore prompt-------|  |-------------------keep response--------------------|  |EOS|</code></pre>
-<blockquote class="blockquote">
-<p>Vishal note: we added <code>prompt_to_target</code> first to the empty <code>labels</code> list so the <code>-100</code>s come first.</p>
-</blockquote>
-</section>
-<section id="back-to-batch-processing-continued" class="level3">
-<h3 class="anchored" data-anchor-id="back-to-batch-processing-continued">Back to Batch Processing (continued)</h3>
-<pre><code># Step 2: Handle sequence length limits
-for input_ids, labels in input_ids_and_labels:
-    orig_size = len(input_ids)
-    
-    # Truncate if too long
-    if orig_size &gt; max_seq_len:
-        input_ids = input_ids[:max_seq_len]
-        labels = labels[:max_seq_len]
-    
-    # Create attention mask
-    attention_mask = [1] * len(input_ids)  # All 1s for actual tokens
-    
-    # Step 3: Pad sequences to max_seq_len
-    n_total = len(input_ids)
-    i_pad = [CROSS_ENTROPY_IGNORE_INDEX] * (max_seq_len - n_total)  # Padding with -100
-    
-    if self.tokenizer.padding_side == 'left':
-        labels = i_pad + labels  # Left pad labels with -100
-    else:
-        labels = labels + i_pad  # Right pad labels with -100 (more common)
-    
-    processed_example = {
-        'input_ids': input_ids,      # Will be padded by tokenizer.pad()
-        'labels': labels,            # Already padded with -100
-        'attention_mask': attention_mask,  # Will be padded by tokenizer.pad()
-    }
-    processed_examples.append(processed_example)
-
-# Step 4: Final padding using HuggingFace tokenizer
-batch = self.tokenizer.pad(
-    processed_examples,
-    padding='max_length',
-    max_length=max_seq_len,
-    return_tensors='pt',
-)</code></pre>
-</section>
-<section id="final-batch-output" class="level3">
-<h3 class="anchored" data-anchor-id="final-batch-output">Final Batch Output</h3>
-<pre><code>batch = {
-    'input_ids': torch.tensor([
-        [1127, 318, 2825, 43943, 30, 21197, 43943, 318, ..., 0, 0, 0]  # Padded with pad_token_id (0)
-    ]),
-    'labels': torch.tensor([
-        [-100, -100, -100, -100, -100, 21197, 43943, 318, ..., -100, -100, -100]  # Padded with -100
-    ]),
-    'attention_mask': torch.tensor([
-        [1, 1, 1, 1, 1, 1, 1, 1, ..., 0, 0, 0]  # 1 for real tokens, 0 for padding
-    ])
-}</code></pre>
-</section>
-<section id="key-points" class="level3">
-<h3 class="anchored" data-anchor-id="key-points">Key Points</h3>
-<ol type="1">
-<li>Prompt tokens → Labels = -100: The _sequence_to_labels_none function converts all prompt tokens to -100</li>
-<li>Response tokens → Labels = actual token IDs: The _sequence_to_labels_last function keeps response tokens as-is</li>
-<li>Padding tokens → Labels = -100: All padding positions also get -100</li>
-<li>Loss calculation: PyTorch’s CrossEntropyLoss(ignore_index=-100) will only compute loss on response tokens</li>
-</ol>
-<p>This ensures the model learns to generate responses but never tries to “predict” the input prompt!</p>
-
-
-</section>
-</section>
-
- ]]></description>
-  <category>LLM-Foundry</category>
-  <guid>https://vishalbakshi.github.io/blog/posts/2025-07-31-llm-foundry/</guid>
-  <pubDate>Thu, 31 Jul 2025 07:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>
