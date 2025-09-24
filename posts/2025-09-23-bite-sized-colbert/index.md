@@ -31,7 +31,7 @@ I quickly realized that maintaining `colbert-ai` is like maintaining a product. 
 
 3. **Execute systematic comparisons.** I add `torch.save` calls throughout the pipeline and use separate Docker images for each PyTorch version. After running the pipeline, I load each artifact pair and apply my tolerance heuristics to identify where reproducibility breaks.
 
-4. **Isolate the root cause.** I dive into the specific code generating non-reproducible artifacts and isolate the PyTorch calls. To confirm my analysis, I swap the diverging artifact between PyTorchversions—if that fixes reproducibility, I know I found the root cause. 
+4. **Isolate the root cause.** I dive into the specific code generating non-reproducible artifacts and isolate the PyTorch calls. To confirm my analysis, I swap the diverging artifact between PyTorch versions—if that fixes reproducibility, I know I found the root cause. 
 
 I document everything in blog posts to practice communicating my approach for the eventual release notes.
 
@@ -49,7 +49,7 @@ The end goal is to map centroid IDs to passage IDs so that we can lookup passage
 The end goal is to find those passages whose token embeddings are close to the query tokens. This happens in four stages, starting with a computationally inexpensive but large scale "rough draft" and ending with a more refined final pass on fewer documents:
 
 - Stage 1: Given `q` query tokens and `n` number of nearest (i.e. largest cosine similarity) centroids per query, lookup all **passage IDs** close to those `q` x `n` centroids (this is why our final index folder needs a mapping from centroid ID to passage ID, `ivf.pid.pt`).
-- Stage 2: Given the passage IDs from Stage 1, lookup the centroid IDs corresponding to the tokens in those passages (this is why our final index needs a mapping from centroid ID to token embedding ID, `codes.pt`). Filter out centroid IDs whose cosine similarity with any query token is less than some threshold. Add up cosine similarities of the remaining centroid ID across the query tokens to get one score per passage. Pick the top `ndocs` passages.
+- Stage 2: Given the passage IDs from Stage 1, lookup the centroid IDs corresponding to the tokens in those passages (this is why our final index needs a mapping from centroid ID to token embedding ID, `codes.pt`). Filter out centroid IDs whose cosine similarity with any query token is less than some threshold. Add up cosine similarities of the remaining centroid IDs across the query tokens to get one score per passage. Pick the top `ndocs` passages.
 - Stage 3: Given the `ndocs` passage IDs from Stage 2, consider all centroid IDs, regardless of whether they passed the threshold, to recalculate the per-passage score. Pick the top `ndocs//4` passages.
 - Stage 4: Only now do we decompress all token embeddings for the `ndocs//4` passages from Stage 3. Calculate the cosine similarity between each passage token and each query token and max-reduce to get one score per passage. Pick the top-`k` passages. These are your final results!
 
