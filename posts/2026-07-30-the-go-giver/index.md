@@ -25,7 +25,7 @@ The Go-Giver is a parable about a go-getter named Joe who, through his relations
 
 The opening description of Joe captures his essence:
 
-\> *He worked har, worked fast, and was headed for the top.*  
+\> *He worked hard, worked fast, and was headed for the top.*  
 *\> Still, sometimes it felt as if the harder and faster he worked, the further away his goals appeared.*
 
 I related to Joe in more ways than one.
