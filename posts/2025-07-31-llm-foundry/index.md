@@ -94,7 +94,7 @@ def stitch_turns_decoder_only(example_turns, target_prompts, target_responses, e
         # Line 5: Add EOS token to final response if needed
         if is_last_turn and eos_token_id is not None:
             if target[-1] != eos_token_id:
-                target = target + [eos_token_id]   # Append <|endoftext|> token
+                    target = target + [eos_token_id]   # Append <|endoftext|> token
         
         # Line 6: Build the concatenated input_ids sequence
         input_ids += context  # Add prompt tokens: [1127, 318, 2825, 43943, 30]
