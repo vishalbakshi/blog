@@ -1,5 +1,5 @@
 ---
-title: The Cavern&amp; An Allegory of How Teams Find Technical Solutions to Business Problems
+title: The Cavern &amp; An Allegory of How Teams Find Technical Solutions to Business Problems
 date: "2026-08-04"
 author: Vishal Bakshi
 description: The Cavern represents the space of solutions. It’s vast. Not infinite, but large enough that no one person can map it. Even large groups can’t map it in full...
