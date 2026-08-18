@@ -45,7 +45,7 @@ I don't know for sure, but I can make an informed guess.
 
 I grew up in a schooling system where counting and number lines were the fundamental ways of approaching scale. I'm not alone! But we didn't start that way as babies.
 
-Many years ago, I listened to an NPR Radiolab episode called "Innate Numbers." They talk about how babies naturally think logarithmically:
+Many years ago, I listened to an [NPR Radiolab episode called "Innate Numbers."](https://radiolab.org/podcast/91698-innate-numbers) They talk about how babies naturally think logarithmically:
 
 > LULU: ... the way that [babies are] actually experiencing quantities is not just a dumbed-down version of what adults do, it's a completely different version of what adults do.
 >
