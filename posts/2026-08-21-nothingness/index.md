@@ -28,7 +28,7 @@ Maybe halfway through the 90 minutes, I thought something like: _this is truth_.
 
 At 90 minutes, soft music started playing. I opened my eyes and I turned on the underwater lights. They were blinding. I sat there, head buried in hands, surrending to the inevitable exit from peace.
 
-I gathered my things and exited the chamber, disoriented upon re-entry into ambient light and sounds. I had an awkward exchange with the polite attendant
+I gathered my things and exited the chamber, disoriented upon re-entry into ambient light and sounds. I had an awkward exchange with the polite attendant.
 
 I pushed the front door open, and stepped out onto the street, back into the fully lit environment. 
 
@@ -38,7 +38,7 @@ As I adjusted and looked around at the billboards, cars, and storefronts, I felt
 
 In the following weeks, I had a simple technique to find my way back into that state of nothingness: close my eyes. Had a stressful call? Close my eyes. Tired of staring at the screen? Close my eyes. Overwhelmed by the sun? Close my eyes.
 
-As the weeks progressed, surprisingly, that was no longer was effective. Perhaps my baseline of stimulation was too far above nothingness. Instead, I find that leaning on my back and staring at the ceiling gives me a similar effect. I empty my cache. I go on standby, and I'm just present with myself as I would be with a friend. _Here we are, just staring at the ceiling_.
+As the weeks have progressed, surprisingly, that is no longer effective. Perhaps my baseline of stimulation has risen too far above nothingness. Instead, I find that leaning on my back and staring at the ceiling gives me a similar relief. I empty my cache, I go on standby, and I'm just present with myself as I would be with a friend. _Here we are, just staring at the ceiling_.
 
 Even more surprisingly, I haven't felt the urge to go back. I'm sure I will in the future, but something in me doesn't want to rely on those conditions to feel that experience. I want to bring that experience out into the well-lit environment. 
 
