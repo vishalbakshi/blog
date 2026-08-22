@@ -12,6 +12,8 @@ categories:
     - Miscellaneous
 ---
 
+![nothingness](black.png)
+
 Earlier this summer, I had my first sensory deprivation tank experience. As I was considering booking a session, I came across a number of reviews describing a variety of experiences. Some folks slept better than they ever had before, some had hallucinatory experiences, some had out-of-body experiences, and so on. I honestly didn't know what to expect. 
 
 The tank is pitch black (so much so that I saw nothing with my eyes open or closed) and is filled with about 10 inches of water with hundreds of pounds of Epsom salt. My ears underwater; all ambient sound was muffled. 
