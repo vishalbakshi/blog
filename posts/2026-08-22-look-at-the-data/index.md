@@ -13,7 +13,7 @@ categories:
 ---
 
 
-![Brown Bear, Brown Bear, What Do You See? written by Bill Martin Jr. and illustrated by Eric Carle](brown-bear.png)
+![Brown Bear, Brown Bear, What Do You See? written by Bill Martin Jr. and illustrated by Eric Carle](brown-bear.jpg)
 
 Suppose two people are walking through a garden. One asks the other, 
 
