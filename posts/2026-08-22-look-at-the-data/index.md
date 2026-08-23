@@ -12,8 +12,7 @@ categories:
     - data science
 ---
 
-
-![Brown Bear, Brown Bear, What Do You See? written by Bill Martin Jr. and illustrated by Eric Carle](brown-bear.jpg)
+<img src="brown-bear.jpg" alt="Brown Bear, Brown Bear, What Do You See? written by Bill Martin Jr. and illustrated by Eric Carle" width="50%">
 
 Suppose two people are walking through a garden. One asks the other, 
 
