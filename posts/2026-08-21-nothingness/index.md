@@ -1,5 +1,3 @@
-
-
 ---
 title: I Prefer Nothingness
 date: "2026-08-21"
