@@ -13,7 +13,7 @@ categories:
 ---
 
 
-[Brown Bear, Brown Bear, What Do You See? written by Bill Martin Jr. and illustrated by Eric Carle](brown-bear.png)
+![Brown Bear, Brown Bear, What Do You See? written by Bill Martin Jr. and illustrated by Eric Carle](brown-bear.png)
 
 Suppose two people are walking through a garden. One asks the other, 
 
@@ -29,7 +29,7 @@ In data science and machine learning, looking at data works the same way.
 
 Suppose you have the following dataset, from a pet food production facility's conveyor belt logs (which I generated synthetically using this notebook).
 
-[Pet food moving along a conveyor belt](data.png)
+![Pet food moving along a conveyor belt](data.png)
 
 Raw data is a clue about what the data collector cares about. It's the answer to the question:
 
