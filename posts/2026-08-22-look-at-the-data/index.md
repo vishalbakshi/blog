@@ -26,7 +26,7 @@ Technically that might be true, but what's more informative is not what that say
 
 In data science and machine learning, looking at data works the same way.
 
-Suppose you have the following dataset, from a pet food production facility's conveyor belt logs (which I generated synthetically using this notebook).
+Suppose you have the following dataset, from a pet food production facility's conveyor belt logs (which I generated synthetically using [this notebook](https://github.com/vishalbakshi/logistics-playground/blob/main/notebooks/look_at_data_article.ipynb)).
 
 ![Pet food moving along a conveyor belt](data.png)
 
