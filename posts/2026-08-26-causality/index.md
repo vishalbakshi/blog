@@ -33,7 +33,7 @@ While I don't understand Reichenbach's theory outside of those tl;dr excerpts, n
 
 Imagine an ML pipeline. The input data is passed through a series of functions, each one transforming the data in its own way, all of it elapsing over time. 
 
-[Was the square supposed to turn into a circle? Should it be orange? If not, how does that affect what happens next?](pipeline.png)
+![Was the square supposed to turn into a circle? Should it be orange? If not, how does that affect what happens next?](pipeline.png)
 
 If we can take a snapshot of the data before and after every transformation, we can _look at that data_ to understand if our system did what we expected and/or wanted in the past [2] [3]. These snapshots are tremendously useful when discussing with your teammates whether what's happening should be happening and why.
 
@@ -75,7 +75,7 @@ And this is in a universe where the speed of light is fast enough that we don't 
 
 And while these anomalies don't exist, we still need to (and should) account for each person's _perspective_. If you talk to enough cross-functional SMEs on a project, you'll realize that while each one sees something like this:
 
-[What three SMEs might say about the same object](three_smes.png)
+![What three SMEs might say about the same object](three_smes.png)
 
 In a way, even with our very fast speed of light, we still end up experiencing length contraction, Doppler color shifts, and time dilation. 
 
