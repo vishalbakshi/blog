@@ -67,9 +67,7 @@ The right clay allows you to iterate between building and system teardown, and t
 
 *Keep the clay soft* when you're not sure it's the right shape of the solution.
 
-*Keep some joints fixed* when you can't change a constraint\*.
-
-* from [Evan Balzuweit](https://www.linkedin.com/in/ebalzuweit/)
+*Keep some joints fixed* when you can't change a constraint (added to this analogy by [Evan Balzuweit](https://www.linkedin.com/in/ebalzuweit/))
 
 ### Conclusion
 
