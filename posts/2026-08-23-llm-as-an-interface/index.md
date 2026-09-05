@@ -9,6 +9,7 @@ lightbox: auto
 categories:
     - LLM
     - data analysis
+    - logistics
 ---
 
 The framing of LLMs as an interface is not new.

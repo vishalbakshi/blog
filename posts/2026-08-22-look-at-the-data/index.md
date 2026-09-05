@@ -10,6 +10,7 @@ categories:
     - Career
     - machine learning
     - data science
+    - logistics
 ---
 
 <img src="brown-bear.jpg" alt="Brown Bear, Brown Bear, What Do You See? written by Bill Martin Jr. and illustrated by Eric Carle" width="50%">
