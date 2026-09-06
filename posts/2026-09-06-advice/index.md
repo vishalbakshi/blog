@@ -17,7 +17,7 @@ Take, for example, measurement theory. I didn't know anything about formal measu
 
 > I think the main thing I think the main thing I'm trying to address is, like, you know, this only applies to situations where you can't measure the thing directly. And, the more I think about it, the more I'm realizing that measurement itself is not a direct Phenomena. Like, there's nothing intrinsic to an object that makes it measurable, if you know what I'm saying.
 
-<img src="affleck.jpg" style="width: 40%; height: auto;" alt="me re-reading my voice dictated slop prompts">
+![me re-reading my voice dictated slop prompts](affleck.jpg){width=40%}
 
 Claude, to its credit, did know what I was saying, and found teachings from 250 years of measurement theory study to enrich my understanding:
 
@@ -41,7 +41,8 @@ Every inflection point in my life is a result of me uncritically doing what some
 
 Adam Grant has a great venn diagram on this topic (thanks to [a post by Ren Saguil](https://www.linkedin.com/posts/rensaguil_one-of-the-most-challenging-aspects-for-activity-7127765180700119040-yY8r?utm_source=share&utm_medium=member_desktop&rcm=ACoAAAGsrkUBFXvUJXwrWpiaLTzjyYn6SoZr1Jo) with this image).
 
-<img src="venn.jpeg" style="width: 80%; height: auto;" alt="banger">
+
+![banger](venn.jpeg){width=40%}
 
 I used [MentorCruise](https://mentorcruise.com/) to find my mentor. One of his positive feedbacks is that I act on advice. The reason I act on his advice is threefold:
 
