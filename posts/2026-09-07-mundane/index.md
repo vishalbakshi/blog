@@ -14,7 +14,7 @@ if the devil is in the details, god is in the mundane.
 
 ![](mundane.png)
 
-one of my greatest successes in life is reaching a state of mind multiple times during the week, or even a day, where i see beauty in the mundane and feel peace or excitement.
+one of my greatest successes in life is reaching a state of mind multiple times during the week, and sometimes multiple times during the day, where i see beauty in the mundane and feel peace or excitement.
 
 "beauty" is an understatement. awe-inspiring, ethereal, spiritual are more accurate.
 
