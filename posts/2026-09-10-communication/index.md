@@ -14,6 +14,7 @@ categories:
 
 ::: {.callout-note}
 It is not my intent to make any claims about what is or isn't "intelligence" or "super-intelligence". I understand many folks in the ML/AI and adjacent industries have strong, passionate opinions on those, and I leave that discourse to them. I am trying to understand what is 5 feet in front of and behind me, and trying to anticipate its second-order effects on systems and technologies that ground our shared reality (supply chain and logistics, our power grid infrastructure, wastewater treatment, waste management, healthcare, open source technology, public education, governmental services, the USPS, and the internet). I will always be a 90's kid who grew up on PBS. I think it's important to understand who owns the systems in question and associated infrastructure, and what their current vision is. I believe in alliances and diplomacy. To engage in diplomacy is to make tough decisions and be accountable for their consequences. 
+:::
 
 Last night I read Dwarkesh Patel's eloquent recap of the OpenAI-HuggingFace agent attack, [The Rise and Fall of Agent Civilizations](https://www.dwarkesh.com/p/openai-huggingface?r=yraha&utm_medium=ios&triedRedirect=true). The events that took places across three stages (the agent message board, the HuggingFace hack, and the OpenAI hack) left me mesmerized, stunned, in awe, and nauseous. It was undeniably a milestone. It will forever change how I see technology.
 
