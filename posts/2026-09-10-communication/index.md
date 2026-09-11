@@ -163,7 +163,7 @@ Do you know how your city's wastewater treatment plant works? I sure don't. Not 
 
 Models take information as input and generate coherent information as output. In between inputs and outputs they do non-trivial things. Stack that together and you get systems of non-trivial inputs and outputs. Start by looking at inputs, outputs and any data in between. Look at the data: what do you see? What does that mean? Do you want that to mean what it means? These are accessible routes into AI/ML. These are conversations anyone can have. Open ChatGPT.com or Claude.ai, and paste this paragraph into it and say: hey, AI, where is my agency in this system? Where can I make an impact—even if by 2%? What does it mean to have a human in the loop?
 
-![Look at these flowers: what do you feel?](flower.jpg){width: 60%}
+![Look at these flowers: what do you feel?](flower.jpg){width=60%}
 
 
 Photo by [Agnese Rudzīte](https://unsplash.com/@agneserudzite?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText) on [Unsplash](https://unsplash.com/photos/field-of-red-poppies-at-sunset-kSxkjuDMY0Q?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText).
