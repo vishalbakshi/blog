@@ -20,7 +20,7 @@ This, of course, is very necessary. If and when immortality is achieved, we will
 
 However, things are moving fast. I am experiencing, in my lifetime, an amount of technological change that is impossible to keep up with. I was 5 years old when we first got the internet at home, and I remember the pale periwinkle button on our IBM Aptiva.
 
-[https://ancientelectronics.wordpress.com/2019/07/07/ibm-aptiva-model-2176-c77/aptiva2/](aptiva.png)
+![https://ancientelectronics.wordpress.com/2019/07/07/ibm-aptiva-model-2176-c77/aptiva2/](aptiva.png)
 
 Just this past week, OpenAI released Dots, and this past month Meta released Muse. Different times. 
 
