@@ -14,7 +14,7 @@ categories:
 ::: {.callout-tip}
 ## Let's Partner and Collaborate
 
-I'm a data and ML consultant. If your team has a project that's stuck, I'd want to hear what's blocked, which options you've considered, and what their limitations are. Book an intro call: https://vishalbakshi.com
+I'm a data and ML consultant. If your team has a project that's stuck, I'd want to hear what's blocked, which options you've considered, and what their limitations are. Book an intro call: [vishalbakshi.com](vishalbakshi.com)
 :::
 
 Let's say you want to train a model to quantify (regressor with continuous outputs) or classify (classifier with discrete classes) image quality, and you need to annotate a set of production images. You provide clear, tested instructions and many examples to third-party human annotators and ask them to label images, with instructions like the following:
