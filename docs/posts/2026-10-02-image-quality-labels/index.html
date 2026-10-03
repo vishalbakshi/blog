@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.7.32">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Vishal Bakshi">
+<meta name="dcterms.date" content="2026-10-02">
+<meta name="description" content="Annotating image quality comes down to two questions. Do our labels teach the model what we want it to learn from these pixels? And are we judging image quality by human perception, or by the perception of the model that has to use the image?">
+
+<title>Your ML Pipeline Might Disagree with Your Data Labels – Vishal Bakshi’s Blog</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-37eea08aefeeee20ff55810ff984fec1.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap-e44027ab3d80c7f53207be38c952ffab.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Vishal Bakshi’s Blog</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html"> 
+<span class="menu-text">About</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="../../index.xml"> <i class="bi bi-rss" role="img">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#what-claims-about-the-data-do-these-labels-make" id="toc-what-claims-about-the-data-do-these-labels-make" class="nav-link active" data-scroll-target="#what-claims-about-the-data-do-these-labels-make">What claims about the data do these labels make?</a></li>
+  <li><a href="#how-do-we-verify-claim-a-during-dataset-curation" id="toc-how-do-we-verify-claim-a-during-dataset-curation" class="nav-link" data-scroll-target="#how-do-we-verify-claim-a-during-dataset-curation">How do we verify Claim A during dataset curation?</a></li>
+  <li><a href="#how-do-we-validate-claim-b-during-dataset-curation" id="toc-how-do-we-validate-claim-b-during-dataset-curation" class="nav-link" data-scroll-target="#how-do-we-validate-claim-b-during-dataset-curation">How do we validate Claim B during dataset curation?</a></li>
+  <li><a href="#we-nailed-down-both-claims-annotation-is-solved" id="toc-we-nailed-down-both-claims-annotation-is-solved" class="nav-link" data-scroll-target="#we-nailed-down-both-claims-annotation-is-solved">We nailed down both claims, annotation is solved!</a></li>
+  <li><a href="#illustrative-example-what-can-go-wrong" id="toc-illustrative-example-what-can-go-wrong" class="nav-link" data-scroll-target="#illustrative-example-what-can-go-wrong">Illustrative example: what can go wrong?</a>
+  <ul class="collapse">
+  <li><a href="#claim-a-the-amount-of-defect-increases-linearly-with-its-perceptual-measurement" id="toc-claim-a-the-amount-of-defect-increases-linearly-with-its-perceptual-measurement" class="nav-link" data-scroll-target="#claim-a-the-amount-of-defect-increases-linearly-with-its-perceptual-measurement">Claim A: the amount of defect increases linearly with its perceptual measurement</a></li>
+  <li><a href="#claim-b-an-annotators-label-reflects-the-actual-amount-of-distortion-two-images-labeled-2-contain-a-similar-amount-of-defect" id="toc-claim-b-an-annotators-label-reflects-the-actual-amount-of-distortion-two-images-labeled-2-contain-a-similar-amount-of-defect" class="nav-link" data-scroll-target="#claim-b-an-annotators-label-reflects-the-actual-amount-of-distortion-two-images-labeled-2-contain-a-similar-amount-of-defect">Claim B: an annotator’s label reflects the actual amount of distortion (two images labeled 2 contain a similar amount of defect)</a></li>
+  <li><a href="#claim-c-on-average-all-defects-are-not-equal" id="toc-claim-c-on-average-all-defects-are-not-equal" class="nav-link" data-scroll-target="#claim-c-on-average-all-defects-are-not-equal">Claim C: on average, all defects are NOT equal</a></li>
+  </ul></li>
+  <li><a href="#segmentation-masks-instead-of-human-perceived-quality-labels" id="toc-segmentation-masks-instead-of-human-perceived-quality-labels" class="nav-link" data-scroll-target="#segmentation-masks-instead-of-human-perceived-quality-labels">Segmentation Masks Instead of Human-Perceived Quality Labels</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Your ML Pipeline Might Disagree with Your Data Labels</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">computer vision</div>
+    <div class="quarto-category">machine learning</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    Annotating image quality comes down to two questions. Do our labels teach the model what we want it to learn from these pixels? And are we judging image quality by human perception, or by the perception of the model that has to use the image?
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Vishal Bakshi </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">October 2, 2026</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Let’s Partner and Collaborate
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>I’m a data and ML consultant. If your team has a project that’s stuck, I’d want to hear what’s blocked, which options you’ve considered, and what their limitations are. Book an intro call: https://vishalbakshi.com</p>
+</div>
+</div>
+<p>Let’s say you want to train a model to quantify (regressor with continuous outputs) or classify (classifier with discrete classes) image quality, and you need to annotate a set of production images. You provide clear, tested instructions and many examples to third-party human annotators and ask them to label images, with instructions like the following:</p>
+<p>How much {distortion} is in the image?</p>
+<ul>
+<li>5 - imperceptible</li>
+<li>4 - perceptible but not annoying</li>
+<li>3 - slightly annoying</li>
+<li>2 - annoying</li>
+<li>1 - very annoying</li>
+</ul>
+<p><em>where {distortion} could be “glare”, “blur”, “occlusion”, etc. The scale comes from the paper DeepFL-IQA: Weak Supervision for Deep IQA Feature Learning by Hanhe Lin, Vlad Hosu, Dietmar Saupe.</em></p>
+<section id="what-claims-about-the-data-do-these-labels-make" class="level2">
+<h2 class="anchored" data-anchor-id="what-claims-about-the-data-do-these-labels-make">What claims about the data do these labels make?</h2>
+<p>The labels increase linearly from 1 to 5, so you should verify that the way annotators label images supports two claims:</p>
+<p>Claim A: the amount of defect increases linearly with its perceptual measurement (imperceptible → perceptible should look/feel like the same increase as annoying → very annoying).</p>
+<p>Claim B: an annotator’s label reflects the actual amount of distortion (two images labeled 2 contain a similar amount of defect).</p>
+</section>
+<section id="how-do-we-verify-claim-a-during-dataset-curation" class="level2">
+<h2 class="anchored" data-anchor-id="how-do-we-verify-claim-a-during-dataset-curation">How do we verify Claim A during dataset curation?</h2>
+<p>In the paper DeepFL-IQA: Weak Supervision for Deep IQA Feature Learning by Hanhe Lin, Vlad Hosu, Dietmar Saupe [arxiv] the authors calibrate the synthetically distorted images:</p>
+<p>We manually set the parameter values that control the distortion amount such that the perceptual visual quality of the distorted images varies linearly with the distortions parameter, from an expected rating of 1 (bad) to 5 (excellent). The distortion parameter values were chosen based on a small set of images and then applied to all images in both datasets.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><a href="brighten.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="“Brighten” distortion from 1 to 5"><img src="brighten.png" class="img-fluid figure-img" alt="“Brighten” distortion from 1 to 5"></a></p>
+<figcaption>“Brighten” distortion from 1 to 5</figcaption>
+</figure>
+</div>
+<p>Synthetic training data might not work for your use case (the paper concludes that the features learned from artificially distorted images are “not suitable for IQA on authentically distorted images”). Regardless, when you curate examples for annotation, you should sample distortion amounts to match linear perceptual changes.</p>
+<p>How do you sample distorted images without a quality classifier/regressor?</p>
+<p>I think you can take a couple of approaches:</p>
+<ul>
+<li>Option 1: use synthetic data for annotation examples.</li>
+<li>Option 2: use synthetic data to visually select similarly distorted real images.</li>
+</ul>
+<p>While the paper doesn’t share the explicit methodology for how they calibrated the synthetic distortion data generation parameters with linearly increasing levels of perceptual quality, how I would approach it is to create a script using codex, claude code or similar (<em>gasp</em> hand-code it?), where you can iteratively change the synthetic generation parameters, generate synthetic distortions, and have humans annotate the levels 1 through 5 until you get that calibration.</p>
+<p>For Option 2, I would create an HTML UI and use these calibrated synthetic images to select comparably distorted images from prod.</p>
+<p>This is one of my favorite uses of AI (custom UIs for dataset evaluation) so I’ll make a video on it later this month.</p>
+</section>
+<section id="how-do-we-validate-claim-b-during-dataset-curation" class="level2">
+<h2 class="anchored" data-anchor-id="how-do-we-validate-claim-b-during-dataset-curation">How do we validate Claim B during dataset curation?</h2>
+<p>Claim B: an annotator’s label reflects the actual amount of distortion (two images labeled 2 contain a similar amount of defect).</p>
+<p>We can again draw inspiration from research. In the paper DistortBench: Benchmarking Vision Language Models on Image Distortion Identification, the authors found that this claim is hard to achieve: three imaging experts identified the correct severity level of synthetically distorted images only 69.9% of the time, even though they named the distortion type correctly 83.6% of the time.</p>
+<p>They also found that VLMs struggled with accurately assigning labels:</p>
+<p><a href="models.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2"><img src="models.png" class="img-fluid"></a></p>
+<p>I’d be curious to see GPT 6-level models’ performance on this kind of task in an evaluation study similar to what Roboflow folks have done for Astra on object detection and segmentation.</p>
+<p>It’s hard to see in that chart, but humans picked the right answer most often for the most severe distortions (77%) and least often for mild ones (54–62%). In my experience this holds: annotators reliably label the most severe cases and drift toward the middle of the scale for everything else.</p>
+</section>
+<section id="we-nailed-down-both-claims-annotation-is-solved" class="level2">
+<h2 class="anchored" data-anchor-id="we-nailed-down-both-claims-annotation-is-solved">We nailed down both claims, annotation is solved!</h2>
+<p>Not quite! Even if we can reliably quantify defects, there’s still one more post-training claim that matters for our ML pipeline and business objectives:</p>
+<ul>
+<li>Claim C: on average, all defects are NOT equal</li>
+</ul>
+<p>Suppose you are running a pipeline where production images get sent to an object detection model. You’ve trained a classifier or a segmentation model like YOLOv26 on GPT Astra-annotated images to a desirable level of performance so that it can flag images with a large amount of defects, such that highly defective images don’t get sent to the object detection model.</p>
+<p>The underlying assumption is that a high amount of defects correlates with low performance and low accuracy of object detection. This is not always the case for a couple of reasons.</p>
+<p>Reason 1: (A contrived example for illustrative purposes) I gave the same image of bookshelves to GPT-6 Astra to synthetically add glare. Suppose you are running object detection and OCR to read the book titles for inventory purposes. The amount of glare in the left image is significantly higher, but it’s in locations that don’t matter (physical shelves). The amount of glare in the right image is relatively lower, but it’s in places that matter (text on book spines).</p>
+<p><a href="books.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3"><img src="books.png" class="img-fluid"></a></p>
+<p>Reason 2: what hurts human perception doesn’t always hurt the model. In the right image, glare on five book spines makes the titles hard for a person to read, yet Astra can still read two of the five.</p>
+<p><a href="astra.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4"><img src="astra.png" class="img-fluid"></a></p>
+</section>
+<section id="illustrative-example-what-can-go-wrong" class="level2">
+<h2 class="anchored" data-anchor-id="illustrative-example-what-can-go-wrong">Illustrative example: what can go wrong?</h2>
+<p>What can go wrong if these claims are not rigorously validated?</p>
+<section id="claim-a-the-amount-of-defect-increases-linearly-with-its-perceptual-measurement" class="level3">
+<h3 class="anchored" data-anchor-id="claim-a-the-amount-of-defect-increases-linearly-with-its-perceptual-measurement">Claim A: the amount of defect increases linearly with its perceptual measurement</h3>
+<p>If not, a regressor trained with MSE treats every one-level error as the same size, even though the levels aren’t. Ordinal losses drop that assumption, but then the output tells you order, not amount. From the Deep Neural Networks for Rank-Consistent Ordinal Regression Based On Conditional Probabilities (Shi, Cao, Raschka, 2023) paper:</p>
+<p>Moreover, unlike in metric regression, we cannot quantify the distance between the ordinal ranks…Hence, ordinal regression (also called ordinal classification or ranking learning) can be considered as an intermediate problem between classification and regression.</p>
+</section>
+<section id="claim-b-an-annotators-label-reflects-the-actual-amount-of-distortion-two-images-labeled-2-contain-a-similar-amount-of-defect" class="level3">
+<h3 class="anchored" data-anchor-id="claim-b-an-annotators-label-reflects-the-actual-amount-of-distortion-two-images-labeled-2-contain-a-similar-amount-of-defect">Claim B: an annotator’s label reflects the actual amount of distortion (two images labeled 2 contain a similar amount of defect)</h3>
+<p>If not, and suppose you train a quality regressor or classifier on these labels/images, the information in pixel space doesn’t map to the information in label space.</p>
+</section>
+<section id="claim-c-on-average-all-defects-are-not-equal" class="level3">
+<h3 class="anchored" data-anchor-id="claim-c-on-average-all-defects-are-not-equal">Claim C: on average, all defects are NOT equal</h3>
+<p>Images the quality model correctly rejects may be fine for object detection, and images it passes may still break detection.</p>
+</section>
+</section>
+<section id="segmentation-masks-instead-of-human-perceived-quality-labels" class="level2">
+<h2 class="anchored" data-anchor-id="segmentation-masks-instead-of-human-perceived-quality-labels">Segmentation Masks Instead of Human-Perceived Quality Labels</h2>
+<p>While I have not tried this in production, I think using segmentation masks instead of a regressor or classifier trained on human-annotated quality labels can sidestep Claims A and B, and lets you test Claim C directly.. With GPT-6 Astra’s performance on segmentation masks (as the Roboflow evaluation shows), I think training a YOLOv26 on Astra-annotated data or similar model may achieve consistently reliable results in detecting distortions in an image.</p>
+<p>Take, for example, glare in an image. Instead of a human looking at reference examples (however calibrated they may be) and making a judgment call on a different image, using Astra to create a segmentation mask for glare locations gives you pixel-information on where exactly the distortions are. Then you can intersect your object detection results with your segmentation mask pixels and calculate which distortion areas result in inaccurate object detection. Again, with AI, I think creating an experiment like this, from dataset annotation to YOLOv26 training, is becoming a trivial task.</p>
+<p>As a quick back-of-the-envelope one-shot example, Astra struggles to capture what I would consider the full area of glare on the first annotation in the topmost shelf. I’ll put this kind of experimentation on my to-do list as a follow-up to this article.</p>
+<p><a href="magenta.png" class="lightbox" data-gallery="quarto-lightbox-gallery-5"><img src="magenta.png" class="img-fluid"></a></p>
+<p>Ultimately, annotating image quality comes down to two questions. Do our labels teach the model what we want it to learn from these pixels? And are we judging image quality by human perception, or by the perception of the model that has to use the image?</p>
+<hr>
+<p>I’m a data and ML consultant. If your team has a project that’s stuck, I’d want to hear what’s blocked, which options you’ve considered, and what their limitations are. Book an intro call: https://vishalbakshi.com</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+        const codeEl = trigger.previousElementSibling.cloneNode(true);
+        for (const childEl of codeEl.children) {
+          if (isCodeAnnotation(childEl)) {
+            childEl.remove();
+          }
+        }
+        return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/vishalbakshi\.github\.io\/blog");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","descPosition":"bottom","loop":false,"openEffect":"zoom","selector":".lightbox"});
+(function() {
+  let previousOnload = window.onload;
+  window.onload = () => {
+    if (previousOnload) {
+      previousOnload();
+    }
+    lightboxQuarto.on('slide_before_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      const href = trigger.getAttribute('href');
+      if (href !== null) {
+        const imgEl = window.document.querySelector(`a[href="${href}"] img`);
+        if (imgEl !== null) {
+          const srcAttr = imgEl.getAttribute("src");
+          if (srcAttr && srcAttr.startsWith("data:")) {
+            slideConfig.href = srcAttr;
+          }
+        }
+      } 
+    });
+  
+    lightboxQuarto.on('slide_after_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(slideNode);
+      }
+    });
+  
+  };
+  
+})();
+          </script>
+
+
+
+
+</body></html>
