@@ -24,6 +24,8 @@ I've been wanting to write about an influential interview I watched a couple yea
 
 ![Terry Crews on Club Shay Shay](terry.png)
 
+{{< video https://www.youtube.com/embed/BvA_AinclK8 >}}
+
 In 2024 a pivotal catalyst in my professional and personal identity development arc was Terry Crews' interview on Shannon Sharpe's "Club Shay Shay" podcast.
 
 I'm going to talk through some of the key quotes from Terry that resonate with the feeling, the moment, and the dynamic in Pejman's illustration. The entire interview is worth a watch and I've probably watched it 10 times since its release.
