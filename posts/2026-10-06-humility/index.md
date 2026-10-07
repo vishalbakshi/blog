@@ -3,6 +3,7 @@ title: Humility, Passion and Reframing Your Perspective
 date: "2026-10-06"
 author: Vishal Bakshi
 description: Reflections on how humility unlocks the ability to reframe your perspective, inspired by Terry Crews' interview on Club Shay Shay.
+image: terry.png
 filters:
    - lightbox
 lightbox: auto
@@ -21,8 +22,6 @@ But this reframe is only possible through humility.
 I've been wanting to write about an influential interview I watched a couple years ago, and have been waiting for the right moment to do so. This post triggered the inspiration I was waiting for.
 
 ---
-
-![Terry Crews on Club Shay Shay](terry.png)
 
 {{< video https://www.youtube.com/embed/BvA_AinclK8 >}}
 
